@@ -16,7 +16,7 @@ Terminal=false
 StartupNotify=true
 StartupWMClass=safeer-browser
 Categories=Network;WebBrowser;
-MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+MimeType=text/html;text/xml;application/xhtml+xml;application/pdf;x-scheme-handler/http;x-scheme-handler/https;
 Actions=new-window;
 
 [Desktop Action new-window]
