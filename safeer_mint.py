@@ -594,6 +594,7 @@ class SafeerMintBrowser(Gtk.Window):
             self.web_context = WebKit2.WebContext.new_with_website_data_manager(self.website_data_manager)
             self.web_context.set_sandbox_enabled(True)
             self.register_internal_pages(self.web_context)
+            self._uskladi_jezik_spleta()
 
             # Reuse scripts, images and styles between real websites and song changes.
             # DOCUMENT_BROWSER is intended for a series of local documents.
@@ -614,6 +615,7 @@ class SafeerMintBrowser(Gtk.Window):
             self.web_context = WebKit2.WebContext.get_default()
             self.web_context.set_sandbox_enabled(True)
             self.register_internal_pages(self.web_context)
+            self._uskladi_jezik_spleta()
             try:
                 self.web_context.set_cache_model(WebKit2.CacheModel.WEB_BROWSER)
             except Exception:
@@ -2708,6 +2710,18 @@ class SafeerMintBrowser(Gtk.Window):
             decision.use()
             return True
         elif decision_type == WebKit2.PolicyDecisionType.RESPONSE:
+            try:
+                # PDF se prikaze v zavihku (WebKitov PDF.js z urejanjem); stran nima naslova,
+                # zato si zapomnimo ime datoteke za naslov zavihka.
+                odgovor = decision.get_response()
+                vrsta = (odgovor.get_mime_type() or "").lower() if odgovor else ""
+                if vrsta == "application/pdf":
+                    webview._safeer_pdf_ime = self._ime_pdf(odgovor)
+                elif vrsta.startswith("text/html") and not (odgovor.get_uri() or "").startswith("webkit-pdfjs-viewer://"):
+                    # Pregledovalnik sam je okvir (webkit-pdfjs-viewer://) in ne pomeni nove strani.
+                    webview._safeer_pdf_ime = None
+            except Exception:
+                pass
             try:
                 if hasattr(decision, "is_mime_type_supported") and not decision.is_mime_type_supported():
                     decision.download()
@@ -4889,6 +4903,9 @@ class SafeerMintBrowser(Gtk.Window):
         if event == WebKit2.LoadEvent.FINISHED:
             uri = webview.get_uri() or ""
             title = webview.get_title() or ""
+            ime_pdf = getattr(webview, "_safeer_pdf_ime", None) if not title else None
+            if ime_pdf:
+                title = ime_pdf
             self.schedule_fake_bank_check(webview, uri)
 
             for tab_item in self.tabs:
@@ -4916,6 +4933,13 @@ class SafeerMintBrowser(Gtk.Window):
                             f"if (window.setBraveMode) {{ window.setBraveMode({brave_on}); }}"
                         )
                         webview.run_javascript(js, None, None, None)
+                    elif ime_pdf:
+                        tab_item["title"] = ime_pdf
+                        tab_item["icon"] = "📄"
+                        if tab_item.get("title_label"):
+                            tab_item["title_label"].set_text(ime_pdf)
+                        if tab_item.get("icon_label"):
+                            tab_item["icon_label"].set_text("📄")
                     break
 
             if self.active_tab_id == tab_id:
@@ -7016,8 +7040,50 @@ console.log("Safeer skripta teče na:", window.location.href);
         else:
             nastavi_ikono(self.btn_dark_mode, "sun", getattr(self, "barva_ikon", "#DCE6EA"), "☀️")
 
+    def _uskladi_jezik_spleta(self):
+        """Jezik brskalnika velja tudi za splet: Accept-Language, navigator.language in s tem
+        WebKitov PDF pregledovalnik (PDF.js), ki govori jezik iz navigator.language."""
+        try:
+            koda = (get_current_language() or "en").lower()
+            regije = {"sl": "sl-SI", "en": "en-US", "de": "de-DE", "es": "es-ES", "fr": "fr-FR", "it": "it-IT"}
+            jeziki = [regije.get(koda, koda), koda]
+            if koda != "en":
+                jeziki.append("en")
+            self.web_context.set_preferred_languages(jeziki)
+        except Exception as e:
+            print(f"[i18n] Jezika spleta ni bilo mogoče nastaviti: {e}")
+
+    @staticmethod
+    def _ime_pdf(odgovor):
+        """Ime datoteke PDF za naslov zavihka: iz Content-Disposition, sicer iz naslova."""
+        from urllib.parse import unquote, urlparse
+        ime = ""
+        try:
+            glave = odgovor.get_http_headers()
+            razpolaganje = glave.get_one("Content-Disposition") if glave else None
+            if razpolaganje:
+                m = re.search(r"filename\*=(?:UTF-8|utf-8)''([^;]+)", razpolaganje)
+                if m:
+                    ime = unquote(m.group(1).strip())
+                else:
+                    m = re.search(r'filename="?([^";]+)"?', razpolaganje)
+                    if m:
+                        ime = m.group(1).strip()
+        except Exception:
+            ime = ""
+        if not ime:
+            try:
+                ime = unquote(os.path.basename(urlparse(odgovor.get_uri() or "").path))
+            except Exception:
+                ime = ""
+        ime = ime.strip()
+        if ime and not ime.lower().endswith(".pdf"):
+            ime += ".pdf"
+        return ime or "PDF"
+
     def update_ui_language(self):
         """Posodobi celotno orodno vrstico, orodne namige, naslove in zavihke ob menjavi jezika."""
+        self._uskladi_jezik_spleta()
         self.set_title(f"{t('app_title')} — Linux Mint Edition")
 
         if hasattr(self, 'btn_new_tab'):
