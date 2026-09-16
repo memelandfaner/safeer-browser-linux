@@ -6,6 +6,7 @@ YouTube Zero-Ad & Background Audio engine, Cyber Threat Shield, and Persistent S
 """
 
 import os
+import pathlib
 import sys
 import hashlib
 import json
@@ -166,6 +167,21 @@ def je_nasa_notranja_stran(url: str) -> bool:
         return False
 
 
+def je_lokalni_dokument(url: str) -> bool:
+    """PDF z diska (file://.../ime.pdf), ki res obstaja: odpre se v vgrajenem pregledovalniku.
+
+    Samo PDF in samo obstojece navadne datoteke; druge lokalne datoteke (HTML s skripti)
+    ostanejo zaprte, kot doslej.
+    """
+    if not url or not url.strip().lower().startswith("file://"):
+        return False
+    try:
+        pot = urllib.parse.unquote(urllib.parse.urlparse(url.strip()).path)
+        return pot.lower().endswith(".pdf") and os.path.isfile(pot)
+    except Exception:
+        return False
+
+
 def varno_ime_datoteke(ime: str, privzeto: str = "prenos_datoteke") -> str:
     """Iz imena, ki ga predlaga streznik, naredi ime, ki ne more zapustiti mape.
 
@@ -201,7 +217,7 @@ def is_safe_web_url(url: str) -> bool:
     if u == "safeer://procesi" or u.startswith("safeer://procesi?"):
         return True
     if u.startswith("file://"):
-        return je_nasa_notranja_stran(u)
+        return je_nasa_notranja_stran(u) or je_lokalni_dokument(u)
     # blob: naslovi so vezani na izvor strani (isti izvor jih je ustvaril): "Shrani" v vgrajenem
     # pregledovalniku PDF (blob:webkit-pdfjs-viewer://...) in izvozi na spletnih straneh
     # (blob:https://...), ki jih WebKit z atributom download spremeni v prenos.
@@ -728,7 +744,20 @@ class SafeerMintBrowser(Gtk.Window):
         GLib.timeout_add_seconds(2, self._monitor_tabs)
 
         # Create first initial tab
-        self.new_tab(url=initial_url or "safeer://home", switch=True)
+        if initial_url and je_lokalni_dokument(initial_url):
+            # PDF z diska ob zagonu ("Odpri z" iz upravitelja datotek): ce ga nalozimo pred prvim
+            # izrisom okna, WebKitov pregledovalnik ostane prazen (stran 0). Nalozimo ga, ko okno stoji.
+            self.new_tab(url="safeer://home", switch=True)
+
+            def _odpri_dokument():
+                try:
+                    self.get_active_webview().load_uri(initial_url)
+                except Exception as e:
+                    print(f"[PDF] Lokalnega dokumenta ni bilo mogoce odpreti: {e}")
+                return False
+            GLib.timeout_add(400, _odpri_dokument)
+        else:
+            self.new_tab(url=initial_url or "safeer://home", switch=True)
 
     def apply_css(self):
         if not hasattr(self, 'css_provider'):
@@ -7215,6 +7244,10 @@ def main():
     target_url = None
     if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
         target_url = sys.argv[1]
+        # Upravitelj datotek ("Odpri z") poda pot ali file:// naslov; pot spremenimo v naslov,
+        # da se PDF odpre v pregledovalniku, ne kot iskanje.
+        if os.path.isfile(target_url):
+            target_url = pathlib.Path(target_url).resolve().as_uri()
 
     # Preveri, če Safeer že teče – v tem primeru povezavo nemudoma pošlji obstoječi instanci
     sock_path = os.path.join(CONFIG_DIR, "safeer.sock")
