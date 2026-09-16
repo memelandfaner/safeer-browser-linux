@@ -62,6 +62,8 @@ MOST_JS = """
     pozabiNapravo: function () { poslji("pozabiNapravo"); },
     poisciHub: function () { poslji("poisciHub"); },
     seznani: function () { poslji("seznani"); },
+    potrdiKodo: function (koda) { poslji("potrdiKodo", [String(koda || "")]); },
+    prekiniSeznanitev: function () { poslji("prekiniSeznanitev"); },
     poveziSe: function () { poslji("poveziSe"); },
     posljiTrenutno: function (id) { poslji("posljiTrenutno", [id]); },
     poslji: function (id, url, naslov) { poslji("poslji", [id, url, naslov]); },
@@ -93,6 +95,8 @@ class SafeerLink:
         self.okno: Optional[Gtk.Window] = None
         self.pogled: Optional[WebKit2.WebView] = None
         self._seznanjanje = False
+        # Odprta prijava na Hubu (pair_id, hub_id, odtis); caka na vnos kode.
+        self._prijava: Optional[dict] = None
         # Naslov, ki se je javil namesto potrjenega; caka na en uporabnikov dotik.
         self._predlagani_naslov = ""
         # Da iskanje po neuspeli povezavi ne tece v krogu.
@@ -114,11 +118,18 @@ class SafeerLink:
         z = self.nastavitve.get("control_token")
         return z if isinstance(z, str) and z else None
 
+    def _odtis(self) -> Optional[str]:
+        """Odtis Hubovega potrdila, pripet ob seznanitvi. Brez njega se ne povezemo."""
+        o = self.nastavitve.get("hub_fp")
+        return o if isinstance(o, str) and o else None
+
     def _stanje(self) -> dict:
         return {
             "hub": self._hub(),
             "znan": bool(self._hub()),
-            "seznanjen": self._zeton() is not None,
+            # Seznanjena je naprava z zetonom IN odtisom Hubovega potrdila; stara
+            # seznanitev brez odtisa (pred TLS) ne velja vec - stran ponudi novo.
+            "seznanjen": self._zeton() is not None and self._odtis() is not None,
             "naprava": "Safeer (" + link_hub._ime_naprave().split(".")[0] + ")",
             "id": link_hub.id_naprave(),
         }
@@ -301,6 +312,9 @@ class SafeerLink:
         obravnava = {
             "poisciHub": lambda: self._v_ozadju(self._poisci_hub),
             "seznani": lambda: self._v_ozadju(self._seznani),
+            "potrdiKodo": lambda: self._v_ozadju(
+                lambda: self._potrdi_kodo(str(argumenti[0]) if argumenti else "")),
+            "prekiniSeznanitev": lambda: self._prekini_seznanitev(),
             "poveziSe": lambda: self._v_ozadju(self._povezi),
             "posljiTrenutno": lambda: self._poslji_trenutno(*argumenti[:1]),
             "poslji": lambda: self._poslji(*argumenti[:3]),
@@ -350,7 +364,7 @@ class SafeerLink:
                 povezava.zapri()
             except Exception:
                 pass
-        for kljuc in ("control_token", "hub_url", "sync_bookmarks",
+        for kljuc in ("control_token", "hub_url", "hub_fp", "sync_bookmarks",
                       "sync_bookmarks_version"):
             try:
                 self.nastavitve.podatki.pop(kljuc, None)
@@ -361,7 +375,7 @@ class SafeerLink:
 
     def _poisci_hub(self) -> None:
         znani = self._hub()
-        naslov = link_hub.poisci_hub(znani)
+        naslov = link_hub.poisci_hub(znani, self._odtis())
         if not naslov:
             self._odziv("hub", {"najden": False, "naslov": ""})
             return
@@ -388,29 +402,50 @@ class SafeerLink:
             self._odziv("napaka", "Hub ni znan. Najprej ga poišči.")
             return
         self._seznanjanje = True
+        self._prijava = None
         try:
             zacetek = link_hub.zacni_seznanitev(
                 naslov, link_hub.id_naprave(),
                 "Safeer (" + link_hub._ime_naprave().split(".")[0] + ")")
-            if not zacetek or not zacetek.get("pin"):
-                self._odziv("napaka", "Seznanitve ni bilo mogoče začeti.")
+            if not zacetek:
+                self._odziv("napaka", {"koda": "seznanitev_ni_stekla",
+                                       "sporocilo": "Seznanitve ni bilo mogoče začeti."})
                 return
-            self._odziv("koda", str(zacetek["pin"]))
-            pair_id = str(zacetek.get("pair_id", ""))
-
-            # Koda velja pet minut; toliko casa preverjamo, ali jo je potrdil.
-            konec = time.time() + 300
-            while time.time() < konec and self.okno is not None:
-                time.sleep(3)
-                zeton = link_hub.prevzemi_zeton(naslov, pair_id)
-                if zeton:
-                    self.nastavitve.set("control_token", zeton)
-                    self._odziv("seznanitev", True)
-                    self._povezi()
-                    return
-            self._odziv("seznanitev", False)
+            if zacetek.get("napaka"):
+                # Hub brez TLS ali s starim postopkom bi kodo prejel po omrezju.
+                self._odziv("napaka", {"koda": "hub_star",
+                                       "sporocilo": "Safeer na gostitelju je prestar za varno "
+                                                    "seznanitev. Posodobi ga."})
+                return
+            # Kodo pokaze gostitelj; stran ponudi vnos, ki pride v _potrdi_kodo.
+            self._prijava = zacetek
+            self._odziv("nacin", {"nacin": "koda_na_gostitelju", "koda": ""})
         finally:
             self._seznanjanje = False
+
+    def _potrdi_kodo(self, koda: str) -> None:
+        """Uporabnik je vtipkal kodo z gostiteljevega zaslona. Koda ne gre po omrezju:
+        Hubu jo dokazemo s SPAKE2, ob uspehu si zapomnimo zeton in odtis potrdila."""
+        prijava = self._prijava
+        naslov = self._hub()
+        if not prijava or not naslov:
+            self._odziv("kodaNiSprejeta", {"razlog": "prijava_ne_obstaja"})
+            return
+        zeton, razlog = link_hub.potrdi_kodo(naslov, prijava, link_hub.id_naprave(), koda)
+        if not zeton:
+            if razlog in ("prevec_poskusov", "prijava_ne_obstaja"):
+                self._prijava = None
+            self._odziv("kodaNiSprejeta", {"razlog": razlog or "napacna_koda"})
+            return
+        self._prijava = None
+        self.nastavitve.podatki["control_token"] = zeton
+        self.nastavitve.podatki["hub_fp"] = str(prijava.get("odtis", ""))
+        self.nastavitve.shrani()
+        self._odziv("seznanitev", True)
+        self._povezi()
+
+    def _prekini_seznanitev(self) -> None:
+        self._prijava = None
 
     def _povezi(self) -> None:
         with self._zaklep_povezave:
@@ -429,7 +464,7 @@ class SafeerLink:
     def _povezi_zaklenjeno(self) -> bool:
         naslov = self._hub()
         zeton = self._zeton()
-        if not naslov or not zeton:
+        if not naslov or not zeton or not self._odtis():
             return True  # ni kaj povezati; to ni neuspeh, ki bi ga bilo treba iskati
         if self.povezava is not None:
             self.povezava.zapri()
@@ -439,6 +474,7 @@ class SafeerLink:
             naslov, zeton, link_hub.id_naprave(),
             "Safeer (" + link_hub._ime_naprave().split(".")[0] + ")",
             sinhronizira=bool(self.nastavitve.get("sync_bookmarks", False)),
+            odtis=self._odtis(),
         )
         povezava.ob_sporocilu = self._na_sporocilo_huba
         povezava.ob_stanju = lambda povezan: self._odziv("povezava", povezan)

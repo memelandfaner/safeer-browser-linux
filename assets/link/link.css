@@ -218,6 +218,28 @@ button.drugotni.tanek:hover { color: var(--besedilo); }
 
 .koda { margin-top: 16px; }
 
+/* ---------- vnos kode, ki jo pokaze gostitelj ---------- */
+
+.vnosStevilke {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: ui-monospace, monospace;
+  font-size: 34px;
+  letter-spacing: .18em;
+  text-align: center;
+  padding: 14px 0;
+  margin: 4px 0 12px;
+  color: var(--besedilo);
+  background: var(--ploscaSvetla);
+  border: 1px solid var(--crta);
+  border-radius: 12px;
+}
+
+.vnosStevilke:focus {
+  outline: 3px solid var(--zelena);
+  outline-offset: 2px;
+}
+
 .stevilke {
   font-family: ui-monospace, monospace;
   font-size: 34px;
