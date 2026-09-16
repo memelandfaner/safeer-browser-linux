@@ -20,6 +20,27 @@
 
   var most = window.SafeerLink || null;
 
+  // Krajevna imena naprav: vsak uporabnik na svoji napravi poimenuje ostale po svoje.
+  // Shranjena so na tej napravi (most.vzdevki / most.shraniVzdevek), ne na Safeer Linku,
+  // zato prezivijo tudi zamenjavo naprave, ki gosti. Brez mostu ostane localStorage.
+  var vzdevki = {};
+  function naloziVzdevke() {
+    try {
+      if (most && most.vzdevki) { vzdevki = JSON.parse(most.vzdevki() || "{}") || {}; return; }
+      vzdevki = JSON.parse(window.localStorage.getItem("safeer_link_vzdevki") || "{}") || {};
+    } catch (e) { vzdevki = {}; }
+  }
+  function shraniVzdevek(id, ime) {
+    if (!id) return false;
+    if (ime) vzdevki[id] = ime; else delete vzdevki[id];
+    try {
+      if (most && most.shraniVzdevek) { most.shraniVzdevek(id, ime || ""); return true; }
+      window.localStorage.setItem("safeer_link_vzdevki", JSON.stringify(vzdevki));
+      return true;
+    } catch (e) { return false; }
+  }
+  naloziVzdevke();
+
   var el = function (id) { return document.getElementById(id); };
 
   // ----------------------------------------------------------------
@@ -41,7 +62,7 @@
       napHubNiZnan: "Huba še ne poznam. Najprej ga poišči.",
       napIskanje: "Iskanja ni bilo mogoče zagnati.",
       napSeznanitev: "Seznanitve ni bilo mogoče začeti.",
-      napPovezava: "Povezava ni uspela. Preveri, ali je Hub prižgan.",
+      napPovezava: "Povezava ni uspela. Preveri, ali je Safeer Link na drugi napravi vklopljen.",
       napStranNiPrimerna: "Te strani ni mogoče poslati.",
       napSamoHttp: "Poslati je mogoče samo naslove http in https.",
       napPosiljanje: "Pošiljanje ni uspelo. Poskusi znova.",
@@ -50,7 +71,7 @@
       napSyncStart: "Sinhronizacije ni bilo mogoče začeti.",
       napSyncNastavi: "Sinhronizacije ni bilo mogoče nastaviti.",
       napZdruzevanje: "Združevanja zaznamkov ni bilo mogoče končati.",
-      napHubNeTece: "Hub ne teče.",
+      napHubNeTece: "Safeer Link tu ni vklopljen.",
       napHubNiZagnan: "Huba ni bilo mogoče zagnati.",
       napHubNiUstavljen: "Huba ni bilo mogoče ustaviti.",
       napPrijavaPotekla: "Prijave ni več ali pa je potekla.",
@@ -97,7 +118,7 @@
       posljiNaNapravo: "Pošlji na to napravo",
       poslji: "Pošlji",
       povezan: "Povezan",
-      brezZaslonov: "Nobena druga naprava še ni povezana. Na njej odpri Safeer Link in vtipkaj kodo, ki jo pokaže središče.",
+      brezZaslonov: "Nobena druga naprava še ni povezana. Na njej odpri Safeer Link in vtipkaj kodo, ki jo pokaže ta naprava.",
       poslanoNa: "Poslano na {ime}.",
       niDosegljiv: "{ime} trenutno ni dosegljiv. Preveri, ali je prižgan, in poskusi znova.",
       neMorePoslati: "Te strani ni mogoče poslati. Odpri spletno stran in poskusi znova.",
@@ -143,10 +164,10 @@
       prijavaCakaKodo: "Type the number you see here on that device",
       javniWifiNaslov: "On public networks we recommend turning Safeer Link off",
       javniWifiOpis: "In a cafe, hotel or airport anyone can be on the same network. If you still use Safeer Link there, you stay protected: a stranger's device cannot connect on its own. The device hosting Safeer Link shows a 6-digit number on its screen, and until you type that number on the other device, nothing connects and nothing is transferred.",
-      napHubNiZnan: "The hub is not known yet. Find it first.",
+      napHubNiZnan: "No connection is known yet. Search your network first.",
       napIskanje: "The search could not be started.",
       napSeznanitev: "Pairing could not be started.",
-      napPovezava: "The connection failed. Check that the hub is on.",
+      napPovezava: "The connection failed. Check that Safeer Link is switched on on the other device.",
       napStranNiPrimerna: "This page cannot be sent.",
       napSamoHttp: "Only http and https addresses can be sent.",
       napPosiljanje: "Sending failed. Try again.",
@@ -155,9 +176,9 @@
       napSyncStart: "Sync could not be started.",
       napSyncNastavi: "Sync could not be set up.",
       napZdruzevanje: "Merging the bookmarks could not be finished.",
-      napHubNeTece: "The hub is not running.",
-      napHubNiZagnan: "The hub could not be started.",
-      napHubNiUstavljen: "The hub could not be stopped.",
+      napHubNeTece: "Safeer Link is not switched on here.",
+      napHubNiZagnan: "Safeer Link could not be switched on.",
+      napHubNiUstavljen: "Safeer Link could not be switched off.",
       napPrijavaPotekla: "The request is gone or has expired.",
       napTvJeZaslon: "The television is a screen; it does not send.",
       napTvNeUpravlja: "The television does not control other screens.",
@@ -202,7 +223,7 @@
       posljiNaNapravo: "Send to this device",
       poslji: "Send",
       povezan: "Connected",
-      brezZaslonov: "No other device is connected yet. Open Safeer Link on it and type the code shown by the hub.",
+      brezZaslonov: "No other device is connected yet. Open Safeer Link on it and type the code shown by this device.",
       poslanoNa: "Sent to {ime}.",
       niDosegljiv: "{ime} cannot be reached right now. Check that it is on and try again.",
       neMorePoslati: "This page cannot be sent. Open a website and try again.",
@@ -248,10 +269,10 @@
       prijavaCakaKodo: "Geben Sie die hier angezeigte Zahl auf jenem Gerät ein",
       javniWifiNaslov: "In öffentlichen Netzen empfehlen wir, Safeer Link auszuschalten",
       javniWifiOpis: "Im Cafe, Hotel oder Flughafen kann jeder im selben Netz sein. Wenn Sie Safeer Link dort trotzdem nutzen, bleiben Sie geschützt: ein fremdes Gerät kann sich nicht von selbst verbinden. Das Gerät, auf dem Safeer Link läuft, zeigt eine 6-stellige Zahl an, und solange Sie diese Zahl nicht auf dem anderen Gerät eingeben, verbindet sich nichts und wird nichts übertragen.",
-      napHubNiZnan: "Der Hub ist noch nicht bekannt. Suche ihn zuerst.",
+      napHubNiZnan: "Noch keine Verbindung bekannt. Durchsuche zuerst dein Netzwerk.",
       napIskanje: "Die Suche konnte nicht gestartet werden.",
       napSeznanitev: "Die Kopplung konnte nicht gestartet werden.",
-      napPovezava: "Die Verbindung ist fehlgeschlagen. Prüfe, ob der Hub eingeschaltet ist.",
+      napPovezava: "Die Verbindung ist fehlgeschlagen. Prüfe, ob Safeer Link auf dem anderen Gerät eingeschaltet ist.",
       napStranNiPrimerna: "Diese Seite kann nicht gesendet werden.",
       napSamoHttp: "Es können nur http- und https-Adressen gesendet werden.",
       napPosiljanje: "Senden fehlgeschlagen. Versuche es noch einmal.",
@@ -260,9 +281,9 @@
       napSyncStart: "Die Synchronisierung konnte nicht gestartet werden.",
       napSyncNastavi: "Die Synchronisierung konnte nicht eingerichtet werden.",
       napZdruzevanje: "Das Zusammenführen der Lesezeichen konnte nicht beendet werden.",
-      napHubNeTece: "Der Hub läuft nicht.",
-      napHubNiZagnan: "Der Hub konnte nicht gestartet werden.",
-      napHubNiUstavljen: "Der Hub konnte nicht gestoppt werden.",
+      napHubNeTece: "Safeer Link ist hier nicht eingeschaltet.",
+      napHubNiZagnan: "Safeer Link konnte nicht eingeschaltet werden.",
+      napHubNiUstavljen: "Safeer Link konnte nicht ausgeschaltet werden.",
       napPrijavaPotekla: "Die Anfrage gibt es nicht mehr oder sie ist abgelaufen.",
       napTvJeZaslon: "Der Fernseher ist ein Bildschirm; er sendet nicht.",
       napTvNeUpravlja: "Der Fernseher steuert keine anderen Bildschirme.",
@@ -307,7 +328,7 @@
       posljiNaNapravo: "An dieses Gerät senden",
       poslji: "Senden",
       povezan: "Verbunden",
-      brezZaslonov: "Noch kein anderes Gerät ist verbunden. Öffne dort Safeer Link und gib den Code ein, den der Hub anzeigt.",
+      brezZaslonov: "Noch kein anderes Gerät ist verbunden. Öffne dort Safeer Link und gib den Code ein, den dieses Gerät anzeigt.",
       poslanoNa: "An {ime} gesendet.",
       niDosegljiv: "{ime} ist gerade nicht erreichbar. Prüfe, ob das Gerät an ist, und versuche es erneut.",
       neMorePoslati: "Diese Seite kann nicht gesendet werden. Öffne eine Website und versuche es erneut.",
@@ -353,10 +374,10 @@
       prijavaCakaKodo: "Escriba en ese dispositivo el número que ve aquí",
       javniWifiNaslov: "En redes públicas recomendamos apagar Safeer Link",
       javniWifiOpis: "En una cafetería, un hotel o un aeropuerto cualquiera puede estar en la misma red. Si aun así usa Safeer Link allí, sigue protegido: un dispositivo ajeno no puede conectarse por su cuenta. El dispositivo que aloja Safeer Link muestra un número de 6 dígitos en su pantalla, y mientras no escriba ese número en el otro dispositivo, no se conecta nada ni se transfiere nada.",
-      napHubNiZnan: "El hub todavía no se conoce. Búscalo primero.",
+      napHubNiZnan: "Todavía no se conoce ninguna conexión. Busca primero en tu red.",
       napIskanje: "No se pudo iniciar la búsqueda.",
       napSeznanitev: "No se pudo iniciar el emparejamiento.",
-      napPovezava: "La conexión ha fallado. Comprueba que el hub esté encendido.",
+      napPovezava: "La conexión ha fallado. Comprueba que Safeer Link esté activado en el otro dispositivo.",
       napStranNiPrimerna: "Esta página no se puede enviar.",
       napSamoHttp: "Solo se pueden enviar direcciones http y https.",
       napPosiljanje: "El envío ha fallado. Inténtalo de nuevo.",
@@ -365,9 +386,9 @@
       napSyncStart: "No se pudo iniciar la sincronización.",
       napSyncNastavi: "No se pudo configurar la sincronización.",
       napZdruzevanje: "No se pudo terminar de combinar los marcadores.",
-      napHubNeTece: "El hub no está funcionando.",
-      napHubNiZagnan: "No se pudo iniciar el hub.",
-      napHubNiUstavljen: "No se pudo detener el hub.",
+      napHubNeTece: "Safeer Link no está activado aquí.",
+      napHubNiZagnan: "No se pudo activar Safeer Link.",
+      napHubNiUstavljen: "No se pudo desactivar Safeer Link.",
       napPrijavaPotekla: "La solicitud ya no existe o ha caducado.",
       napTvJeZaslon: "El televisor es una pantalla; no envía.",
       napTvNeUpravlja: "El televisor no controla otras pantallas.",
@@ -412,7 +433,7 @@
       posljiNaNapravo: "Enviar a este dispositivo",
       poslji: "Enviar",
       povezan: "Conectado",
-      brezZaslonov: "Todavía no hay ningún otro dispositivo conectado. Abre Safeer Link en él y escribe el código que muestra el hub.",
+      brezZaslonov: "Todavía no hay ningún otro dispositivo conectado. Abre Safeer Link en él y escribe el código que muestra este dispositivo.",
       poslanoNa: "Enviado a {ime}.",
       niDosegljiv: "Ahora mismo no se puede llegar a {ime}. Comprueba que esté encendido e inténtalo de nuevo.",
       neMorePoslati: "Esta página no se puede enviar. Abre un sitio web e inténtalo de nuevo.",
@@ -458,10 +479,10 @@
       prijavaCakaKodo: "Saisissez sur cet appareil le nombre affiché ici",
       javniWifiNaslov: "Sur les réseaux publics, nous conseillons de désactiver Safeer Link",
       javniWifiOpis: "Dans un café, un hôtel ou un aéroport, n'importe qui peut être sur le même réseau. Si vous utilisez quand même Safeer Link, vous restez protégé : un appareil inconnu ne peut pas se connecter tout seul. L'appareil qui héberge Safeer Link affiche un nombre à 6 chiffres à l'écran, et tant que vous ne saisissez pas ce nombre sur l'autre appareil, rien ne se connecte et rien n'est transféré.",
-      napHubNiZnan: "Le hub n\'est pas encore connu. Cherche-le d\'abord.",
+      napHubNiZnan: "Aucune connexion n’est encore connue. Cherche d’abord sur ton réseau.",
       napIskanje: "La recherche n\'a pas pu démarrer.",
       napSeznanitev: "L\'association n\'a pas pu démarrer.",
-      napPovezava: "La connexion a échoué. Vérifie que le hub est allumé.",
+      napPovezava: "La connexion a échoué. Vérifie que Safeer Link est activé sur l’autre appareil.",
       napStranNiPrimerna: "Cette page ne peut pas être envoyée.",
       napSamoHttp: "Seules les adresses http et https peuvent être envoyées.",
       napPosiljanje: "L\'envoi a échoué. Réessaie.",
@@ -470,9 +491,9 @@
       napSyncStart: "La synchronisation n\'a pas pu démarrer.",
       napSyncNastavi: "La synchronisation n\'a pas pu être configurée.",
       napZdruzevanje: "La fusion des favoris n\'a pas pu être terminée.",
-      napHubNeTece: "Le hub ne fonctionne pas.",
-      napHubNiZagnan: "Le hub n\'a pas pu être démarré.",
-      napHubNiUstavljen: "Le hub n\'a pas pu être arrêté.",
+      napHubNeTece: "Safeer Link n’est pas activé ici.",
+      napHubNiZagnan: "Safeer Link n’a pas pu être activé.",
+      napHubNiUstavljen: "Safeer Link n’a pas pu être désactivé.",
       napPrijavaPotekla: "La demande n\'existe plus ou a expiré.",
       napTvJeZaslon: "Le téléviseur est un écran ; il n\'envoie pas.",
       napTvNeUpravlja: "Le téléviseur ne contrôle pas les autres écrans.",
@@ -517,7 +538,7 @@
       posljiNaNapravo: "Envoyer vers cet appareil",
       poslji: "Envoyer",
       povezan: "Connecté",
-      brezZaslonov: "Aucun autre appareil n\'est encore connecté. Ouvre Safeer Link dessus et saisis le code affiché par le hub.",
+      brezZaslonov: "Aucun autre appareil n’est encore connecté. Ouvre Safeer Link dessus et saisis le code affiché par cet appareil.",
       poslanoNa: "Envoyé vers {ime}.",
       niDosegljiv: "{ime} est injoignable pour le moment. Vérifie qu\'il est allumé et réessaie.",
       neMorePoslati: "Cette page ne peut pas être envoyée. Ouvre un site web et réessaie.",
@@ -563,10 +584,10 @@
       prijavaCakaKodo: "Digita su quel dispositivo il numero che vedi qui",
       javniWifiNaslov: "Sulle reti pubbliche consigliamo di spegnere Safeer Link",
       javniWifiOpis: "Al bar, in hotel o in aeroporto chiunque può essere sulla stessa rete. Se usi comunque Safeer Link, resti protetto: un dispositivo estraneo non può collegarsi da solo. Il dispositivo che ospita Safeer Link mostra sullo schermo un numero di 6 cifre e, finché non digiti quel numero sull'altro dispositivo, non si collega nulla e non viene trasferito nulla.",
-      napHubNiZnan: "L\'hub non è ancora noto. Cercalo prima.",
+      napHubNiZnan: "Nessuna connessione è ancora nota. Cerca prima nella tua rete.",
       napIskanje: "Non è stato possibile avviare la ricerca.",
       napSeznanitev: "Non è stato possibile avviare l\'associazione.",
-      napPovezava: "La connessione non è riuscita. Controlla che l\'hub sia acceso.",
+      napPovezava: "La connessione non è riuscita. Controlla che Safeer Link sia acceso sull’altro dispositivo.",
       napStranNiPrimerna: "Questa pagina non può essere inviata.",
       napSamoHttp: "Si possono inviare solo indirizzi http e https.",
       napPosiljanje: "Invio non riuscito. Riprova.",
@@ -575,9 +596,9 @@
       napSyncStart: "Non è stato possibile avviare la sincronizzazione.",
       napSyncNastavi: "Non è stato possibile impostare la sincronizzazione.",
       napZdruzevanje: "Non è stato possibile completare l\'unione dei preferiti.",
-      napHubNeTece: "L\'hub non è in esecuzione.",
-      napHubNiZagnan: "Non è stato possibile avviare l\'hub.",
-      napHubNiUstavljen: "Non è stato possibile arrestare l\'hub.",
+      napHubNeTece: "Safeer Link qui non è acceso.",
+      napHubNiZagnan: "Non è stato possibile accendere Safeer Link.",
+      napHubNiUstavljen: "Non è stato possibile spegnere Safeer Link.",
       napPrijavaPotekla: "La richiesta non esiste più o è scaduta.",
       napTvJeZaslon: "Il televisore è uno schermo; non invia.",
       napTvNeUpravlja: "Il televisore non controlla altri schermi.",
@@ -622,7 +643,7 @@
       posljiNaNapravo: "Invia a questo dispositivo",
       poslji: "Invia",
       povezan: "Connesso",
-      brezZaslonov: "Nessun altro dispositivo è ancora collegato. Apri Safeer Link su di esso e digita il codice mostrato dall\'hub.",
+      brezZaslonov: "Nessun altro dispositivo è ancora collegato. Apri Safeer Link su di esso e digita il codice mostrato da questo dispositivo.",
       poslanoNa: "Inviato a {ime}.",
       niDosegljiv: "{ime} non è raggiungibile in questo momento. Controlla che sia acceso e riprova.",
       neMorePoslati: "Questa pagina non può essere inviata. Apri un sito web e riprova.",
@@ -972,7 +993,7 @@
       tuNaslov: "Safeer Link teče na tej napravi",
       tuNaslovTv: "Safeer Link teče na tem televizorju",
       tuPojasnilo: "Naprave v domačem omrežju se povezujejo na to napravo. Ko se povežejo, si lahko med seboj pošiljajo strani, besedila, datoteke in zaslon.",
-      tuSredisce: "Središče teče tu",
+      tuSredisce: "Vklopljen na tej napravi",
       povezana: "Povezana",
       sePotrdi: "Še enkrat pritisni, da ji odvzameš dostop",
       cakaPrijava: "Naprava se želi povezati",
@@ -992,7 +1013,7 @@
       tuNaslov: "Safeer Link is running on this device",
       tuNaslovTv: "Safeer Link is running on this television",
       tuPojasnilo: "Devices on your home network connect to this device. Once connected, they can send each other pages, text, files and their screen.",
-      tuSredisce: "The hub runs here",
+      tuSredisce: "Switched on on this device",
       povezana: "Connected",
       sePotrdi: "Press again to revoke access",
       cakaPrijava: "A device wants to connect",
@@ -1012,7 +1033,7 @@
       tuNaslov: "Safeer Link läuft auf diesem Gerät",
       tuNaslovTv: "Safeer Link läuft auf diesem Fernseher",
       tuPojasnilo: "Geräte im Heimnetz verbinden sich mit diesem Gerät. Danach können sie sich gegenseitig Seiten, Text, Dateien und den Bildschirm senden.",
-      tuSredisce: "Der Hub läuft hier",
+      tuSredisce: "Auf diesem Gerät eingeschaltet",
       povezana: "Verbunden",
       sePotrdi: "Erneut drücken, um den Zugriff zu entziehen",
       cakaPrijava: "Ein Gerät möchte sich verbinden",
@@ -1032,7 +1053,7 @@
       tuNaslov: "Safeer Link está activo en este dispositivo",
       tuNaslovTv: "Safeer Link está activo en este televisor",
       tuPojasnilo: "Los dispositivos de tu red doméstica se conectan a este dispositivo. Una vez conectados, pueden enviarse páginas, texto, archivos y la pantalla.",
-      tuSredisce: "El hub funciona aquí",
+      tuSredisce: "Activado en este dispositivo",
       povezana: "Conectado",
       sePotrdi: "Pulsa de nuevo para retirarle el acceso",
       cakaPrijava: "Un dispositivo quiere conectarse",
@@ -1052,7 +1073,7 @@
       tuNaslov: "Safeer Link est actif sur cet appareil",
       tuNaslovTv: "Safeer Link est actif sur ce téléviseur",
       tuPojasnilo: "Les appareils de ton réseau domestique se connectent à cet appareil. Une fois connectés, ils peuvent s\'envoyer des pages, du texte, des fichiers et leur écran.",
-      tuSredisce: "Le hub tourne ici",
+      tuSredisce: "Activé sur cet appareil",
       povezana: "Connecté",
       sePotrdi: "Appuie encore une fois pour lui retirer l\'accès",
       cakaPrijava: "Un appareil veut se connecter",
@@ -1072,7 +1093,7 @@
       tuNaslov: "Safeer Link è attivo su questo dispositivo",
       tuNaslovTv: "Safeer Link è attivo su questo televisore",
       tuPojasnilo: "I dispositivi della tua rete domestica si collegano a questo dispositivo. Una volta collegati, possono inviarsi pagine, testi, file e lo schermo.",
-      tuSredisce: "L\'hub è in esecuzione qui",
+      tuSredisce: "Acceso su questo dispositivo",
       povezana: "Collegato",
       sePotrdi: "Premi di nuovo per revocarle l\'accesso",
       cakaPrijava: "Un dispositivo vuole collegarsi",
@@ -1146,6 +1167,7 @@
   /** Ime naprave, kot ga razume clovek. Tehnicnega ID nikoli ne pokazemo. */
   function prijaznoIme(naprava) {
     if (!naprava) return t("zaslon");
+    if (naprava.id && vzdevki[naprava.id]) return vzdevki[naprava.id];
     var ime = (naprava.ime || "").trim();
     if (ime && !/^[a-z0-9]+-[a-z0-9-]{4,}$/i.test(ime)) return ime;
     return naprava.vloga === "receiver" ? t("televizor") : t("zaslon");
@@ -1519,24 +1541,15 @@
     if (naprave) {
       naprave.innerHTML = "";
       stanje.hubNaprave.forEach(function (n) {
-        // Dostop se odvzame v dveh korakih: en sam pritisk na daljincu je prehitro
-        // storjen, naprava pa se mora potem znova seznaniti.
-        var odvzemamTo = odvzemam === n.id;
+        // Klik odpre plosco z imenom naprave: Preimenuj (krajevno ime) in Odstrani (dostop se
+        // odvzame v dveh korakih: en sam pritisk na daljincu je prehitro storjen).
         var vrsticaNaprave = vrstica(
           ikonaNaprave(n),
-          n.ime || t("zaslon"),
-          odvzemamTo ? t("sePotrdi") : t("povezanNaTv"),
-          odvzemamTo ? t("odstrani") : t("povezana"),
-          odvzemamTo ? "" : "zivo",
-          function () {
-            if (!odvzemamTo) {
-              odvzemam = n.id;
-              narisiHub();
-              return;
-            }
-            odvzemam = "";
-            if (most && most.hubPreklici) most.hubPreklici(n.id);
-          });
+          prijaznoIme(n),
+          t("povezanNaTv"),
+          t("povezana"),
+          "zivo",
+          function () { odpriDeljenje(n, true, true); });
         vrsticaNaprave.setAttribute("data-fokus", "naprava:" + n.id);
         naprave.appendChild(vrsticaNaprave);
       });
@@ -1831,11 +1844,15 @@
   var deljenje = { naprava: null, vrsta: "" };
   var zaslonDeljenje = { tece: false, ime: "", cilj: "" };
 
-  function odpriDeljenje(naprava, samoIme) {
-    if (!znaDeliti) return;
+  function odpriDeljenje(naprava, samoIme, hubVnos) {
+    if (!znaDeliti && !hubVnos) return;
     deljenje.naprava = naprava;
     deljenje.vrsta = "";
     deljenje.samoIme = !!samoIme;
+    deljenje.hubVnos = !!hubVnos;
+    odvzemam = "";
+    besedilo("gumbOdstrani", t("odstrani"));
+    pokazi("gumbOdstrani", !!hubVnos);
     besedilo("deljenjeNaslov", samoIme ? prijaznoIme(naprava) : t("deliZ", { ime: prijaznoIme(naprava) }));
     besedilo("opombaDeljenje", "");
     besedilo("deljenjeOpis", "");
@@ -1884,11 +1901,37 @@
 
   function shraniIme() {
     var n = deljenje.naprava;
-    if (!n || !most || !most.preimenujNapravo) return;
+    if (!n) return;
     var v = el("vnosImena");
     var ime = v ? String(v.value || "").trim() : "";
+    // Svoje ime naprava sporoci Safeer Linku (vidijo ga vsi); imena drugih naprav so krajevna.
+    if (n.id !== stanje.idNaprave) {
+      if (ime === (n.ime || "").trim()) ime = "";
+      if (shraniVzdevek(n.id, ime)) {
+        pokazi("preimenujBlok", false);
+        besedilo("opombaDeljenje", t("preimenovano"));
+        besedilo("deljenjeNaslov", deljenje.samoIme ? prijaznoIme(n) : t("deliZ", { ime: prijaznoIme(n) }));
+        narisiVse();
+        return;
+      }
+    }
+    if (!most || !most.preimenujNapravo) return;
     besedilo("opombaDeljenje", t("posiljam"));
     most.preimenujNapravo(n.id, ime);
+  }
+
+  /** Odvzem dostopa napravi s plosce: prvi pritisk vprasa, drugi odvzame. */
+  function odstraniNapravo() {
+    var n = deljenje.naprava;
+    if (!n || !deljenje.hubVnos) return;
+    if (odvzemam !== n.id) {
+      odvzemam = n.id;
+      besedilo("gumbOdstrani", t("sePotrdi"));
+      return;
+    }
+    odvzemam = "";
+    if (most && most.hubPreklici) most.hubPreklici(n.id);
+    zapriDeljenje();
   }
 
   /** Odziv mostu "preimenovano": {id, ime}. Ime pride nazaj tudi v novem seznamu naprav. */
@@ -2020,6 +2063,7 @@
     naKlik("gumbDeljenjeZapri", zapriDeljenje);
     naKlik("gumbPosljiNaNapravo", posljiNaNapravo);
     naKlik("gumbPreimenuj", odpriPreimenovanje);
+    naKlik("gumbOdstrani", odstraniNapravo);
     naKlik("gumbShraniIme", shraniIme);
     var vnosImena = el("vnosImena");
     if (vnosImena) vnosImena.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); shraniIme(); } });
