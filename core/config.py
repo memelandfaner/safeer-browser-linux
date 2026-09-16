@@ -83,7 +83,7 @@ SEARCH_ENGINES = {
 DEFAULT_SETTINGS: Dict[str, Any] = {
     "language": "auto",                 # "auto", "en", "sl", "de", "es", "fr", "it"
     "force_dark_mode": False,          # Privzeto izklopljen, da ne kvari prikaza zemljevidov in bančnih strani
-    "theme": "midnight",                # "midnight", "mint", "neon", "amoled"
+    "theme": "safeer",                  # "safeer" (barve safeer.si), "midnight", "mint", "neon", "amoled"
     "custom_css": "",                   # Lasten CSS slog uporabnika
     "user_scripts": [
         {

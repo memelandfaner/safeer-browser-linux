@@ -28,7 +28,7 @@ os.environ.setdefault("GST_PULSE_BUFFER_MS", "120")
 
 gi.require_version('Gtk', '3.0')
 gi.require_version('WebKit2', '4.1')
-from gi.repository import Gtk, Gdk, WebKit2, GLib, Gio, Pango
+from gi.repository import Gtk, Gdk, WebKit2, GLib, Gio, Pango, GdkPixbuf
 
 # Explicitly set application & program name for Linux Mint window manager & taskbar
 GLib.set_prgname("safeer-browser")
@@ -79,6 +79,68 @@ from core import userscripts as uporabniske_skripte
 # Use WebKitGTK's maintained browser identity consistently across redirects.
 USER_AGENT = None
 APP_VERSION = "1.0.26"
+
+
+# ---------------------------------------------------------------- crtne ikone
+# Enake ikone kot v meniju telefona in televizorja (assets/icons/*.svg, crta 1.8 px na
+# mrezi 24). Barvo damo sami, ker gumbi po temah niso enake barve. Ce SVG-ja ni mogoce
+# naloziti (gdk-pixbuf brez rsvg), gumb obdrzi dosedanji besedilni znak.
+IKONE_MAPA = os.path.join(BASE_DIR, "assets", "icons")
+_ikone_predpomnilnik = {}
+
+
+def ikona_pixbuf(ime, barva="#DCE6EA", velikost=18, merilo=1):
+    """Pixbuf crtne ikone `ime` v barvi `barva`; None, ce je ni mogoce naloziti."""
+    kljuc = (ime, barva, velikost, merilo)
+    if kljuc not in _ikone_predpomnilnik:
+        slika = None
+        try:
+            with open(os.path.join(IKONE_MAPA, ime + ".svg"), "rb") as f:
+                svg = f.read().replace(b"currentColor", barva.encode("ascii"))
+            tok = Gio.MemoryInputStream.new_from_bytes(GLib.Bytes.new(svg))
+            px = int(velikost * merilo)
+            slika = GdkPixbuf.Pixbuf.new_from_stream_at_scale(tok, px, px, True, None)
+        except Exception as e:
+            print(f"[Ikone] {ime}: {e}")
+        _ikone_predpomnilnik[kljuc] = slika
+    return _ikone_predpomnilnik[kljuc]
+
+
+def ikona_slika(ime, barva="#DCE6EA", velikost=18, merilo=1):
+    """Nov Gtk.Image s crtno ikono (vsak gumb potrebuje svojega); None, ce ikone ni."""
+    px = ikona_pixbuf(ime, barva, velikost, merilo)
+    if px is None:
+        return None
+    if merilo != 1:
+        return Gtk.Image.new_from_surface(Gdk.cairo_surface_create_from_pixbuf(px, merilo, None))
+    return Gtk.Image.new_from_pixbuf(px)
+
+
+def nastavi_ikono(gumb, ime, barva="#DCE6EA", nadomestek="", besedilo="", velikost=18):
+    """Gumbu da crtno ikono (in morebitno besedilo ob njej); brez ikone ostane znak `nadomestek`."""
+    merilo = gumb.get_scale_factor() or 1
+    slika = ikona_slika(ime, barva, velikost, merilo)
+    if slika is None:
+        gumb.set_image(None)
+        gumb.set_label((nadomestek + " " + besedilo).strip())
+        return False
+    gumb.set_image(slika)
+    gumb.set_always_show_image(True)
+    gumb.set_label(besedilo)
+    return True
+
+
+def nastavi_sliko(slika, ime, barva="#DCE6EA", velikost=16):
+    """Gtk.Image napolni s crtno ikono; ce je ni, ostane, kar je bilo."""
+    merilo = slika.get_scale_factor() or 1
+    px = ikona_pixbuf(ime, barva, velikost, merilo)
+    if px is None:
+        return False
+    if merilo != 1:
+        slika.set_from_surface(Gdk.cairo_surface_create_from_pixbuf(px, merilo, None))
+    else:
+        slika.set_from_pixbuf(px)
+    return True
 DOCK_WIDTH = 54
 
 
@@ -665,31 +727,46 @@ class SafeerMintBrowser(Gtk.Window):
                 Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
             )
 
-        theme = self.config.get("theme", "midnight")
-        if theme == "mint":
+        theme = self.config.get("theme", "safeer")
+        # Barve ikon v orodni vrstici: navadne, poudarjene (dom, Link, scit) in tiste na
+        # poudarjenem ozadju (vklopljen gumb). Mint poudarek je svetel, zato je nanj temna ikona.
+        barva_ikon, barva_poudarka, barva_na_poudarku = "#e0e0e6", "#5ea1ff", "#ffffff"
+        if theme == "safeer":
+            # Paleta safeer.si: enaka kot meni telefona in televizorja.
+            bg_base = "#090d15"
+            bg_card = "#111924"
+            bg_tab_active = "#182231"
+            accent = "#54d6a5"
+            fg_main = "#f0f4f3"
+            barva_ikon, barva_poudarka, barva_na_poudarku = "#DCE6EA", "#54d6a5", "#092017"
+        elif theme == "mint":
             bg_base = "#141c15"
             bg_card = "#1c2b1f"
             bg_tab_active = "#243b28"
             accent = "#87cf3e"
             fg_main = "#f0fdf4"
+            barva_ikon, barva_poudarka, barva_na_poudarku = "#e0e0e6", "#87cf3e", "#092017"
         elif theme == "neon":
             bg_base = "#090d16"
             bg_card = "#111827"
             bg_tab_active = "#1e293b"
             accent = "#00d2ff"
             fg_main = "#f0fdfa"
+            barva_ikon, barva_poudarka, barva_na_poudarku = "#e0e0e6", "#00d2ff", "#04121a"
         elif theme == "amoled":
             bg_base = "#000000"
             bg_card = "#0e0e0e"
             bg_tab_active = "#181818"
             accent = "#38bdf8"
             fg_main = "#ffffff"
+            barva_ikon, barva_poudarka, barva_na_poudarku = "#ffffff", "#38bdf8", "#04121a"
         else: # midnight
             bg_base = "#1c1b22"
             bg_card = "#2b2a33"
             bg_tab_active = "#2b2a33"
             accent = "#0060df"
             fg_main = "#fbfbfe"
+        self.barva_ikon, self.barva_poudarka, self.barva_na_poudarku = barva_ikon, barva_poudarka, barva_na_poudarku
 
         font_choice = self.config.get("font_family", "system")
         if font_choice == "sans":
@@ -814,7 +891,13 @@ class SafeerMintBrowser(Gtk.Window):
         }}
         .ff-nav-btn.active {{
             background: {accent};
-            color: #ffffff;
+            color: {barva_na_poudarku};
+        }}
+        /* Gumb z ikono in napisom ima znotraj svojo skatlo: brez ozadja okna, barva od gumba. */
+        button box, button image, button label {{
+            background: transparent;
+            background-color: transparent;
+            color: inherit;
         }}
 
         /* 3. Firefox Awesomebar / URL Entry */
@@ -1217,6 +1300,7 @@ class SafeerMintBrowser(Gtk.Window):
         }}
         """
 
+        self.osvezi_ikone()
         custom_css = self.config.get("custom_css", "")
         if custom_css:
             css_data += "\n/* Uporabniški lasten CSS */\n" + custom_css
@@ -1571,11 +1655,11 @@ class SafeerMintBrowser(Gtk.Window):
         is_saved = any(p.get("url", "").rstrip("/") == norm_uri for p in portals)
         ctx = self.btn_star.get_style_context()
         if is_saved:
-            self.btn_star.set_label("⭐")
+            nastavi_ikono(self.btn_star, "star_filled", getattr(self, "barva_poudarka", "#54d6a5"), "⭐", velikost=16)
             ctx.add_class("active-star")
             self.btn_star.set_tooltip_text(f"{t('page_bookmarked')}")
         else:
-            self.btn_star.set_label("☆")
+            nastavi_ikono(self.btn_star, "star", getattr(self, "barva_ikon", "#DCE6EA"), "☆", velikost=16)
             ctx.remove_class("active-star")
             self.btn_star.set_tooltip_text(f"{t('bookmark_page')} (Ctrl + D)")
 
@@ -1951,8 +2035,11 @@ class SafeerMintBrowser(Gtk.Window):
         self.url_box.pack_start(self.btn_shield, False, False, 0)
 
         # Security tune sliders icon
-        self.security_icon = Gtk.Label(label="🎚️")
+        self.security_icon = Gtk.Image()
         self.security_icon.get_style_context().add_class("ff-security-icon")
+        if not nastavi_sliko(self.security_icon, "sliders", "#54d6a5", 15):
+            self.security_icon = Gtk.Label(label="🎚️")
+            self.security_icon.get_style_context().add_class("ff-security-icon")
         self.url_box.pack_start(self.security_icon, False, False, 0)
 
         # Clean URL Entry with large Ubuntu font
@@ -2038,6 +2125,7 @@ class SafeerMintBrowser(Gtk.Window):
         self.nav_bar.pack_start(self.btn_link, False, False, 0)
         GLib.idle_add(self._safeer_link_preveri_hub)
 
+        self.osvezi_ikone()
         self.top_bar.pack_start(self.nav_bar, False, False, 0)
 
         # 3. Tier 3: Bookmarks Toolbar (Vrstica priljubljenih strani)
@@ -2427,7 +2515,7 @@ class SafeerMintBrowser(Gtk.Window):
                 print(f"[Safeer Download] Samodejni prenos povezave: {uri}")
                 self.web_context.download_uri(uri)
                 if hasattr(self, "btn_downloads"):
-                    self.btn_downloads.set_label("⬇️ 0%")
+                    nastavi_ikono(self.btn_downloads, "download", getattr(self, "barva_na_poudarku", "#092017"), "⬇️", "0%")
                     self.btn_downloads.get_style_context().add_class("active")
         except Exception as e:
             print(f"[Safeer Download] Napaka pri zagonu neposrednega prenosa: {e}")
@@ -3109,15 +3197,16 @@ class SafeerMintBrowser(Gtk.Window):
         theme_row.pack_start(lbl_th_choice, False, False, 0)
 
         combo_theme = Gtk.ComboBoxText()
-        combo_theme.append("mint", "🍃 Linux Mint Emerald (Privzeto)")
+        combo_theme.append("safeer", "🛡️ Safeer (Privzeto)")
+        combo_theme.append("mint", "🍃 Linux Mint Emerald")
         combo_theme.append("midnight", "🌙 Firefox Midnight (Temna)")
         combo_theme.append("neon", "⚡ Cyberpunk Neon (Visok kontrast)")
         combo_theme.append("amoled", "🖤 Pure AMOLED Black (Črna)")
-        cur_th = self.config.get("theme", "mint")
+        cur_th = self.config.get("theme", "safeer")
         combo_theme.set_active_id(cur_th)
 
         def on_theme_changed(cb):
-            new_th = cb.get_active_id() or "mint"
+            new_th = cb.get_active_id() or "safeer"
             self.config.set("theme", new_th)
             self.apply_css()
 
@@ -4150,13 +4239,13 @@ class SafeerMintBrowser(Gtk.Window):
         try:
             total = self.config.get("total_ads_blocked", 0) + self.config.get("total_threats_blocked", 0)
             if total >= 1000:
-                label = f"🛡️ {total // 1000}k+"
+                label = f"{total // 1000}k+"
             elif total > 0:
-                label = f"🛡️ {total}"
+                label = f"{total}"
             else:
-                label = "🛡️"
+                label = ""
             if hasattr(self, 'btn_shield') and self.btn_shield:
-                self.btn_shield.set_label(label)
+                nastavi_ikono(self.btn_shield, "shield", getattr(self, "barva_poudarka", "#54d6a5"), "🛡️", label, velikost=16)
         except Exception:
             pass
 
@@ -5089,11 +5178,11 @@ class SafeerMintBrowser(Gtk.Window):
     def update_dark_mode_ui(self, is_dark: bool):
         if hasattr(self, 'btn_dark_mode'):
             if is_dark:
-                self.btn_dark_mode.set_label("🌙")
+                self._ikona_temnega_nacina(True)
                 self.btn_dark_mode.get_style_context().add_class("active")
                 self.btn_dark_mode.set_tooltip_text("Prisili temni način (Force Dark Mode) — VKLOPLJEN")
             else:
-                self.btn_dark_mode.set_label("☀️")
+                self._ikona_temnega_nacina(False)
                 self.btn_dark_mode.get_style_context().remove_class("active")
                 self.btn_dark_mode.set_tooltip_text("Prisili temni način (Force Dark Mode) — IZKLOPLJEN")
 
@@ -5215,7 +5304,7 @@ class SafeerMintBrowser(Gtk.Window):
             }
             self.downloads.insert(0, dl_data)
 
-            self.btn_downloads.set_label("⬇️ 0%")
+            nastavi_ikono(self.btn_downloads, "download", getattr(self, "barva_na_poudarku", "#092017"), "⬇️", "0%")
             self.btn_downloads.get_style_context().add_class("active")
 
             download.connect("notify::estimated-progress", lambda d, p: self.on_download_progress(dl_data, d))
@@ -5234,7 +5323,7 @@ class SafeerMintBrowser(Gtk.Window):
         prog = download.get_estimated_progress()
         dl_data["progress"] = prog
         pct = int(prog * 100)
-        self.btn_downloads.set_label(f"⬇️ {pct}%")
+        nastavi_ikono(self.btn_downloads, "download", getattr(self, "barva_na_poudarku", "#092017"), "⬇️", f"{pct}%")
 
     def on_download_finished(self, dl_data):
         dl_data["status"] = "completed"
@@ -5255,22 +5344,26 @@ class SafeerMintBrowser(Gtk.Window):
 
         any_running = any(d["status"] == "running" for d in self.downloads)
         if not any_running:
-            self.btn_downloads.set_label("✅")
+            nastavi_ikono(self.btn_downloads, "check", getattr(self, "barva_poudarka", "#54d6a5"), "✅")
             self.btn_downloads.get_style_context().remove_class("active")
             GLib.timeout_add(3500, self._reset_download_btn_icon)
 
-    def _reset_download_btn_icon(self):
-        any_running = any(d["status"] == "running" for d in self.downloads)
+    def _reset_download_btn_icon(self, samo_ikona=False):
+        """Gumb prenosov nazaj na mirno ikono; `samo_ikona` ob menjavi teme ne dira razreda active."""
+        if not hasattr(self, "btn_downloads"):
+            return False
+        any_running = any(d["status"] == "running" for d in getattr(self, "downloads", []))
         if not any_running:
-            self.btn_downloads.set_label("📥")
-            self.btn_downloads.get_style_context().remove_class("active")
+            nastavi_ikono(self.btn_downloads, "download", getattr(self, "barva_ikon", "#DCE6EA"), "📥")
+            if not samo_ikona:
+                self.btn_downloads.get_style_context().remove_class("active")
         return False
 
     def on_download_failed(self, dl_data, error):
         dl_data["status"] = "failed"
         any_running = any(d["status"] == "running" for d in self.downloads)
         if not any_running:
-            self.btn_downloads.set_label("❌")
+            nastavi_ikono(self.btn_downloads, "close", "#ff5555", "❌")
             self.btn_downloads.get_style_context().remove_class("active")
             GLib.timeout_add(4000, self._reset_download_btn_icon)
 
@@ -5622,6 +5715,14 @@ class SafeerMintBrowser(Gtk.Window):
 
         theme_cards_data = [
             {
+                "id": "safeer",
+                "name": "Safeer",
+                "icon": "🛡️",
+                "desc": t("theme_safeer_desc", "Barve safeer.si: temna podlaga, mint poudarek - enako kot na telefonu in televizorju."),
+                "tag": "Safeer • Mint",
+                "colors": ["#090d15", "#111924", "#54d6a5"]
+            },
+            {
                 "id": "midnight",
                 "name": "Firefox Midnight",
                 "icon": "🌙",
@@ -5656,7 +5757,7 @@ class SafeerMintBrowser(Gtk.Window):
         ]
 
         card_widgets = []
-        cur_theme = self.config.get("theme", "midnight")
+        cur_theme = self.config.get("theme", "safeer")
 
         def select_theme(th_id):
             self.config.set("theme", th_id)
@@ -6831,6 +6932,43 @@ console.log("Safeer skripta teče na:", window.location.href);
                     self.toggle_sidebar_panel(service)
         except Exception as e:
             print(f"[IPC] Napaka: {e}")
+
+
+    # ------------------------------------------------------------------
+    # Crtne ikone orodne vrstice (barve trenutne teme)
+    # ------------------------------------------------------------------
+    def osvezi_ikone(self):
+        """Ikone orodne vrstice v barvah trenutne teme: ob zagonu in ob vsaki menjavi teme."""
+        if not hasattr(self, "btn_back"):
+            return
+        b = getattr(self, "barva_ikon", "#DCE6EA")
+        p = getattr(self, "barva_poudarka", "#54d6a5")
+        nastavi_ikono(self.btn_sidebar, "sidebar", b, "▤")
+        nastavi_ikono(self.btn_back, "back", b, "←")
+        nastavi_ikono(self.btn_forward, "forward", b, "→")
+        nastavi_ikono(self.btn_reload, "reload", b, "↻")
+        nastavi_ikono(self.btn_home, "home", p, "🏠")
+        nastavi_ikono(self.btn_bookmarks, "bookmarks", b, "⭐")
+        nastavi_ikono(self.btn_reader, "reader", b, "📖", velikost=16)
+        nastavi_ikono(self.btn_pip, "pip", b, "⧉", velikost=16)
+        nastavi_ikono(self.btn_history, "history", b, "🕒")
+        nastavi_ikono(self.btn_customizer, "puzzle", b, "🧩")
+        nastavi_ikono(self.btn_link, "link", p, "🔗")
+        nastavi_ikono(self.btn_new_tab, "plus", b, "+")
+        if hasattr(self, "security_icon"):
+            nastavi_sliko(self.security_icon, "sliders", p, 15)
+        self._reset_download_btn_icon(samo_ikona=True)
+        self.update_shield_button_label()
+        self.update_star_status()
+        self._ikona_temnega_nacina(bool(self.config.get("force_dark_mode", False)))
+
+    def _ikona_temnega_nacina(self, is_dark):
+        if not hasattr(self, "btn_dark_mode"):
+            return
+        if is_dark:
+            nastavi_ikono(self.btn_dark_mode, "moon", getattr(self, "barva_na_poudarku", "#092017"), "🌙")
+        else:
+            nastavi_ikono(self.btn_dark_mode, "sun", getattr(self, "barva_ikon", "#DCE6EA"), "☀️")
 
     def update_ui_language(self):
         """Posodobi celotno orodno vrstico, orodne namige, naslove in zavihke ob menjavi jezika."""
