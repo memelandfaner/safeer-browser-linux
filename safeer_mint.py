@@ -202,6 +202,12 @@ def is_safe_web_url(url: str) -> bool:
         return True
     if u.startswith("file://"):
         return je_nasa_notranja_stran(u)
+    # blob: naslovi so vezani na izvor strani (isti izvor jih je ustvaril): "Shrani" v vgrajenem
+    # pregledovalniku PDF (blob:webkit-pdfjs-viewer://...) in izvozi na spletnih straneh
+    # (blob:https://...), ki jih WebKit z atributom download spremeni v prenos.
+    if u.lower().startswith("blob:"):
+        izvor = u[5:].lower()
+        return izvor.startswith(("https://", "http://", "webkit-pdfjs-viewer://"))
     try:
         parsed = urllib.parse.urlparse(u)
         scheme = parsed.scheme.lower()
@@ -5314,6 +5320,15 @@ class SafeerMintBrowser(Gtk.Window):
 
         req = download.get_request()
         uri = req.get_uri() if req else ""
+        if uri.startswith("blob:webkit-pdfjs-viewer://"):
+            # "Shrani" v vgrajenem pregledovalniku PDF: WebKit predlaga splosno "document.pdf",
+            # mi pa poznamo ime odprtega dokumenta (zavihek ga kaze v naslovu).
+            try:
+                ime = getattr(download.get_web_view(), "_safeer_pdf_ime", None)
+                if ime:
+                    suggested_filename = ime
+            except Exception:
+                pass
         if not suggested_filename:
             parsed_path = urllib.parse.urlparse(uri).path
             suggested_filename = os.path.basename(parsed_path) or "prenos_datoteke"
