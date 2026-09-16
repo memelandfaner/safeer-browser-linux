@@ -3930,7 +3930,7 @@ class SafeerMintBrowser(Gtk.Window):
             active["icon"] = "🍃"
             active["title_label"].set_text("Safeer Domača Stran")
             active["icon_label"].set_text("🍃")
-        self.security_icon.set_text("🎚️")
+        self.varnostna_ikona("🎚️")
 
     def on_url_activate(self, entry):
         text = entry.get_text().strip()
@@ -4792,9 +4792,9 @@ class SafeerMintBrowser(Gtk.Window):
         cur_uri = target["webview"].get_uri() or target["uri"] or ""
         self.url_entry.set_text(self.format_clean_url(cur_uri))
         if cur_uri.startswith("https://"):
-            self.security_icon.set_text("🔒")
+            self.varnostna_ikona("🔒")
         else:
-            self.security_icon.set_text("🎚️")
+            self.varnostna_ikona("🎚️")
 
         self.set_title(f"{target['title']} — Safeer Browser (Linux Mint)")
         self.update_star_status()
@@ -4889,15 +4889,15 @@ class SafeerMintBrowser(Gtk.Window):
             if self.active_tab_id == tab_id:
                 if "ui/home.html" in uri:
                     self.url_entry.set_text("safeer://home")
-                    self.security_icon.set_text("🎚️")
+                    self.varnostna_ikona("🎚️")
                 else:
                     self.url_entry.set_text(self.format_clean_url(uri))
                     if getattr(webview, "_safeer_load_failed", False):
-                        self.security_icon.set_text("⚠️")
+                        self.varnostna_ikona("⚠️")
                     elif uri.startswith("https://"):
-                        self.security_icon.set_text("🔒")
+                        self.varnostna_ikona("🔒")
                     else:
-                        self.security_icon.set_text("🎚️")
+                        self.varnostna_ikona("🎚️")
                 self.update_star_status()
 
             self.add_history_entry(uri, title)
@@ -6955,12 +6955,26 @@ console.log("Safeer skripta teče na:", window.location.href);
         nastavi_ikono(self.btn_customizer, "puzzle", b, "🧩")
         nastavi_ikono(self.btn_link, "link", p, "🔗")
         nastavi_ikono(self.btn_new_tab, "plus", b, "+")
-        if hasattr(self, "security_icon"):
-            nastavi_sliko(self.security_icon, "sliders", p, 15)
+        self.varnostna_ikona(getattr(self, "_varnostni_znak", "🎚️"))
         self._reset_download_btn_icon(samo_ikona=True)
         self.update_shield_button_label()
         self.update_star_status()
         self._ikona_temnega_nacina(bool(self.config.get("force_dark_mode", False)))
+
+
+    def varnostna_ikona(self, znak):
+        """Ikona levo od naslova: 🔒 varna povezava, ⚠️ stran se ni nalozila, 🎚️ nevtralno."""
+        if not hasattr(self, "security_icon"):
+            return
+        self._varnostni_znak = znak
+        if isinstance(self.security_icon, Gtk.Label):
+            self.security_icon.set_text(znak)
+            return
+        ime, barva = {
+            "🔒": ("lock", getattr(self, "barva_poudarka", "#54d6a5")),
+            "⚠️": ("warning", "#ff5555"),
+        }.get(znak, ("sliders", getattr(self, "barva_ikon", "#DCE6EA")))
+        nastavi_sliko(self.security_icon, ime, barva, 15)
 
     def _ikona_temnega_nacina(self, is_dark):
         if not hasattr(self, "btn_dark_mode"):
