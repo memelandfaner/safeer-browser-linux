@@ -634,7 +634,11 @@ class SafeerMintBrowser(Gtk.Window):
             custom_doh_url = self.config.get("custom_doh_url", "https://1.1.1.1/dns-query")
 
             # Izjeme za lokalna omrežja (bypassi)
-            ignore_hosts = ["localhost", "127.0.0.1", "10.*", "192.168.*", "172.16.*", "172.17.*", "172.18.*", "172.19.*", "172.2*"]
+            # GProxyResolver razume imena, pripone domen in obsege CIDR - ne vzorcev z zvezdico.
+            # Prejsnji zapis ("192.168.*") ni izvzel nicesar: promet v domace omrezje (Safeer Link,
+            # Control, usmerjevalnik) je sel skozi posrednik, ki ga namenoma zavrne.
+            ignore_hosts = ["localhost", "127.0.0.0/8", "::1", "10.0.0.0/8", "192.168.0.0/16", "172.16.0.0/12",
+                            "169.254.0.0/16", "fe80::/10", ".local"]
 
             if proxy_mode == "custom":
                 custom_url = self.config.get("secure_proxy_url", "").strip()
@@ -2220,6 +2224,33 @@ class SafeerMintBrowser(Gtk.Window):
 
             GLib.idle_add(posodobi)
         threading.Thread(target=v_ozadju, daemon=True).start()
+        # Seznanjen racunalnik se na Hub poveze ze zdaj, brez odprtega okna Linka.
+        GLib.timeout_add(1500, self.povezi_safeer_link_v_ozadju)
+        return False
+
+    def _dovoli_potrdilo_huba(self, pem, gostitelj):
+        """WebKit naj sprejme samopodpisano potrdilo Safeer Huba - samo to potrdilo in samo za
+        ta gostitelj (stran gledalca deljenega zaslona). Odtis je pred tem preveril Link."""
+        try:
+            from gi.repository import Gio
+            potrdilo = Gio.TlsCertificate.new_from_pem(pem, -1)
+            self.web_context.allow_tls_certificate_for_host(potrdilo, gostitelj)
+        except Exception as e:
+            print(f"[SafeerLink] Potrdila Huba ni bilo mogoče dovoliti: {e}")
+
+    def povezi_safeer_link_v_ozadju(self):
+        """Ob zagonu: seznanjen racunalnik se poveze na Hub brez okna, da sprejema deljenje."""
+        try:
+            from core.safeer_link import SafeerLink
+            if getattr(self, "_safeer_link", None) is None:
+                def trenutna_stran():
+                    wv = self.get_active_webview()
+                    return {"url": (wv.get_uri() if wv else "") or "", "naslov": (wv.get_title() if wv else "") or ""}
+                self._safeer_link = SafeerLink(self, self.config, trenutna_stran, lambda naslov: self.new_tab(naslov),
+                                               BASE_DIR, dovoli_potrdilo=self._dovoli_potrdilo_huba)
+            self._safeer_link.povezi_v_ozadju()
+        except Exception as e:
+            print(f"[SafeerLink] Povezave v ozadju ni bilo mogoče odpreti: {e}")
         return False
 
     def open_safeer_link(self):
@@ -2242,6 +2273,7 @@ class SafeerMintBrowser(Gtk.Window):
                 self, self.config, trenutna_stran,
                 lambda naslov: self.new_tab(naslov),
                 BASE_DIR,
+                dovoli_potrdilo=self._dovoli_potrdilo_huba,
             )
         else:
             # Naslov strani se je medtem lahko spremenil.

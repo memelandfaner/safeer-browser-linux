@@ -102,7 +102,8 @@ class ZeroconfKadarJe(unittest.TestCase):
         naslov = link_hub._poisci_z_mdns(cas=3.0)
         print("prek mDNS najden Hub:", naslov)
         self.assertIsNotNone(naslov, "Hub se objavlja, mDNS bi ga moral najti")
-        self.assertTrue(naslov.startswith("ws://"))
+        # Nov Hub govori TLS (wss); starejsi se oglasa z ws. Oboje je veljaven naslov.
+        self.assertTrue(naslov.startswith("wss://") or naslov.startswith("ws://"))
         self.assertTrue(naslov.endswith("/cast/ws"))
 
 

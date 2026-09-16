@@ -125,17 +125,24 @@ def _zahteva(url: str, telo: Optional[dict] = None, zeton: Optional[str] = None,
 
 
 def _poisci_z_mdns(cas: float = 1.5) -> Optional[str]:
-    """Poisce Hub prek mDNS, ce je zeroconf na voljo.
+    """Prvi Hub prek mDNS (TLS ima prednost) ali None."""
+    hubi = poisci_hube_mdns(cas)
+    return hubi[0]["naslov"] if hubi else None
 
-    Knjiznica NI obvezna: paket safeer-browser ostaja odvisen samo od GTK in WebKita.
-    Ce je ni, vrnemo None in odkrivanje gre po HTTP poti.
+
+def poisci_hube_mdns(cas: float = 2.0) -> List[dict]:
+    """Vsi Hubi, ki se oglasajo prek mDNS: [{"naslov", "fp", "tls", "ime"}], TLS najprej.
+
+    Knjiznica zeroconf NI obvezna: paket safeer-browser ostaja odvisen samo od GTK in WebKita.
+    Ce je ni, vrnemo prazen seznam in odkrivanje gre po HTTP poti. V hisi je lahko vec Hubov
+    (televizor, telefon, racunalnik); odtis potrdila (fp) pove, kateri je kateri.
     """
     try:
         from zeroconf import ServiceBrowser, ServiceListener, Zeroconf  # type: ignore
     except Exception:
-        return None
+        return []
 
-    najdeno: List[str] = []
+    najdeno: List[dict] = []
 
     class Poslusalec(ServiceListener):  # type: ignore[misc]
         def add_service(self, zc, vrsta, ime):
@@ -162,7 +169,15 @@ def _poisci_z_mdns(cas: float = 1.5) -> Optional[str]:
             if isinstance(tls, bytes):
                 tls = tls.decode("utf-8", "replace")
             shema = "wss" if str(tls) == "1" else "ws"
-            najdeno.append(f"{shema}://{naslovi[0]}:{info.port}{pot}")
+            fp = lastnosti.get(b"fp") or lastnosti.get("fp") or b""
+            if isinstance(fp, bytes):
+                fp = fp.decode("utf-8", "replace")
+            ime_h = lastnosti.get(b"name") or lastnosti.get("name") or b""
+            if isinstance(ime_h, bytes):
+                ime_h = ime_h.decode("utf-8", "replace")
+            naslov = f"{shema}://{naslovi[0]}:{info.port}{pot}"
+            if all(n["naslov"] != naslov for n in najdeno):
+                najdeno.append({"naslov": naslov, "fp": str(fp).lower(), "tls": str(tls) == "1", "ime": str(ime_h)})
 
         def update_service(self, zc, vrsta, ime):
             pass
@@ -175,10 +190,11 @@ def _poisci_z_mdns(cas: float = 1.5) -> Optional[str]:
         zc = Zeroconf()
         ServiceBrowser(zc, "_safeercast._tcp.local.", Poslusalec())
         konec = time.time() + cas
-        while time.time() < konec and not najdeno:
+        # Pocakamo cel cas: vec Hubov se oglasa vsak ob svojem casu, izbrati hocemo pravega.
+        while time.time() < konec:
             time.sleep(0.1)
     except Exception:
-        return None
+        return []
     finally:
         if zc is not None:
             try:
@@ -186,7 +202,7 @@ def _poisci_z_mdns(cas: float = 1.5) -> Optional[str]:
             except Exception:
                 pass
 
-    return najdeno[0] if najdeno else None
+    return sorted(najdeno, key=lambda n: (not n["tls"], n["naslov"]))
 
 
 def je_hub(osnova: str, timeout: float = 2.0, odtis: Optional[str] = None) -> bool:
@@ -240,6 +256,32 @@ def poisci_hub(znani: str = "", odtis: Optional[str] = None) -> Optional[str]:
         if je_hub(osnova, odtis=pripeti):
             shema, gostitelj = osnova.split("://", 1)
             return f"{'wss' if shema == 'https' else 'ws'}://{gostitelj}{POT_WS}"
+    return None
+
+
+def poisci_hub_z_odtisom(znani: str = "", odtis: Optional[str] = None) -> Optional[dict]:
+    """Kot poisci_hub, a vrne {"naslov", "fp", "isti"}: isti = to je Hub, s katerim smo seznanjeni
+    (isti naslov, ki se oglasa, ali isti odtis potrdila na drugem naslovu). Med vec Hubi ima
+    prednost tisti z nasim odtisom, nato TLS Hubi po vrsti.
+    """
+    if znani:
+        osnova = _osnova(znani)
+        if je_hub(osnova, odtis=odtis):
+            return {"naslov": znani if znani.startswith("wss://") else f"wss://{osnova.split('://', 1)[1]}{POT_WS}",
+                    "fp": odtis or "", "isti": True}
+    hubi = [h for h in poisci_hube_mdns() if h["tls"]]
+    if odtis:
+        for h in hubi:
+            if h["fp"] == odtis.lower() and je_hub(_osnova(h["naslov"]), odtis=odtis):
+                return {"naslov": h["naslov"], "fp": h["fp"], "isti": True}
+    for h in hubi:
+        if je_hub(_osnova(h["naslov"])):
+            return {"naslov": h["naslov"], "fp": h["fp"], "isti": False}
+    # Brez zeroconfa: privzeta imena (samo TLS).
+    for ime in (PRIVZETI_GOSTITELJ, STARO_IME_GOSTITELJA):
+        osnova = f"https://{ime}:{PRIVZETA_VRATA}"
+        if je_hub(osnova):
+            return {"naslov": f"wss://{ime}:{PRIVZETA_VRATA}{POT_WS}", "fp": "", "isti": False}
     return None
 
 
@@ -616,8 +658,11 @@ class Povezava:
                 "role": "sender",
             },
         }
+        # Racunalnik sprejema besedilo, datoteke in zaslon; sync samo, ce je vklopljen.
+        zmoznosti = ["url", "text", "file", "screen"]
         if self.sinhronizira:
-            prijava["payload"]["capabilities"] = ["sync"]
+            zmoznosti.append("sync")
+        prijava["payload"]["capabilities"] = zmoznosti
         try:
             odjemalec.poslji(json.dumps(prijava))
         except Exception:
