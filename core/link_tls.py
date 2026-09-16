@@ -57,6 +57,33 @@ def ovij(vticnik: socket.socket, gostitelj: str, pripeti: Optional[str]) -> Tupl
     return s, videni
 
 
+def potrdilo_pem(ws_naslov: str, pripeti: str) -> str:
+    """PEM Hubovega potrdila (samo, ce se ujema s pripetim odtisom) - za WebKit, ki naj ga
+    sprejme za stran gledalca zaslona. Prazno, ce se ne ujema ali Huba ni."""
+    u = urlparse(ws_naslov)
+    gostitelj, vrata = u.hostname or "127.0.0.1", u.port or 443
+    try:
+        surov = socket.create_connection((gostitelj, vrata), 5.0)
+    except OSError:
+        return ""
+    try:
+        s, _ = ovij(surov, gostitelj, pripeti)
+    except Exception:
+        try:
+            surov.close()
+        except Exception:
+            pass
+        return ""
+    try:
+        der = s.getpeercert(binary_form=True) or b""
+        return ssl.DER_cert_to_PEM_cert(der) if der else ""
+    finally:
+        try:
+            s.close()
+        except Exception:
+            pass
+
+
 def _isti(a: str, b: str) -> bool:
     import hmac
     return hmac.compare_digest(a.lower().encode(), b.lower().encode())

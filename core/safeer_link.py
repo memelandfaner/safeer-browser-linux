@@ -26,7 +26,7 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("WebKit2", "4.1")
 from gi.repository import Gtk, WebKit2, GLib  # noqa: E402
 
-from core import link_hub  # noqa: E402
+from core import link_deljenje, link_hub, link_tls  # noqa: E402
 
 KATEGORIJA_ZAZNAMKI = "bookmarks"
 
@@ -41,7 +41,8 @@ MOST_JS = """
     stran: {"url": "", "naslov": "", "posljiva": false},
     sinhronizacija: {"zaznamki": {"vklopljena": false, "stevilo": 0}},
     konzola: "",
-    jezik: ""
+    jezik: "",
+    deljenje: {"tece": false, "cilj": "", "ime": "", "napaka": ""}
   };
   function poslji(metoda, argumenti) {
     try {
@@ -68,6 +69,12 @@ MOST_JS = """
     posljiTrenutno: function (id) { poslji("posljiTrenutno", [id]); },
     poslji: function (id, url, naslov) { poslji("poslji", [id, url, naslov]); },
     nadzor: function (id, ukaz, vrednost) { poslji("nadzor", [id, ukaz, vrednost]); },
+    posljiBesedilo: function (id, besedilo) { poslji("posljiBesedilo", [id, String(besedilo || "")]); },
+    izberiDatoteko: function (id) { poslji("izberiDatoteko", [id]); },
+    zacniDeljenjeZaslona: function (id, ime) { poslji("zacniDeljenjeZaslona", [id, String(ime || "")]); },
+    koncajDeljenjeZaslona: function () { poslji("koncajDeljenjeZaslona"); },
+    deljenjeZaslonaStanje: function () { return JSON.stringify(window.__safeerLink.deljenje || {tece: false}); },
+    preimenujNapravo: function (id, ime) { poslji("preimenujNapravo", [id, String(ime || "")]); },
     nastaviSinhronizacijo: function (vklop) { poslji("nastaviSinhronizacijo", [!!vklop]); },
     odpri: function (url) { poslji("odpri", [url]); },
     zapri: function () { poslji("zapri"); }
@@ -82,12 +89,17 @@ class SafeerLink:
     def __init__(self, starsevsko: Optional[Gtk.Window], config,
                  trenutna_stran: Callable[[], Dict[str, str]],
                  odpri_naslov: Callable[[str], None],
-                 koren_programa: str) -> None:
+                 koren_programa: str,
+                 dovoli_potrdilo: Optional[Callable[[str, str], None]] = None) -> None:
         self.starsevsko = starsevsko
         self.config = config
         self.trenutna_stran = trenutna_stran
         self.odpri_naslov = odpri_naslov
         self.koren = koren_programa
+        # Brskalnik naj Hubovo samopodpisano potrdilo sprejme za stran gledalca zaslona
+        # (pem, gostitelj). Brez tega WebKit stran s Huba zavrne.
+        self.dovoli_potrdilo = dovoli_potrdilo
+        self.deljenje_zaslona: Optional[link_deljenje.DeljenjeZaslona] = None
 
         self.nastavitve = link_hub.Nastavitve()
         self.povezava: Optional[link_hub.Povezava] = None
@@ -250,11 +262,15 @@ class SafeerLink:
             return True
 
     def _na_zaprtje(self, *_args) -> None:
+        # Okno se zapre, povezava s Hubom pa ostane: racunalnik sprejema besedila, datoteke
+        # in zaslon tudi, ko Safeer Link ni odprt - kot telefon s storitvijo.
         self.okno = None
         self.pogled = None
-        if self.povezava is not None:
-            self.povezava.zapri()
-            self.povezava = None
+
+    def povezi_v_ozadju(self) -> None:
+        """Ob zagonu brskalnika: ce je racunalnik seznanjen, se poveze brez okna."""
+        if self._hub() and self._zeton() and self._odtis():
+            self._v_ozadju(self._povezi)
 
     def _na_nalozeno(self, pogled, dogodek) -> None:
         if dogodek != WebKit2.LoadEvent.FINISHED:
@@ -287,6 +303,7 @@ class SafeerLink:
             "sinhronizacija": self._sinhronizacija(),
             "konzola": self._konzola(),
             "jezik": self._jezik(),
+            "deljenje": self._deljenje_stanje(),
         }
         # ensure_ascii=True: imena naprav pridejo z omrezja, U+2028/U+2029 pa sta
         # v JavaScriptu ločilnika vrstic. Ubezimo vsemu, kar ni ASCII.
@@ -322,6 +339,11 @@ class SafeerLink:
             "nastaviSinhronizacijo": lambda: self._v_ozadju(
                 lambda: self._nastavi_sinhronizacijo(bool(argumenti[0]) if argumenti else False)),
             "odpri": lambda: self._odpri(*argumenti[:1]),
+            "posljiBesedilo": lambda: self._v_ozadju(lambda: self._poslji_besedilo(*argumenti[:2])),
+            "izberiDatoteko": lambda: self._izberi_datoteko(*argumenti[:1]),
+            "zacniDeljenjeZaslona": lambda: self._v_ozadju(lambda: self._zacni_deljenje_zaslona(*argumenti[:2])),
+            "koncajDeljenjeZaslona": lambda: self._koncaj_deljenje_zaslona(),
+            "preimenujNapravo": lambda: self._v_ozadju(lambda: self._preimenuj_napravo(*argumenti[:2])),
             "pozabiNapravo": lambda: self._v_ozadju(self._pozabi_napravo),
             "potrdiNovNaslov": lambda: self._v_ozadju(self._potrdi_nov_naslov),
             "zapri": lambda: self.okno.destroy() if self.okno is not None else None,
@@ -364,7 +386,7 @@ class SafeerLink:
                 povezava.zapri()
             except Exception:
                 pass
-        for kljuc in ("control_token", "hub_url", "hub_fp", "sync_bookmarks",
+        for kljuc in ("control_token", "hub_url", "hub_fp", "seznanitve", "sync_bookmarks",
                       "sync_bookmarks_version"):
             try:
                 self.nastavitve.podatki.pop(kljuc, None)
@@ -373,23 +395,44 @@ class SafeerLink:
         self.nastavitve.shrani()
         self._odziv("pozabljeno", True)
 
+    def _seznanitve(self) -> dict:
+        """Seznanitve po Hubih: odtis potrdila -> {token, hub_url}. V hisi je lahko vec sredisc
+        (televizor, telefon, racunalnik); ko eno ugasne, se povezemo na drugo brez nove kode."""
+        s = self.nastavitve.get("seznanitve")
+        return s if isinstance(s, dict) else {}
+
+    def _zapomni_seznanitev(self) -> None:
+        if self._zeton() and self._odtis():
+            s = self._seznanitve()
+            s[self._odtis()] = {"token": self._zeton(), "hub_url": self._hub()}
+            self.nastavitve.podatki["seznanitve"] = s
+
     def _poisci_hub(self) -> None:
         znani = self._hub()
-        naslov = link_hub.poisci_hub(znani, self._odtis())
-        if not naslov:
+        najden = link_hub.poisci_hub_z_odtisom(znani, self._odtis())
+        if not najden:
             self._odziv("hub", {"najden": False, "naslov": ""})
             return
-        # Odkrivanje prek mDNS ni preverjeno: kdorkoli v omrezju lahko oglasi
-        # storitev. Ce smo ze seznanjeni, zetona zato ne posljemo naslovu, ki ga
-        # lastnik ni potrdil -- raje povemo, kaj se dogaja.
-        if self._zeton() and znani and not link_hub.naslov_je_isti(znani, naslov):
-            # Naslov se je spremenil (najpogosteje ker je usmerjevalnik podelil nov IP).
-            # Zetona ne posljemo kar tako, a uporabnika tudi ne posljemo v ponovno
-            # seznanjanje: vprasamo ga enkrat, on pa potrdi z enim dotikom.
-            self._predlagani_naslov = naslov
-            self._odziv("preseljen", {"naslov": naslov})
+        naslov, fp = najden["naslov"], najden.get("fp") or ""
+        if najden.get("isti"):
+            # Isti Hub (isti naslov ali isti odtis na novem naslovu): naslov posodobimo, zeton velja.
+            self.nastavitve.set("hub_url", naslov)
+            self._odziv("hub", {"najden": True, "naslov": naslov})
+            if self._zeton():
+                self._povezi()
             return
-        self.nastavitve.set("hub_url", naslov)
+        # Drug Hub. Trenutno seznanitev shranimo, morebitno prejsnjo s tem Hubom pa vrnemo -
+        # sicer se uporabnik seznani s tem Hubom s kodo, kot vedno.
+        self._zapomni_seznanitev()
+        znana = self._seznanitve().get(fp) if fp else None
+        self.nastavitve.podatki["hub_url"] = naslov
+        if znana and znana.get("token"):
+            self.nastavitve.podatki["control_token"] = znana["token"]
+            self.nastavitve.podatki["hub_fp"] = fp
+        else:
+            self.nastavitve.podatki.pop("control_token", None)
+            self.nastavitve.podatki.pop("hub_fp", None)
+        self.nastavitve.shrani()
         self._odziv("hub", {"najden": True, "naslov": naslov})
         if self._zeton():
             self._povezi()
@@ -440,6 +483,7 @@ class SafeerLink:
         self._prijava = None
         self.nastavitve.podatki["control_token"] = zeton
         self.nastavitve.podatki["hub_fp"] = str(prijava.get("odtis", ""))
+        self._zapomni_seznanitev()
         self.nastavitve.shrani()
         self._odziv("seznanitev", True)
         self._povezi()
@@ -477,11 +521,31 @@ class SafeerLink:
             odtis=self._odtis(),
         )
         povezava.ob_sporocilu = self._na_sporocilo_huba
-        povezava.ob_stanju = lambda povezan: self._odziv("povezava", povezan)
+        povezava.ob_stanju = self._na_stanje_povezave
         if povezava.poveži():
             self.povezava = povezava
             return True
         return False
+
+    def _na_stanje_povezave(self, povezan: bool) -> None:
+        self._odziv("povezava", povezan)
+        if povezan:
+            return
+        # Sredisce je ugasnilo ali dobilo nov naslov. Cez nekaj sekund pogledamo, ali se
+        # Safeer Link javlja kje drugje - npr. telefon prevzame, ko televizor ugasne. Ce je
+        # bila ta naprava z njim ze seznanjena, se poveze brez nove kode.
+
+        def preveri() -> None:
+            p = self.povezava
+            if p is not None and p.tece:
+                return
+            zdaj = time.time()
+            if zdaj - getattr(self, "_zadnje_iskanje", 0.0) < 30:
+                return
+            self._zadnje_iskanje = zdaj
+            self._v_ozadju(self._poisci_hub)
+
+        threading.Timer(8.0, preveri).start()
 
     def _na_sporocilo_huba(self, sporocilo: dict) -> None:
         vrsta = sporocilo.get("type")
@@ -508,6 +572,230 @@ class SafeerLink:
             })
         elif vrsta == "sync.data":
             self._prejmi_zaznamke(sporocilo.get("payload") or {})
+        elif vrsta in ("share.text", "share.file", "share.screen"):
+            self._prejmi_deljenje(vrsta, sporocilo)
+        elif vrsta == "cast.url":
+            # Stran s televizorja ali druge naprave: odpremo jo v novem zavihku.
+            self._prejmi_stran(sporocilo)
+
+    # ------------------------------------------------------------------
+    # Deljenje: sprejem
+    # ------------------------------------------------------------------
+
+    def _prejmi_stran(self, sporocilo: dict) -> None:
+        od = str(sporocilo.get("sender_name") or sporocilo.get("sender") or "naprava")
+        telo = sporocilo.get("payload") or {}
+        url = str(telo.get("url", "") or "").strip()
+        sprejeto = url.startswith("http://") or url.startswith("https://")
+        povezava = self.povezava
+        if povezava is not None:
+            try:
+                povezava.poslji({
+                    "id": str(int(time.time() * 1000)),
+                    "type": "cast.ack",
+                    "ref_id": str(sporocilo.get("id", "") or ""),
+                    "status": "accepted" if sprejeto else "rejected",
+                })
+            except Exception:
+                pass
+        if not sprejeto:
+            return
+        self._odziv("prejeto", {"vrsta": "stran", "od": od, "url": url, "naslov": str(telo.get("title", "") or "")})
+
+        def odpri():
+            try:
+                self.odpri_naslov(url)
+            except Exception as e:  # noqa: BLE001
+                print(f"[SafeerLink] Strani ni bilo mogoče odpreti: {e}")
+            return False
+        GLib.idle_add(odpri)
+
+    def _prejmi_deljenje(self, vrsta: str, sporocilo: dict) -> None:
+        od = str(sporocilo.get("sender_name") or sporocilo.get("sender") or "naprava")
+        telo = sporocilo.get("payload") or {}
+        if vrsta == "share.text":
+            besedilo = str(telo.get("text", "") or "")
+            self._odziv("prejeto", {"vrsta": "besedilo", "od": od, "besedilo": besedilo})
+            GLib.idle_add(self._pokazi_besedilo, od, besedilo)
+        elif vrsta == "share.screen":
+            dejanje = str(telo.get("action", "") or "")
+            if dejanje == "start":
+                pot = str(telo.get("path", "") or "")
+                url = (link_hub._osnova(self._hub()) + pot) if pot.startswith("/") else str(telo.get("url", "") or "")
+                if url:
+                    self._v_ozadju(lambda: self._odpri_zaslon_s_huba(url))
+            self._odziv("prejeto", {"vrsta": "zaslon", "od": od, "dejanje": dejanje})
+        elif vrsta == "share.file":
+            ime = str(telo.get("name", "") or "datoteka")
+            pot = str(telo.get("path", "") or "")
+            odtis = str(telo.get("sha256", "") or "")
+            if not pot:
+                return
+            def prenesi():
+                cilj, razlog = link_deljenje.prevzemi_datoteko(self._hub(), self._odtis() or "", pot, ime, odtis)
+                if cilj:
+                    self._odziv("prejeto", {"vrsta": "datoteka", "od": od, "ime": os.path.basename(cilj),
+                                            "mapa": os.path.dirname(cilj)})
+                    GLib.idle_add(self._obvesti, "📁 " + od, f"Datoteka {os.path.basename(cilj)} je v mapi {os.path.dirname(cilj)}.")
+                else:
+                    GLib.idle_add(self._obvesti, "📁 " + od, f"Datoteke {ime} ni bilo mogoče prevzeti: {razlog}")
+            self._v_ozadju(prenesi)
+
+    def _odpri_zaslon_s_huba(self, url: str) -> None:
+        """Stran gledalca prihaja s Huba (https, samopodpisano): brskalniku najprej povemo, da
+        temu potrdilu - in samo temu - zaupa, potem odpremo zavihek."""
+        try:
+            from urllib.parse import urlparse
+            gostitelj = urlparse(url).hostname or ""
+            if self.dovoli_potrdilo is not None:
+                pem = link_tls.potrdilo_pem(self._hub(), self._odtis() or "")
+                if pem:
+                    GLib.idle_add(lambda: (self.dovoli_potrdilo(pem, gostitelj), False)[1])
+        except Exception as e:  # noqa: BLE001
+            print(f"[SafeerLink] Potrdila Huba ni bilo mogoče dovoliti: {e}")
+        def odpri():
+            try:
+                self.odpri_naslov(url)
+            except Exception as e:  # noqa: BLE001
+                print(f"[SafeerLink] Zaslona ni bilo mogoče odpreti: {e}")
+            return False
+        GLib.idle_add(odpri)
+
+    def _pokazi_besedilo(self, od: str, besedilo: str) -> bool:
+        try:
+            cisto = besedilo.strip()
+            je_povezava = (cisto.startswith("http://") or cisto.startswith("https://")) and " " not in cisto
+            okno = Gtk.MessageDialog(transient_for=self.starsevsko, modal=False,
+                                     message_type=Gtk.MessageType.INFO, buttons=Gtk.ButtonsType.NONE,
+                                     text="💬 " + od)
+            okno.format_secondary_text(besedilo[:4000])
+            okno.add_button("Kopiraj", 1)
+            if je_povezava:
+                okno.add_button("Odpri", 2)
+            okno.add_button("V redu", Gtk.ResponseType.OK)
+            def odgovor(d, r):
+                if r == 1:
+                    try:
+                        from gi.repository import Gdk
+                        Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(besedilo, -1)
+                    except Exception:
+                        pass
+                elif r == 2:
+                    try:
+                        self.odpri_naslov(cisto)
+                    except Exception:
+                        pass
+                d.destroy()
+            okno.connect("response", odgovor)
+            okno.show_all()
+        except Exception as e:  # noqa: BLE001
+            print(f"[SafeerLink] Besedila ni bilo mogoče pokazati: {e}")
+        return False
+
+    def _obvesti(self, naslov: str, besedilo: str) -> bool:
+        try:
+            okno = Gtk.MessageDialog(transient_for=self.starsevsko, modal=False,
+                                     message_type=Gtk.MessageType.INFO, buttons=Gtk.ButtonsType.OK, text=naslov)
+            okno.format_secondary_text(besedilo)
+            okno.connect("response", lambda d, r: d.destroy())
+            okno.show_all()
+        except Exception:
+            pass
+        return False
+
+    # ------------------------------------------------------------------
+    # Deljenje: posiljanje
+    # ------------------------------------------------------------------
+
+    def _deljenje_stanje(self) -> dict:
+        d = self.deljenje_zaslona
+        if d is None:
+            return {"tece": False, "cilj": "", "ime": "", "napaka": ""}
+        return d.stanje()
+
+    def _deljenje(self, vrsta: str, stanje: str, cilj: str, ime: str = "", sporocilo: str = "",
+                  odstotek: int = -1, koda: str = "", zasedena_od: str = "") -> None:
+        podatki = {"vrsta": vrsta, "stanje": stanje, "cilj": cilj, "ime": ime, "sporocilo": sporocilo,
+                   "koda": koda, "zasedenaOd": zasedena_od}
+        if odstotek >= 0:
+            podatki["odstotek"] = odstotek
+        self._odziv("deljenje", podatki)
+
+    def _poslji_besedilo(self, id_naprave: str = "", besedilo: str = "") -> None:
+        cisto = (besedilo or "").strip()
+        if not cisto:
+            return
+        if not (self._hub() and self._zeton() and self._odtis()):
+            self._odziv("napaka", {"koda": "hub_ni_znan", "sporocilo": "Hub ni znan."})
+            return
+        self._deljenje("besedilo", "posiljam", id_naprave)
+        ok, n = link_deljenje.poslji_besedilo(self._hub(), self._zeton() or "", self._odtis() or "",
+                                              link_hub.id_naprave(), id_naprave, cisto)
+        if ok:
+            self._deljenje("besedilo", "poslano", id_naprave)
+        else:
+            self._deljenje("besedilo", "napaka", id_naprave, sporocilo=n["sporocilo"], koda=n["koda"], zasedena_od=n["zasedenaOd"])
+
+    def _izberi_datoteko(self, id_naprave: str = "") -> None:
+        if not (self._hub() and self._zeton() and self._odtis()):
+            self._odziv("napaka", {"koda": "hub_ni_znan", "sporocilo": "Hub ni znan."})
+            return
+        okno = Gtk.FileChooserDialog(title="Pošlji datoteko — Safeer Link", transient_for=self.okno or self.starsevsko,
+                                     action=Gtk.FileChooserAction.OPEN)
+        okno.add_button("Prekliči", Gtk.ResponseType.CANCEL)
+        okno.add_button("Pošlji", Gtk.ResponseType.OK)
+        def odgovor(d, r):
+            pot = d.get_filename() if r == Gtk.ResponseType.OK else None
+            d.destroy()
+            if pot:
+                self._v_ozadju(lambda: self._poslji_datoteko(id_naprave, pot))
+        okno.connect("response", odgovor)
+        okno.show()
+
+    def _poslji_datoteko(self, id_naprave: str, pot: str) -> None:
+        ime = os.path.basename(pot)
+        self._deljenje("datoteka", "posiljam", id_naprave, ime, odstotek=0)
+        ok, n = link_deljenje.poslji_datoteko(
+            self._hub(), self._zeton() or "", self._odtis() or "", link_hub.id_naprave(), id_naprave, pot,
+            napredek=lambda o: self._deljenje("datoteka", "posiljam", id_naprave, ime, odstotek=o))
+        if ok:
+            self._deljenje("datoteka", "poslano", id_naprave, ime, odstotek=100)
+        else:
+            self._deljenje("datoteka", "napaka", id_naprave, ime, n["sporocilo"], koda=n["koda"], zasedena_od=n["zasedenaOd"])
+
+    def _zacni_deljenje_zaslona(self, id_naprave: str = "", ime_naprave: str = "") -> None:
+        if not (self._hub() and self._zeton() and self._odtis()):
+            self._odziv("napaka", {"koda": "hub_ni_znan", "sporocilo": "Hub ni znan."})
+            return
+        na_voljo, razlog = link_deljenje.DeljenjeZaslona.zajem_na_voljo()
+        if not na_voljo:
+            self._deljenje("zaslon", "napaka", id_naprave, ime_naprave, razlog, koda="ni_zajema")
+            return
+        if self.deljenje_zaslona is not None and self.deljenje_zaslona.tece:
+            self.deljenje_zaslona.ustavi()
+        d = link_deljenje.DeljenjeZaslona(self._hub(), self._zeton() or "", self._odtis() or "",
+                                          link_hub.id_naprave(), id_naprave, ime_naprave,
+                                          ob_spremembi=self._na_spremembo_zaslona)
+        self.deljenje_zaslona = d
+        d.zacni()
+
+    def _na_spremembo_zaslona(self, s: dict) -> None:
+        self._deljenje("zaslon", "tece" if s.get("tece") else "koncano", s.get("cilj", ""), s.get("ime", ""),
+                       s.get("napaka", ""), koda=s.get("koda", ""), zasedena_od=s.get("zasedenaOd", ""))
+
+    def _koncaj_deljenje_zaslona(self) -> None:
+        if self.deljenje_zaslona is not None:
+            self.deljenje_zaslona.ustavi()
+
+    def _preimenuj_napravo(self, id_naprave: str = "", ime: str = "") -> None:
+        if not (self._hub() and self._zeton() and self._odtis()):
+            self._odziv("napaka", {"koda": "hub_ni_znan", "sporocilo": "Hub ni znan."})
+            return
+        ok, novo, n = link_deljenje.preimenuj_napravo(self._hub(), self._zeton() or "", self._odtis() or "", id_naprave, ime)
+        if ok:
+            self._odziv("preimenovano", {"id": id_naprave, "ime": novo})
+        else:
+            self._odziv("napaka", {"koda": "preimenovanje_ni_uspelo", "sporocilo": n["sporocilo"]})
 
     def _poslji_trenutno(self, id_naprave: str = "") -> None:
         stran = self._stran()
