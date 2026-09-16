@@ -75,6 +75,13 @@ MOST_JS = """
     koncajDeljenjeZaslona: function () { poslji("koncajDeljenjeZaslona"); },
     deljenjeZaslonaStanje: function () { return JSON.stringify(window.__safeerLink.deljenje || {tece: false}); },
     preimenujNapravo: function (id, ime) { poslji("preimenujNapravo", [id, String(ime || "")]); },
+    vzdevki: function () { return JSON.stringify(window.__safeerLink.vzdevki || {}); },
+    shraniVzdevek: function (id, ime) {
+      var v = window.__safeerLink.vzdevki || {};
+      if (ime) v[id] = String(ime); else delete v[id];
+      window.__safeerLink.vzdevki = v;
+      poslji("shraniVzdevek", [id, String(ime || "")]);
+    },
     nastaviSinhronizacijo: function (vklop) { poslji("nastaviSinhronizacijo", [!!vklop]); },
     odpri: function (url) { poslji("odpri", [url]); },
     zapri: function () { poslji("zapri"); }
@@ -304,6 +311,7 @@ class SafeerLink:
             "konzola": self._konzola(),
             "jezik": self._jezik(),
             "deljenje": self._deljenje_stanje(),
+            "vzdevki": self._vzdevki(),
         }
         # ensure_ascii=True: imena naprav pridejo z omrezja, U+2028/U+2029 pa sta
         # v JavaScriptu ločilnika vrstic. Ubezimo vsemu, kar ni ASCII.
@@ -344,6 +352,7 @@ class SafeerLink:
             "zacniDeljenjeZaslona": lambda: self._v_ozadju(lambda: self._zacni_deljenje_zaslona(*argumenti[:2])),
             "koncajDeljenjeZaslona": lambda: self._koncaj_deljenje_zaslona(),
             "preimenujNapravo": lambda: self._v_ozadju(lambda: self._preimenuj_napravo(*argumenti[:2])),
+            "shraniVzdevek": lambda: self._shrani_vzdevek(*argumenti[:2]),
             "pozabiNapravo": lambda: self._v_ozadju(self._pozabi_napravo),
             "potrdiNovNaslov": lambda: self._v_ozadju(self._potrdi_nov_naslov),
             "zapri": lambda: self.okno.destroy() if self.okno is not None else None,
@@ -353,6 +362,29 @@ class SafeerLink:
                 obravnava()
             except Exception as e:  # noqa: BLE001 - stran ne sme podreti brskalnika
                 self._odziv("napaka", str(e))
+
+    # Krajevna imena naprav: uporabnik tega racunalnika poimenuje druge naprave po svoje;
+    # imena ostanejo tu (nastavitve), ne na Safeer Linku, zato prezivijo zamenjavo gostitelja.
+    def _vzdevki(self) -> dict:
+        try:
+            v = self.config.get("link_vzdevki", {}) or {}
+            return v if isinstance(v, dict) else {}
+        except Exception:
+            return {}
+
+    def _shrani_vzdevek(self, id_naprave: str = "", ime: str = "") -> None:
+        if not id_naprave:
+            return
+        v = dict(self._vzdevki())
+        cisto = str(ime or "").strip()[:64]
+        if cisto:
+            v[str(id_naprave)] = cisto
+        else:
+            v.pop(str(id_naprave), None)
+        try:
+            self.config.set("link_vzdevki", v)
+        except Exception as e:  # noqa: BLE001
+            print(f"[SafeerLink] Vzdevka ni bilo mogoče shraniti: {e}")
 
     @staticmethod
     def _v_ozadju(funkcija: Callable[[], None]) -> None:
