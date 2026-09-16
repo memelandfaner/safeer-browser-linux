@@ -56,6 +56,18 @@
         <span class="poudarek" id="naslovHuba"></span>.
         <span data-t="zakajPotrditi">Da ti sme pošiljati in sinhronizirati, ga moraš enkrat potrditi.</span>
       </p>
+      <!-- Kodo pokaze gostitelj, uporabnik jo prepise sem; po omrezju ne gre nikoli. -->
+      <div class="koda" id="vnosKodeBlok" hidden>
+        <p class="pojasnilo drobno" data-t="vnesiKodoOpis">
+          Na napravi, kjer teče Safeer Link, se je izpisala 6-mestna številka. Prepiši jo sem.
+        </p>
+        <input class="vnosStevilke" id="vnosKode" type="text" inputmode="numeric"
+               autocomplete="one-time-code" maxlength="6" placeholder="------"
+               aria-label="Koda" />
+        <button class="glavni" id="gumbVnesiKodo" data-t="povezi">Poveži</button>
+        <p class="opomba" data-t="kodaVelja">Koda velja 5 minut.</p>
+      </div>
+
       <div class="koda" id="kodaBlok" hidden>
         <p class="pojasnilo drobno" data-t="potrdiKodo">Kodo potrdi na napravi, kjer teče Safeer Link:</p>
         <div class="stevilke" id="kodaStevilke">------</div>

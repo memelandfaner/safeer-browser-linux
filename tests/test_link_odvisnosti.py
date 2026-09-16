@@ -53,7 +53,7 @@ class BrezNeobveznih(unittest.TestCase):
         poskuseni = []
         pravi_je_hub = link_hub.je_hub
 
-        def lazni_je_hub(osnova, timeout=2.0):
+        def lazni_je_hub(osnova, timeout=2.0, odtis=None):
             poskuseni.append(osnova)
             return osnova == f"http://127.0.0.1:{link_hub.PRIVZETA_VRATA}"
 
@@ -68,6 +68,18 @@ class BrezNeobveznih(unittest.TestCase):
                          "brez zeroconfa mora odkrivanje vrniti naslov iz HTTP poti")
         self.assertIn(f"http://{link_hub.PRIVZETI_GOSTITELJ}:{link_hub.PRIVZETA_VRATA}",
                       poskuseni, "privzeto ime Huba mora biti med poskusi")
+        # Nov Hub govori TLS: kandidat https pride pred http in vrne wss naslov.
+        self.assertLess(poskuseni.index(f"https://{link_hub.PRIVZETI_GOSTITELJ}:{link_hub.PRIVZETA_VRATA}"),
+                        poskuseni.index(f"http://{link_hub.PRIVZETI_GOSTITELJ}:{link_hub.PRIVZETA_VRATA}"))
+
+    def test_odkrivanje_tls_huba_vrne_wss(self):
+        pravi_je_hub = link_hub.je_hub
+        link_hub.je_hub = lambda osnova, timeout=2.0, odtis=None: osnova == f"https://127.0.0.1:{link_hub.PRIVZETA_VRATA}"
+        try:
+            naslov = link_hub.poisci_hub()
+        finally:
+            link_hub.je_hub = pravi_je_hub
+        self.assertEqual(naslov, f"wss://127.0.0.1:{link_hub.PRIVZETA_VRATA}{link_hub.POT_WS}")
 
     def test_zivi_hub_najden_brez_zeroconfa(self):
         """Kadar Hub res tece, ga mora odkrivanje najti tudi brez zeroconfa."""

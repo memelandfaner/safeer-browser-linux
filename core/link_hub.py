@@ -28,6 +28,8 @@ import urllib.request
 from typing import Callable, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
+from core import link_tls, spake2
+
 PRIVZETA_VRATA = 8990
 # Uporabnik naj vidi kratko domace ime, ne naslova IP. Staro ime ostane takoj za njim,
 # ker ga imajo ze seznanjene naprave shranjeno in jim ne sme nic odpasti.
@@ -115,25 +117,11 @@ def _osnova(naslov: str) -> str:
 
 
 def _zahteva(url: str, telo: Optional[dict] = None, zeton: Optional[str] = None,
-             timeout: float = 5.0) -> Tuple[int, dict]:
-    podatki = None if telo is None else json.dumps(telo).encode("utf-8")
-    glave = {"Content-Type": "application/json"}
-    if zeton:
-        glave["X-Safeer-Token"] = zeton
-    zahteva = urllib.request.Request(url, data=podatki,
-                                     method="POST" if telo is not None else "GET",
-                                     headers=glave)
-    try:
-        with urllib.request.urlopen(zahteva, timeout=timeout) as odgovor:
-            vsebina = odgovor.read().decode("utf-8", "replace")
-            try:
-                return odgovor.status, json.loads(vsebina) if vsebina else {}
-            except json.JSONDecodeError:
-                return odgovor.status, {}
-    except urllib.error.HTTPError as e:
-        return e.code, {}
-    except Exception:
-        return 0, {}
+             timeout: float = 5.0, odtis: Optional[str] = None) -> Tuple[int, dict]:
+    """HTTP(S) do Huba. Pri https preveri odtis potrdila (None = se ne poznamo, samo
+    med odkrivanjem in seznanitvijo); zeton gre samo po https (glej link_tls)."""
+    koda, odgovor, _ = link_tls.zahteva(url, telo, zeton, timeout, pripeti=odtis)
+    return koda, odgovor
 
 
 def _poisci_z_mdns(cas: float = 1.5) -> Optional[str]:
@@ -168,7 +156,13 @@ def _poisci_z_mdns(cas: float = 1.5) -> Optional[str]:
             pot = lastnosti.get(b"ws") or lastnosti.get("ws") or POT_WS.encode()
             if isinstance(pot, bytes):
                 pot = pot.decode("utf-8", "replace")
-            najdeno.append(f"ws://{naslovi[0]}:{info.port}{pot}")
+            # Hub s TLS oglasi tls=1; povezava je potem wss/https. Odtis v oglasu je
+            # samo informativen - zaupanje vzpostavi seznanitev, ne mDNS.
+            tls = lastnosti.get(b"tls") or lastnosti.get("tls") or b""
+            if isinstance(tls, bytes):
+                tls = tls.decode("utf-8", "replace")
+            shema = "wss" if str(tls) == "1" else "ws"
+            najdeno.append(f"{shema}://{naslovi[0]}:{info.port}{pot}")
 
         def update_service(self, zc, vrsta, ime):
             pass
@@ -195,7 +189,7 @@ def _poisci_z_mdns(cas: float = 1.5) -> Optional[str]:
     return najdeno[0] if najdeno else None
 
 
-def je_hub(osnova: str, timeout: float = 2.0) -> bool:
+def je_hub(osnova: str, timeout: float = 2.0, odtis: Optional[str] = None) -> bool:
     """Ali na tem naslovu res odgovarja Safeer Hub?
 
     Ne zadosca, da se nekaj oglasi: na istih vratih je lahko cisto drug streznik.
@@ -204,16 +198,16 @@ def je_hub(osnova: str, timeout: float = 2.0) -> bool:
       - /cast/ticket obstaja, a ne kot GET (Hub odgovori 405 ali 401).
     Zetona pri tem ne posiljamo -- to je preverba pred zaupanjem, ne po njem.
     """
-    koda, _ = _zahteva(osnova + POT_ZDRAVJA, timeout=timeout)
+    koda, _ = _zahteva(osnova + POT_ZDRAVJA, timeout=timeout, odtis=odtis)
     if koda not in (200, 401, 403):
         return False
-    koda_vstopnice, _ = _zahteva(osnova + POT_VSTOPNICE, timeout=timeout)
+    koda_vstopnice, _ = _zahteva(osnova + POT_VSTOPNICE, timeout=timeout, odtis=odtis)
     if koda_vstopnice in (0, 404):
         return False
     return True
 
 
-def poisci_hub(znani: str = "") -> Optional[str]:
+def poisci_hub(znani: str = "", odtis: Optional[str] = None) -> Optional[str]:
     """Vrne naslov WebSocketa Huba ali None.
 
     Vrstni red je vprasanje zaupanja, ne udobja. Zadnji znani (torej ze potrjeni)
@@ -229,18 +223,23 @@ def poisci_hub(znani: str = "") -> Optional[str]:
     if z_mdns:
         kandidati.append(_osnova(z_mdns))
 
-    kandidati.append(f"http://{PRIVZETI_GOSTITELJ}:{PRIVZETA_VRATA}")
-    kandidati.append(f"http://{STARO_IME_GOSTITELJA}:{PRIVZETA_VRATA}")
-    kandidati.append(f"http://127.0.0.1:{PRIVZETA_VRATA}")
+    # Najprej TLS (nov Hub), nato se navaden http, da starejsega Huba vsaj najdemo in
+    # uporabniku povemo, naj ga posodobi.
+    for ime in (PRIVZETI_GOSTITELJ, STARO_IME_GOSTITELJA, "127.0.0.1"):
+        kandidati.append(f"https://{ime}:{PRIVZETA_VRATA}")
+        kandidati.append(f"http://{ime}:{PRIVZETA_VRATA}")
 
     videni = set()
     for osnova in kandidati:
         if osnova in videni:
             continue
         videni.add(osnova)
-        if je_hub(osnova):
-            gostitelj = osnova.split("://", 1)[1]
-            return f"ws://{gostitelj}{POT_WS}"
+        # Odtis velja samo za ze potrjeni Hub; neznane kandidate preverimo brez njega
+        # (zaupanja jim s tem se ne damo - to naredi sele seznanitev).
+        pripeti = odtis if (znani and osnova == _osnova(znani)) else None
+        if je_hub(osnova, odtis=pripeti):
+            shema, gostitelj = osnova.split("://", 1)
+            return f"{'wss' if shema == 'https' else 'ws'}://{gostitelj}{POT_WS}"
     return None
 
 
@@ -263,26 +262,79 @@ def naslov_je_isti(a: str, b: str) -> bool:
     return (ga, ua.port or PRIVZETA_VRATA) == (gb, ub.port or PRIVZETA_VRATA)
 
 
+NACIN_SPAKE2 = "spake2"
+IDENTITETA_HUBA = "safeer-link-hub"
+
+
 def zacni_seznanitev(ws_naslov: str, device_id: str, ime: str) -> Optional[dict]:
-    koda, odgovor = _zahteva(_osnova(ws_naslov) + "/cast/pair/start",
-                             {"device_id": device_id, "name": ime})
-    if koda != 200:
+    """Odpre prijavo na Hubu. Vrne {"pair_id", "nacin", "hub_id", "odtis"} ali None.
+
+    Samo prek TLS: odtis potrdila, ki ga vidimo zdaj, se vplete v seznanitev, zato ga
+    napadalec v sredini ne more zamenjati, ne da bi seznanitev padla. Kode Hub ne
+    poslje in je od nas ne dobi - pokaze jo na svojem zaslonu, uporabnik jo vtipka tu.
+    """
+    osnova = _osnova(ws_naslov)
+    if not osnova.startswith("https://"):
+        return {"napaka": "hub_brez_tls"}
+    koda, odgovor, videni = link_tls.zahteva(osnova + "/cast/pair/start",
+                                             {"device_id": device_id, "name": ime})
+    if koda != 200 or not videni:
         return None
-    return odgovor
-
-
-def prevzemi_zeton(ws_naslov: str, pair_id: str) -> Optional[str]:
-    koda, odgovor = _zahteva(_osnova(ws_naslov) + "/cast/pair/claim", {"pair_id": pair_id})
-    if koda != 200:
+    pair_id = str(odgovor.get("pair_id", "") or "")
+    if not pair_id:
         return None
-    if not odgovor.get("approved"):
-        return None
-    zeton = odgovor.get("token")
-    return zeton if isinstance(zeton, str) and zeton else None
+    nacin = str(odgovor.get("nacin", "") or "")
+    if nacin != NACIN_SPAKE2:
+        # Starejsi Hub bi kodo prejel po omrezju. Ne sodelujemo; Hub naj se posodobi.
+        return {"napaka": "hub_star", "nacin": nacin}
+    return {
+        "pair_id": pair_id,
+        "nacin": nacin,
+        "hub_id": str(odgovor.get("hub_id", "") or "") or IDENTITETA_HUBA,
+        "odtis": videni,
+    }
 
 
-def vzemi_vstopnico(ws_naslov: str, zeton: str) -> Optional[str]:
-    koda, odgovor = _zahteva(_osnova(ws_naslov) + POT_VSTOPNICE, {}, zeton=zeton)
+def potrdi_kodo(ws_naslov: str, prijava: dict, device_id: str, koda: str) -> Tuple[Optional[str], str]:
+    """Dokaze Hubu, da poznamo kodo z njegovega zaslona (SPAKE2, RFC 9382), ne da bi
+    jo poslali. Vrne (zeton, "") ob uspehu, sicer (None, razlog): napacna_koda,
+    prevec_poskusov, prijava_ne_obstaja, povezava_ni_uspela.
+    """
+    osnova = _osnova(ws_naslov)
+    odtis = str(prijava.get("odtis", "") or "")
+    pair_id = str(prijava.get("pair_id", "") or "")
+    hub_id = str(prijava.get("hub_id", "") or "") or IDENTITETA_HUBA
+    vnos = "".join(z for z in str(koda) if z.isdigit())
+    if not odtis or not pair_id or len(vnos) < 4:
+        return None, "napacna_koda"
+    s = spake2.Spake2.odjemalec(vnos, device_id, hub_id, odtis.encode("utf-8"), pair_id.encode("utf-8"))
+    # Ves cas seznanitve govorimo z natanko tistim potrdilom, ki smo ga videli na zacetku.
+    k1, o1 = _zahteva(osnova + "/cast/pair/spake",
+                      {"pair_id": pair_id, "device_id": device_id, "pb": s.sporocilo().hex()},
+                      odtis=odtis)
+    if k1 != 200:
+        return None, str(o1.get("code", "") or "") or "povezava_ni_uspela"
+    try:
+        pa = bytes.fromhex(str(o1.get("pa", "")))
+        ca = bytes.fromhex(str(o1.get("ca", "")))
+        _, cb = s.zakljuci(pa)
+    except (ValueError, TypeError):
+        return None, "povezava_ni_uspela"
+    if not s.preveri(ca):
+        # Hub ne pozna iste kode ali pa je vmes kdo z drugim potrdilom. Nase potrditve
+        # mu ne posljemo; poskus pri njem vseeno steje.
+        return None, "napacna_koda"
+    k2, o2 = _zahteva(osnova + "/cast/pair/finish",
+                      {"pair_id": pair_id, "device_id": device_id, "cb": cb.hex()},
+                      odtis=odtis)
+    zeton = o2.get("token")
+    if k2 != 200 or not isinstance(zeton, str) or not zeton:
+        return None, str(o2.get("code", "") or "") or "napacna_koda"
+    return zeton, ""
+
+
+def vzemi_vstopnico(ws_naslov: str, zeton: str, odtis: Optional[str] = None) -> Optional[str]:
+    koda, odgovor = _zahteva(_osnova(ws_naslov) + POT_VSTOPNICE, {}, zeton=zeton, odtis=odtis)
     if koda != 200:
         return None
     vstopnica = odgovor.get("ticket")
@@ -310,9 +362,11 @@ class WsOdjemalec:
     """
 
     def __init__(self, naslov: str, timeout: float = 10.0,
-                 bralni_timeout: float = BRALNI_TIMEOUT) -> None:
+                 bralni_timeout: float = BRALNI_TIMEOUT, odtis: Optional[str] = None) -> None:
         self.naslov = naslov
         self.timeout = timeout
+        # Odtis Hubovega potrdila; pri wss:// je obvezen (drugo potrdilo = napaka).
+        self.odtis = odtis
         # Rokovanje mora biti hitro, tisina med pogovorom pa ne pomeni napake:
         # zato dve razlicni meji. Prej je ena sama ubijala mirne povezave.
         self.bralni_timeout = bralni_timeout
@@ -329,10 +383,18 @@ class WsOdjemalec:
         if u.query:
             pot += "?" + u.query
 
+        if varno and not self.odtis:
+            raise ConnectionError("Naprava s tem Hubom ni seznanjena (ni odtisa potrdila).")
         s = socket.create_connection((gostitelj, vrata), timeout=self.timeout)
         if varno:
-            kontekst = ssl.create_default_context()
-            s = kontekst.wrap_socket(s, server_hostname=gostitelj)
+            try:
+                s, _ = link_tls.ovij(s, gostitelj, self.odtis)
+            except Exception:
+                try:
+                    s.close()
+                except Exception:
+                    pass
+                raise
 
         kljuc = base64.b64encode(os.urandom(16)).decode()
         zahteva = (
@@ -510,9 +572,10 @@ class Povezava:
     """
 
     def __init__(self, ws_naslov: str, zeton: str, device_id: str, ime: str,
-                 sinhronizira: bool = False) -> None:
+                 sinhronizira: bool = False, odtis: Optional[str] = None) -> None:
         self.ws_naslov = ws_naslov
         self.zeton = zeton
+        self.odtis = odtis
         self.device_id = device_id
         self.ime = ime
         self.sinhronizira = sinhronizira
@@ -528,12 +591,17 @@ class Povezava:
 
     def _odpri(self) -> bool:
         """Ena vzpostavitev: vstopnica, rokovanje, prijava. Brez cakanja."""
-        vstopnica = vzemi_vstopnico(self.ws_naslov, self.zeton)
+        # Samo TLS z odtisom: zeton in vse, kar posljemo, ne sme nikoli potovati v
+        # cistem besedilu. Hub brez TLS naj se posodobi; naprava brez odtisa naj se
+        # znova seznani.
+        if not self.ws_naslov.startswith("wss://") or not self.odtis:
+            return False
+        vstopnica = vzemi_vstopnico(self.ws_naslov, self.zeton, self.odtis)
         if not vstopnica:
             return False
         locilo = "&" if "?" in self.ws_naslov else "?"
         naslov = f"{self.ws_naslov}{locilo}ticket={vstopnica}"
-        odjemalec = WsOdjemalec(naslov)
+        odjemalec = WsOdjemalec(naslov, odtis=self.odtis)
         try:
             odjemalec.odpri()
         except Exception:

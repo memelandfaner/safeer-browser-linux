@@ -28,6 +28,13 @@
 
   var BESEDILA = {
     sl: {
+      vnesiKodoOpis: "Na napravi, kjer teče Safeer Link, se je izpisala 6-mestna številka. Prepiši jo sem.",
+      povezi: "Poveži",
+      preverjamKodo: "Preverjam kodo …",
+      napNapacnaKoda: "Koda ni pravilna. Poskusi znova.",
+      napPrevecPoskusov: "Preveč poskusov. Začni znova — dobiš novo kodo.",
+      napKodaPotekla: "Koda je potekla. Začni znova.",
+      napHubStar: "Safeer na napravi, kjer teče Safeer Link, je prestar za varno seznanitev. Posodobi ga.",
       napHubNiZnan: "Huba še ne poznam. Najprej ga poišči.",
       napIskanje: "Iskanja ni bilo mogoče zagnati.",
       napSeznanitev: "Seznanitve ni bilo mogoče začeti.",
@@ -122,6 +129,13 @@
       preverjamNaslov: "Povezujem se na nov naslov …"
     },
     en: {
+      vnesiKodoOpis: "A 6-digit number appeared on the device running Safeer Link. Type it here.",
+      povezi: "Connect",
+      preverjamKodo: "Checking the code …",
+      napNapacnaKoda: "That code is not right. Try again.",
+      napPrevecPoskusov: "Too many attempts. Start again — you will get a new code.",
+      napKodaPotekla: "The code has expired. Start again.",
+      napHubStar: "Safeer on the device running Safeer Link is too old for secure pairing. Please update it.",
       napHubNiZnan: "The hub is not known yet. Find it first.",
       napIskanje: "The search could not be started.",
       napSeznanitev: "Pairing could not be started.",
@@ -216,6 +230,13 @@
       preverjamNaslov: "Connecting to the new address …"
     },
     de: {
+      vnesiKodoOpis: "Auf dem Gerät mit Safeer Link ist eine 6-stellige Zahl erschienen. Geben Sie sie hier ein.",
+      povezi: "Verbinden",
+      preverjamKodo: "Code wird geprüft …",
+      napNapacnaKoda: "Der Code stimmt nicht. Versuchen Sie es erneut.",
+      napPrevecPoskusov: "Zu viele Versuche. Beginnen Sie neu — Sie erhalten einen neuen Code.",
+      napKodaPotekla: "Der Code ist abgelaufen. Beginnen Sie neu.",
+      napHubStar: "Safeer auf dem Gerät mit Safeer Link ist für eine sichere Kopplung zu alt. Bitte aktualisieren.",
       napHubNiZnan: "Der Hub ist noch nicht bekannt. Suche ihn zuerst.",
       napIskanje: "Die Suche konnte nicht gestartet werden.",
       napSeznanitev: "Die Kopplung konnte nicht gestartet werden.",
@@ -310,6 +331,13 @@
       preverjamNaslov: "Verbinde mit der neuen Adresse …"
     },
     es: {
+      vnesiKodoOpis: "En el dispositivo con Safeer Link ha aparecido un número de 6 dígitos. Escríbalo aquí.",
+      povezi: "Conectar",
+      preverjamKodo: "Comprobando el código …",
+      napNapacnaKoda: "El código no es correcto. Inténtelo de nuevo.",
+      napPrevecPoskusov: "Demasiados intentos. Empiece de nuevo: obtendrá un código nuevo.",
+      napKodaPotekla: "El código ha caducado. Empiece de nuevo.",
+      napHubStar: "Safeer en el dispositivo con Safeer Link es demasiado antiguo para un emparejamiento seguro. Actualícelo.",
       napHubNiZnan: "El hub todavía no se conoce. Búscalo primero.",
       napIskanje: "No se pudo iniciar la búsqueda.",
       napSeznanitev: "No se pudo iniciar el emparejamiento.",
@@ -404,6 +432,13 @@
       preverjamNaslov: "Conectando con la nueva dirección …"
     },
     fr: {
+      vnesiKodoOpis: "Un nombre à 6 chiffres est apparu sur l\'appareil où tourne Safeer Link. Saisissez-le ici.",
+      povezi: "Connecter",
+      preverjamKodo: "Vérification du code …",
+      napNapacnaKoda: "Ce code n\'est pas correct. Réessayez.",
+      napPrevecPoskusov: "Trop de tentatives. Recommencez : vous obtiendrez un nouveau code.",
+      napKodaPotekla: "Le code a expiré. Recommencez.",
+      napHubStar: "Safeer sur l\'appareil où tourne Safeer Link est trop ancien pour une association sécurisée. Mettez-le à jour.",
       napHubNiZnan: "Le hub n\'est pas encore connu. Cherche-le d\'abord.",
       napIskanje: "La recherche n\'a pas pu démarrer.",
       napSeznanitev: "L\'association n\'a pas pu démarrer.",
@@ -498,6 +533,13 @@
       preverjamNaslov: "Connexion à la nouvelle adresse …"
     },
     it: {
+      vnesiKodoOpis: "Sul dispositivo con Safeer Link è comparso un numero di 6 cifre. Digitalo qui.",
+      povezi: "Collega",
+      preverjamKodo: "Verifico il codice …",
+      napNapacnaKoda: "Il codice non è corretto. Riprova.",
+      napPrevecPoskusov: "Troppi tentativi. Ricomincia: otterrai un nuovo codice.",
+      napKodaPotekla: "Il codice è scaduto. Ricomincia.",
+      napHubStar: "Safeer sul dispositivo con Safeer Link è troppo vecchio per un\'associazione sicura. Aggiornalo.",
       napHubNiZnan: "L\'hub non è ancora noto. Cercalo prima.",
       napIskanje: "Non è stato possibile avviare la ricerca.",
       napSeznanitev: "Non è stato possibile avviare l\'associazione.",
@@ -614,6 +656,8 @@
     hub_ni_zagnan: "napHubNiZagnan",
     hub_ni_ustavljen: "napHubNiUstavljen",
     prijava_potekla: "napPrijavaPotekla",
+    hub_star: "napHubStar",
+    hub_brez_tls: "napHubStar",
     tv_je_zaslon: "napTvJeZaslon",
     tv_ne_upravlja: "napTvNeUpravlja",
     sync_tv_ni_na_voljo: "napSyncTvNiNaVoljo"
@@ -974,6 +1018,39 @@
         besedilo("opombaSeznanitev", t("cakamNaPotrditev"));
         var g = el("gumbSeznani");
         if (g) g.disabled = true;
+      } else if (vrsta === "nacin") {
+        // Kodo pokaze gostitelj, uporabnik jo prepise sem. Po omrezju ne gre nikoli:
+        // most jo Hubu dokaze (SPAKE2), zato je napadalec v omrezju ne more prestreci.
+        var gs = el("gumbSeznani");
+        if (gs) gs.disabled = true;
+        if (podatki && podatki.nacin === "koda_na_gostitelju") {
+          pokazi("gumbSeznani", false);
+          pokazi("kodaBlok", false);
+          pokazi("vnosKodeBlok", true);
+          besedilo("opombaSeznanitev", "");
+          var vnos = el("vnosKode");
+          if (vnos) { vnos.value = ""; try { vnos.focus(); } catch (e) {} }
+        } else {
+          pokazi("vnosKodeBlok", false);
+          pokazi("kodaBlok", true);
+          besedilo("kodaStevilke", String((podatki && podatki.koda) || "------"));
+          besedilo("opombaSeznanitev", t("cakamNaPotrditev"));
+        }
+      } else if (vrsta === "kodaNiSprejeta") {
+        var razlog = (podatki && podatki.razlog) || "napacna_koda";
+        var kljucNapake = razlog === "prevec_poskusov" ? "napPrevecPoskusov"
+          : (razlog === "prijava_ne_obstaja" ? "napKodaPotekla"
+          : (razlog === "povezava_ni_uspela" ? "napPovezava" : "napNapacnaKoda"));
+        besedilo("opombaSeznanitev", t(kljucNapake));
+        if (razlog === "prevec_poskusov" || razlog === "prijava_ne_obstaja") {
+          pokazi("vnosKodeBlok", false);
+          pokazi("gumbSeznani", true);
+          var gz = el("gumbSeznani");
+          if (gz) gz.disabled = false;
+        } else {
+          var v2 = el("vnosKode");
+          if (v2) { v2.value = ""; try { v2.focus(); } catch (e) {} }
+        }
       } else if (vrsta === "seznanitev") {
         var gumb = el("gumbSeznani");
         if (gumb) gumb.disabled = false;
@@ -983,6 +1060,8 @@
           poveziSe();
         } else {
           pokazi("kodaBlok", false);
+          pokazi("vnosKodeBlok", false);
+          pokazi("gumbSeznani", true);
           besedilo("opombaSeznanitev", t("niPotrjeno"));
         }
       } else if (vrsta === "naprave") {
@@ -1126,6 +1205,28 @@
       besedilo("opombaSeznanitev", "");
       if (most) most.seznani();
     });
+
+    naKlik("gumbVnesiKodo", function () {
+      var vnos = el("vnosKode");
+      var koda = vnos ? String(vnos.value || "").replace(/\D/g, "") : "";
+      if (koda.length < 6) {
+        besedilo("opombaSeznanitev", t("napNapacnaKoda"));
+        return;
+      }
+      besedilo("opombaSeznanitev", t("preverjamKodo"));
+      if (most && most.potrdiKodo) most.potrdiKodo(koda);
+    });
+
+    var vnosKode = el("vnosKode");
+    if (vnosKode) {
+      vnosKode.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          var g = el("gumbVnesiKodo");
+          if (g) g.click();
+        }
+      });
+    }
 
     naKlik("gumbOsvezi", poveziSe);
 
