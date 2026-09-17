@@ -19,6 +19,7 @@ import json
 import mimetypes
 import os
 import secrets
+import shutil
 import socket
 import ssl
 import subprocess
@@ -388,6 +389,27 @@ class Datoteke:
         if 0 <= i < len(p):
             del p[i]
             self.nastavi(p)
+
+    def odpri(self, oznaka: str) -> bool:
+        """Odpre datoteko ali mapo **na racunalniku**, s programom, ki ga ima uporabnik zanjo
+        (xdg-open). Dovoljene so samo oznake, ki jih naprava ze sme videti - drugega ne odpremo,
+        in nikoli ne izvajamo ukazov, ki bi jih naprava poslala."""
+        r = self.mape.razresi(str(oznaka or ""))
+        if r is None:
+            return False
+        pot = r[1]
+        if not os.path.exists(pot):
+            return False
+        odpiralnik = shutil.which("xdg-open") or shutil.which("gio")
+        if not odpiralnik:
+            return False
+        ukaz = [odpiralnik, pot] if odpiralnik.endswith("xdg-open") else [odpiralnik, "open", pot]
+        try:
+            subprocess.Popen(ukaz, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True)
+            return True
+        except Exception:
+            return False
 
     def nastavi_ves_disk(self, vklopljeno: bool) -> None:
         """Televizor sme (ali ne sme vec) brskati po celem racunalniku. Velja takoj."""

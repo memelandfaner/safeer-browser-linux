@@ -73,3 +73,41 @@ class VesDisk(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class OdpriNaRacunalniku(unittest.TestCase):
+    """`files.open`: datoteko odpre racunalnik s svojim programom, televizor jo vidi prek zaslona."""
+
+    def setUp(self):
+        self.mapa = tempfile.mkdtemp()
+        self.datoteka = os.path.join(self.mapa, "zapis.txt")
+        with open(self.datoteka, "w") as d:
+            d.write("x")
+
+    def tearDown(self):
+        shutil.rmtree(self.mapa, ignore_errors=True)
+
+    def test_neznane_oznake_ne_odpremo(self):
+        d = link_datoteke.Datoteke([self.mapa])
+        self.assertFalse(d.odpri("disk:" + self.datoteka))      # brez dovoljenja za ves disk
+        self.assertFalse(d.odpri("share:9:karkoli"))
+        self.assertFalse(d.odpri(""))
+
+    def test_ukaz_brez_modula_razumljiva_napaka(self):
+        from core import link_daljinec
+        izidi = []
+        link_daljinec.izvedi_control("files.open", {"id": "share:0:"}, lambda u: None, izidi.append)
+        self.assertFalse(izidi[0]["ok"])
+        self.assertEqual(izidi[0]["code"], "ni_na_racunalniku")
+
+    def test_ukaz_z_neveljavno_oznako(self):
+        from core import link_daljinec
+        d = link_datoteke.Datoteke([self.mapa])
+        izidi = []
+        link_daljinec.izvedi_control("files.open", {"id": "share:7:x"}, lambda u: None, izidi.append, datoteke=d)
+        self.assertFalse(izidi[0]["ok"])
+        self.assertEqual(izidi[0]["code"], "ni_datoteke")
+
+    def test_files_open_je_v_zmoznostih(self):
+        from core import link_daljinec
+        self.assertIn("files.open", link_daljinec.DEJANJA_DATOTEKE)
