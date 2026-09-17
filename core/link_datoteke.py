@@ -47,10 +47,19 @@ def vrsta_datoteke(ime: str) -> str:
 
 
 class DeljeneMape:
-    """Izbrane mape (absolutne poti) in navidezne oznake."""
+    """Izbrane mape (absolutne poti) in navidezne oznake.
 
-    def __init__(self, poti: Optional[List[str]] = None) -> None:
+    Poleg izbranih map zna - **samo ce uporabnik to izrecno vklopi** - pokazati tudi cel
+    datotecni sistem tega racunalnika (oznake `disk:<absolutna pot>`). Privzeto je izklopljeno:
+    televizor brez te izbire vidi natanko tiste mape, ki mu jih je uporabnik dal.
+    """
+
+    #: Mape, ki na korenu niso za uporabnika (jedro, naprave) in jih ne kazemo.
+    SISTEMSKE = {"proc", "sys", "dev", "run", "lost+found"}
+
+    def __init__(self, poti: Optional[List[str]] = None, ves_disk: bool = False) -> None:
         self.poti: List[str] = []
+        self.ves_disk = bool(ves_disk)
         self.nastavi(poti or [])
 
     def nastavi(self, poti: List[str]) -> None:
@@ -62,10 +71,26 @@ class DeljeneMape:
         self.poti = cista
 
     def koren(self) -> List[dict]:
-        return [{"id": f"share:{i}:", "name": os.path.basename(p) or p, "type": "folder"} for i, p in enumerate(self.poti)]
+        vnosi = [{"id": f"share:{i}:", "name": os.path.basename(p) or p, "type": "folder"}
+                 for i, p in enumerate(self.poti)]
+        if self.ves_disk:
+            dom = os.path.realpath(os.path.expanduser("~"))
+            vnosi.append({"id": "disk:" + dom, "name": os.path.basename(dom) or dom, "type": "folder"})
+            vnosi.append({"id": "disk:/", "name": "/", "type": "folder"})
+        return vnosi
 
     def razresi(self, oznaka: str) -> Optional[Tuple[int, str]]:
-        """`share:<i>:<rel>` -> (i, absolutna pot) ali None, ce oznaka ni veljavna ali kaze ven iz mape."""
+        """`share:<i>:<rel>` -> (i, absolutna pot) ali None, ce oznaka ni veljavna ali kaze ven iz mape.
+
+        `disk:<absolutna pot>` -> (-1, pot), a samo kadar je brskanje po celem racunalniku
+        vklopljeno; sicer oznaka ne pomeni nicesar.
+        """
+        oznaka = str(oznaka or "")
+        if oznaka.startswith("disk:"):
+            if not self.ves_disk:
+                return None
+            pot = os.path.realpath(oznaka[len("disk:"):] or "/")
+            return (-1, pot) if os.path.exists(pot) else None
         deli = str(oznaka or "").split(":", 2)
         if len(deli) != 3 or deli[0] != "share":
             return None
@@ -89,6 +114,8 @@ class DeljeneMape:
         i, pot = r
         if not os.path.isdir(pot):
             return None
+        if i < 0:
+            return self._seznam_diska(pot)
         koren = self.poti[i]
         try:
             imena = sorted(os.listdir(pot), key=lambda s: s.lower())
@@ -114,6 +141,36 @@ class DeljeneMape:
             except OSError:
                 continue
         # Mape najprej, potem datoteke; najvec NAJVEC_VNOSOV.
+        vnosi.sort(key=lambda v: (v["type"] != "folder", v["name"].lower()))
+        return vnosi[:NAJVEC_VNOSOV]
+
+    def _seznam_diska(self, pot: str) -> Optional[List[dict]]:
+        """Vsebina mape kjerkoli na racunalniku (oznake `disk:`). Skrite datoteke ostanejo skrite,
+        na korenu pa izpustimo mape jedra in naprav - tam za uporabnika ni nicesar."""
+        try:
+            imena = sorted(os.listdir(pot), key=lambda s: s.lower())
+        except OSError:
+            return None
+        na_korenu = os.path.realpath(pot) == os.sep
+        vnosi: List[dict] = []
+        for ime in imena:
+            if ime.startswith("."):
+                continue
+            if na_korenu and ime in self.SISTEMSKE:
+                continue
+            cela = os.path.join(pot, ime)
+            try:
+                mapa = os.path.isdir(cela)
+                if not mapa and not os.path.isfile(cela):
+                    continue
+                v = {"id": "disk:" + os.path.realpath(cela), "name": ime,
+                     "type": "folder" if mapa else vrsta_datoteke(ime)}
+                if not mapa:
+                    v["size"] = os.path.getsize(cela)
+                    v["mime"] = mimetypes.guess_type(ime)[0] or "application/octet-stream"
+                vnosi.append(v)
+            except OSError:
+                continue
         vnosi.sort(key=lambda v: (v["type"] != "folder", v["name"].lower()))
         return vnosi[:NAJVEC_VNOSOV]
 
@@ -305,8 +362,9 @@ class Datoteke:
 
     ZMOZNOST = "files"
 
-    def __init__(self, poti: Optional[List[str]] = None, tls_mapa: str = TLS_MAPA) -> None:
-        self.mape = DeljeneMape(poti)
+    def __init__(self, poti: Optional[List[str]] = None, tls_mapa: str = TLS_MAPA,
+                 ves_disk: bool = False) -> None:
+        self.mape = DeljeneMape(poti, ves_disk=ves_disk)
         self.streznik = StreznikDatotek(self.mape, tls_mapa)
         # Klicatelj (Control) ga nastavi, da spremembo map shrani in stran osvezi.
         self.ob_spremembi: Optional[callable] = None
@@ -331,6 +389,10 @@ class Datoteke:
             del p[i]
             self.nastavi(p)
 
+    def nastavi_ves_disk(self, vklopljeno: bool) -> None:
+        """Televizor sme (ali ne sme vec) brskati po celem racunalniku. Velja takoj."""
+        self.mape.ves_disk = bool(vklopljeno)
+
     def ustavi(self) -> None:
         self.streznik.ustavi()
 
@@ -342,7 +404,8 @@ class Datoteke:
         ce je kaj datotek za prenasati - streznik se zazene sele takrat.
         """
         oznaka = str(oznaka or "")
-        if not self.mape.poti:
+        # Brez izbranih map in brez dovoljenja za cel racunalnik ni kaj pokazati.
+        if not self.mape.poti and not self.mape.ves_disk:
             return {"items": [], "folder": "", "shared": False}
         vnosi = self.mape.seznam(oznaka)
         if vnosi is None:

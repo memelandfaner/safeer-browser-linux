@@ -50,12 +50,12 @@ SAMOZAGON_POT = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.expanduse
 
 # Besedila pladnja v jezikih vmesnika (isti nabor kot Safeer Browser).
 BESEDILA = {
-    "sl": {"odpri": "Odpri Safeer Control", "samozagon": "Zaženi ob prijavi", "mape": "Mape za televizor …", "programi": "Programi za televizor", "koncaj": "Končaj", "povezan": "Safeer Link: povezan", "ni": "Safeer Link: ni povezave"},
-    "en": {"odpri": "Open Safeer Control", "samozagon": "Start at login", "mape": "Folders for the TV…", "programi": "Apps for the TV", "koncaj": "Quit", "povezan": "Safeer Link: connected", "ni": "Safeer Link: not connected"},
-    "de": {"odpri": "Safeer Control öffnen", "samozagon": "Beim Anmelden starten", "mape": "Ordner für den Fernseher …", "programi": "Programme für den Fernseher", "koncaj": "Beenden", "povezan": "Safeer Link: verbunden", "ni": "Safeer Link: nicht verbunden"},
-    "es": {"odpri": "Abrir Safeer Control", "samozagon": "Iniciar al iniciar sesión", "mape": "Carpetas para el televisor…", "programi": "Programas para el televisor", "koncaj": "Salir", "povezan": "Safeer Link: conectado", "ni": "Safeer Link: sin conexión"},
-    "fr": {"odpri": "Ouvrir Safeer Control", "samozagon": "Lancer à la connexion", "mape": "Dossiers pour le téléviseur…", "programi": "Programmes pour le téléviseur", "koncaj": "Quitter", "povezan": "Safeer Link : connecté", "ni": "Safeer Link : non connecté"},
-    "it": {"odpri": "Apri Safeer Control", "samozagon": "Avvia all’accesso", "mape": "Cartelle per il televisore…", "programi": "Programmi per il televisore", "koncaj": "Esci", "povezan": "Safeer Link: connesso", "ni": "Safeer Link: non connesso"},
+    "sl": {"odpri": "Odpri Safeer Control", "samozagon": "Zaženi ob prijavi", "mape": "Mape za televizor …", "programi": "Programi za televizor", "ves_disk": "Ves računalnik za televizor", "koncaj": "Končaj", "povezan": "Safeer Link: povezan", "ni": "Safeer Link: ni povezave"},
+    "en": {"odpri": "Open Safeer Control", "samozagon": "Start at login", "mape": "Folders for the TV…", "programi": "Apps for the TV", "ves_disk": "Whole computer for the TV", "koncaj": "Quit", "povezan": "Safeer Link: connected", "ni": "Safeer Link: not connected"},
+    "de": {"odpri": "Safeer Control öffnen", "samozagon": "Beim Anmelden starten", "mape": "Ordner für den Fernseher …", "programi": "Programme für den Fernseher", "ves_disk": "Ganzer Computer für den Fernseher", "koncaj": "Beenden", "povezan": "Safeer Link: verbunden", "ni": "Safeer Link: nicht verbunden"},
+    "es": {"odpri": "Abrir Safeer Control", "samozagon": "Iniciar al iniciar sesión", "mape": "Carpetas para el televisor…", "programi": "Programas para el televisor", "ves_disk": "Todo el ordenador para el televisor", "koncaj": "Salir", "povezan": "Safeer Link: conectado", "ni": "Safeer Link: sin conexión"},
+    "fr": {"odpri": "Ouvrir Safeer Control", "samozagon": "Lancer à la connexion", "mape": "Dossiers pour le téléviseur…", "programi": "Programmes pour le téléviseur", "ves_disk": "Tout l'ordinateur pour le téléviseur", "koncaj": "Quitter", "povezan": "Safeer Link : connecté", "ni": "Safeer Link : non connecté"},
+    "it": {"odpri": "Apri Safeer Control", "samozagon": "Avvia all’accesso", "mape": "Cartelle per il televisore…", "programi": "Programmi per il televisore", "ves_disk": "Tutto il computer per il televisore", "koncaj": "Esci", "povezan": "Safeer Link: connesso", "ni": "Safeer Link: non connesso"},
 }
 
 
@@ -233,9 +233,14 @@ class Pladenj:
         self.programi = Gtk.CheckMenuItem(label=besedilo(self.jezik, "programi"))
         self.programi.set_active(bool(app.programi.vklopljeno))
         self._programi_id = self.programi.connect("toggled", self._preklop_programi)
+        # Brskanje po celem racunalniku: privzeto izklopljeno. Vklopljeno pomeni, da televizor
+        # vidi domaco mapo in koren diska, ne le izbranih map - zato je locena, zavestna izbira.
+        self.ves_disk = Gtk.CheckMenuItem(label=besedilo(self.jezik, "ves_disk"))
+        self.ves_disk.set_active(bool(app.datoteke.mape.ves_disk))
+        self._ves_disk_id = self.ves_disk.connect("toggled", self._preklop_ves_disk)
         self.koncaj = Gtk.MenuItem(label=besedilo(self.jezik, "koncaj"))
         self.koncaj.connect("activate", lambda *_a: app.koncaj())
-        for m in (self.odpri, self.mape, self.programi, Gtk.SeparatorMenuItem(), self.samozagon,
+        for m in (self.odpri, self.mape, self.ves_disk, self.programi, Gtk.SeparatorMenuItem(), self.samozagon,
                   Gtk.SeparatorMenuItem(), self.koncaj):
             self.meni.append(m)
         self.meni.show_all()
@@ -279,6 +284,9 @@ class Pladenj:
     def _preklop_programi(self, postavka: Gtk.CheckMenuItem) -> None:
         self.app.nastavi_programe(bool(postavka.get_active()))
 
+    def _preklop_ves_disk(self, postavka: Gtk.CheckMenuItem) -> None:
+        self.app.nastavi_ves_disk(bool(postavka.get_active()))
+
     def _preklop(self, element) -> None:
         self.app.nastavi_samozagon(element.get_active())
 
@@ -301,7 +309,8 @@ class SafeerControl(Gtk.Application):
         self._prva_aktivacija = True
         # Deljene mape za televizor; seznam poti je v control.json ("deljene_mape").
         mape = self.nastavitve.get("deljene_mape")
-        self.datoteke = link_datoteke.Datoteke(mape if isinstance(mape, list) else [])
+        self.datoteke = link_datoteke.Datoteke(mape if isinstance(mape, list) else [],
+                                              ves_disk=bool(self.nastavitve.get("ves_disk_za_tv", False)))
         self.datoteke.ob_spremembi = lambda poti: self.nastavitve.set("deljene_mape", poti)
         # Programi racunalnika za televizor; privzeto izklopljeno ("programi_za_tv" v control.json).
         self.programi = link_programi.Programi(bool(self.nastavitve.get("programi_za_tv", False)))
@@ -334,6 +343,12 @@ class SafeerControl(Gtk.Application):
         self.link.ob_povezavi = self._na_povezavo
         self.link.datoteke = self.datoteke
         self.link.programi = self.programi
+
+    def nastavi_ves_disk(self, vklopljeno: bool) -> None:
+        """Televizor sme (ali ne sme vec) brskati po celem racunalniku, ne le po izbranih mapah.
+        Velja takoj; nastavitev se zapomni ("ves_disk_za_tv" v control.json)."""
+        self.datoteke.nastavi_ves_disk(vklopljeno)
+        self.nastavitve.set("ves_disk_za_tv", bool(vklopljeno))
 
     def nastavi_programe(self, vklopljeno: bool) -> None:
         """Televizor sme (ali ne sme vec) videti programe tega racunalnika. Sprememba velja takoj:
