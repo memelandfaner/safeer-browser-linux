@@ -128,6 +128,7 @@ class SafeerLink:
         # Safeer Control: deljene mape za televizor (core/link_datoteke.Datoteke); brskalnik jih nima.
         self.datoteke = None
         self.programi = None
+        self.zaslon = None
 
         self.nastavitve = nastavitve if nastavitve is not None else link_hub.Nastavitve()
         self.povezava: Optional[link_hub.Povezava] = None
@@ -635,7 +636,8 @@ class SafeerLink:
             sinhronizira=bool(self.nastavitve.get("sync_bookmarks", False)),
             odtis=self._odtis(),
             dodatne_zmoznosti=(["files"] if self.datoteke is not None else [])
-            + (["apps"] if self.programi is not None and self.programi.vklopljeno else []),
+            + (["apps"] if self.programi is not None and self.programi.vklopljeno else [])
+            + (["desktop"] if self.zaslon is not None and self.zaslon.na_voljo().get("dovoljeno") else []),
         )
         povezava.ob_sporocilu = self._na_sporocilo_huba
         povezava.ob_stanju = self._na_stanje_povezave
@@ -743,7 +745,7 @@ class SafeerLink:
             if self.control:
                 link_daljinec.izvedi_control(dejanje, parametri, self.odpri_naslov, koncaj,
                                              datoteke=self.datoteke, posiljatelj=posiljatelj, hub_url=self._hub(),
-                                             programi=self.programi)
+                                             programi=self.programi, zaslon=self.zaslon)
                 return False
             if self.starsevsko is None:
                 koncaj(link_daljinec.izid(False, "Brskalnik ni odprt"))

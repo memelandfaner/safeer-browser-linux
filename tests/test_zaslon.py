@@ -1,0 +1,152 @@
+"""Zaslon racunalnika na televizorju (core/link_zaslon.py): dovoljenje, ukaz, seja, zeton."""
+import os
+import socket
+import ssl
+import sys
+import threading
+import unittest
+
+KOREN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, KOREN)
+
+from core import link_daljinec, link_zaslon  # noqa: E402
+
+
+class Ukaz(unittest.TestCase):
+    def test_strojno_kodiranje_brez_bitrate(self):
+        """Intelov nizkoenergijski kodirnik zna samo CQP; z -b:v se sploh ne odpre."""
+        u = link_zaslon.ukaz_ffmpeg(":0", 1920, 1080, 1920, 1080, 30, "6M", "/dev/dri/renderD128", qp=24)
+        self.assertIn("h264_vaapi", u)
+        self.assertIn("-rc_mode", u)
+        self.assertEqual(u[u.index("-rc_mode") + 1], "CQP")
+        self.assertEqual(u[u.index("-qp") + 1], "24")
+        self.assertNotIn("-b:v", u)
+        self.assertEqual(u[-1], "-")
+
+    def test_programsko_kodiranje_brez_zamika(self):
+        u = link_zaslon.ukaz_ffmpeg(":0", 1280, 720, 1920, 1080, 24, "3M", None)
+        self.assertIn("libx264", u)
+        self.assertEqual(u[u.index("-tune") + 1], "zerolatency")
+        self.assertEqual(u[u.index("-b:v") + 1], "3M")
+        self.assertEqual(u[u.index("-bf") + 1], "0")      # brez B-slik: manjsa zakasnitev
+
+    def test_slika_ohrani_razmerje_in_ne_povecuje(self):
+        self.assertEqual(link_zaslon.Zaslon._prilagodi((3840, 2160), 1920, 1080), (1920, 1080))
+        self.assertEqual(link_zaslon.Zaslon._prilagodi((1366, 768), 1920, 1080), (1366, 768))
+        s, v = link_zaslon.Zaslon._prilagodi((1920, 1200), 1920, 1080)
+        self.assertEqual((s, v), (1728, 1080))
+        self.assertEqual((s % 2, v % 2), (0, 0))
+
+
+class Dovoljenje(unittest.TestCase):
+    def test_privzeto_izklopljeno(self):
+        z = link_zaslon.Zaslon()
+        self.assertFalse(z.vklopljeno)
+        self.assertFalse(z.na_voljo()["dovoljeno"])
+        with self.assertRaises(RuntimeError):
+            z.zacni("tv-test")
+
+    def test_ukaz_brez_dovoljenja_zavrnjen(self):
+        z = link_zaslon.Zaslon()
+        izidi = []
+        link_daljinec.izvedi_control("screen.start", {}, lambda u: None, izidi.append, zaslon=z)
+        self.assertFalse(izidi[0]["ok"])
+        self.assertEqual(izidi[0]["code"], "ni_dovoljeno")
+
+    def test_brez_modula_razumljiva_napaka(self):
+        izidi = []
+        link_daljinec.izvedi_control("screen.start", {}, lambda u: None, izidi.append)
+        self.assertFalse(izidi[0]["ok"])
+        self.assertEqual(izidi[0]["code"], "ni_na_racunalniku")
+
+    def test_stanje_je_vedno_na_voljo(self):
+        z = link_zaslon.Zaslon()
+        izidi = []
+        link_daljinec.izvedi_control("screen.status", {}, lambda u: None, izidi.append, zaslon=z)
+        self.assertTrue(izidi[0]["ok"])
+        self.assertFalse(izidi[0]["data"]["dovoljeno"])
+        self.assertFalse(izidi[0]["data"]["tece"])
+
+    def test_izklop_konca_sejo(self):
+        z = link_zaslon.Zaslon()
+        z.nastavi(True)
+        self.assertTrue(z.vklopljeno)
+        z.nastavi(False)
+        self.assertFalse(z.vklopljeno)
+        self.assertFalse(z.stanje()["tece"])
+
+    def test_stanje_v_zmoznostih_samo_z_dovoljenjem(self):
+        z = link_zaslon.Zaslon()
+        izidi = []
+        link_daljinec.izvedi_control("status", {}, lambda u: None, izidi.append, zaslon=z)
+        self.assertNotIn("screen.start", izidi[0]["data"]["actions"])
+        z.vklopljeno = True
+        izidi.clear()
+        link_daljinec.izvedi_control("status", {}, lambda u: None, izidi.append, zaslon=z)
+        self.assertIn("screen.start", izidi[0]["data"]["actions"])
+
+
+class Seja(unittest.TestCase):
+    """Seja brez pravega zaslona: preverimo pozdrav, zeton in ciscenje, ne slike."""
+
+    def setUp(self):
+        self.z = link_zaslon.Zaslon(vklopljeno=True, ffmpeg="/bin/true")
+        os.environ.setdefault("DISPLAY", ":0")
+
+    def tearDown(self):
+        self.z.ustavi()
+
+    def test_napacen_zeton_ne_dobi_nicesar(self):
+        seja = self.z.zacni("tv-test")
+        self.assertIn("port", seja)
+        self.assertEqual(len(seja["fp"]), 64)
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        s = ctx.wrap_socket(socket.create_connection(("127.0.0.1", seja["port"]), timeout=5))
+        s.sendall(b"SAFEER-ZASLON napacen-zeton\n")
+        self.assertEqual(s.recv(64), b"")     # povezava se zapre brez odgovora
+        s.close()
+
+    def test_pravi_zeton_dobi_glavo_slike(self):
+        seja = self.z.zacni("tv-test")
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        s = ctx.wrap_socket(socket.create_connection(("127.0.0.1", seja["port"]), timeout=5))
+        s.sendall(("SAFEER-ZASLON %s\n" % seja["token"]).encode())
+        glava = b""
+        while not glava.endswith(b"\n") and len(glava) < 200:
+            k = s.recv(1)
+            if not k:
+                break
+            glava += k
+        self.assertIn(b'"w"', glava)
+        self.assertIn(b'"fps"', glava)
+        s.close()
+
+    def test_ustavi_pozabi_zeton(self):
+        """Po koncu seje stari zeton ne velja vec - tudi ce vticnica se ni docela sproscena."""
+        seja = self.z.zacni("tv-test")
+        self.z.ustavi()
+        self.assertEqual(self.z.vrata, 0)
+        self.assertEqual(self.z._zeton, "")
+        try:
+            s = socket.create_connection(("127.0.0.1", seja["port"]), timeout=2)
+        except OSError:
+            return                                   # vrata zaprta: se bolje
+        try:
+            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            o = ctx.wrap_socket(s)
+            o.settimeout(3)
+            o.sendall(("SAFEER-ZASLON %s\n" % seja["token"]).encode())
+            self.assertEqual(o.recv(64), b"")        # nicesar ne dobi
+            o.close()
+        except (OSError, ssl.SSLError):
+            pass                                     # povezava pade: prav tako v redu
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

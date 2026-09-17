@@ -94,14 +94,15 @@ def izvedi(app, dejanje: str, parametri: dict, odpri_naslov: Callable[[str], Non
 
 
 DEJANJA_CONTROL = ["open_url", "volume", "status"]
-DEJANJA_DATOTEKE = ["files.list"]
+DEJANJA_DATOTEKE = ["files.list", "files.open"]
 DEJANJA_PROGRAMI = ["apps.list", "apps.launch"]
 DEJANJA_HOST = ["host.info"]
+DEJANJA_ZASLON = ["screen.start", "screen.stop", "screen.status"]
 
 
 def izvedi_control(dejanje: str, parametri: dict, odpri_naslov: Callable[[str], None],
                    koncaj: Callable[[dict], None], datoteke=None, posiljatelj: str = "",
-                   hub_url: str = "", programi=None) -> None:
+                   hub_url: str = "", programi=None, zaslon=None) -> None:
     """Safeer Control (namizna aplikacija brez brskalnika): kar zna racunalnik brez brskalnika --
     glasnost, odpiranje strani v sistemskem brskalniku, stanje in seznam deljenih map
     (`files.list`, core/link_datoteke.py, ce je `datoteke` podan). Vse drugo vrne razumljivo napako."""
@@ -121,6 +122,40 @@ def izvedi_control(dejanje: str, parametri: dict, odpri_naslov: Callable[[str], 
                 koncaj(izid(True, "Na računalniku ni izbrane nobene mape", podatki))
             else:
                 koncaj(izid(True, f"{len(podatki['items'])} vnosov", podatki))
+        elif d == "files.open":
+            # Datoteko odpre racunalnik s svojim programom; televizor jo nato vidi prek zaslona.
+            if datoteke is None:
+                koncaj(izid(False, "Deljenje datotek tu ni na voljo", koda="ni_na_racunalniku"))
+                return
+            if datoteke.odpri(str(parametri.get("id", "") or "")):
+                koncaj(izid(True, "Datoteka se odpira na računalniku"))
+            else:
+                koncaj(izid(False, "Te datoteke ni mogoče odpreti", koda="ni_datoteke"))
+        elif d in DEJANJA_ZASLON:
+            # Zaslon racunalnika na televizorju. Brez uporabnikovega dovoljenja v Controlu ne gre.
+            if zaslon is None:
+                koncaj(izid(False, "Deljenje zaslona tu ni na voljo", koda="ni_na_racunalniku"))
+                return
+            if d == "screen.status":
+                koncaj(izid(True, "Stanje zaslona", {**zaslon.na_voljo(), **zaslon.stanje()}))
+                return
+            if d == "screen.stop":
+                zaslon.ustavi()
+                koncaj(izid(True, "Deljenje zaslona je koncano"))
+                return
+            na_voljo = zaslon.na_voljo()
+            if not na_voljo.get("dovoljeno"):
+                koncaj(izid(False, "Uporabnik deljenja zaslona ni vklopil", koda="ni_dovoljeno"))
+                return
+            if not na_voljo.get("mozno"):
+                koncaj(izid(False, "Tega zaslona ni mogoce zajeti", koda="ni_zajema"))
+                return
+            try:
+                seja = zaslon.zacni(posiljatelj, str(parametri.get("quality", "") or "srednja"))
+            except RuntimeError as e:
+                koncaj(izid(False, str(e), koda="ni_zajema"))
+                return
+            koncaj(izid(True, "Zaslon se deli", seja))
         elif d == "host.info":
             # Kaj ima ta racunalnik (host): procesor, pomnilnik, prostor. Samo stevilke o zmogljivosti,
             # nic o vsebini - televizor mora vedeti, koliko moci ima na voljo.
@@ -162,7 +197,8 @@ def izvedi_control(dejanje: str, parametri: dict, odpri_naslov: Callable[[str], 
         elif d == "status":
             s = {"app": "safeer-control-linux", "version": _razlicica_control(), "foreground": True,
                  "actions": DEJANJA_CONTROL + DEJANJA_HOST + (DEJANJA_DATOTEKE if datoteke is not None else [])
-                            + (DEJANJA_PROGRAMI if programi is not None and programi.vklopljeno else []),
+                            + (DEJANJA_PROGRAMI if programi is not None and programi.vklopljeno else [])
+                            + (DEJANJA_ZASLON if zaslon is not None and zaslon.na_voljo().get("dovoljeno") else []),
                  "keys": [], "title": "Safeer Control"}
             if datoteke is not None:
                 s["shared_folders"] = len(datoteke.poti())
