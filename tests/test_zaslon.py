@@ -17,10 +17,13 @@ class Ukaz(unittest.TestCase):
         """Intelov nizkoenergijski kodirnik zna samo CQP; z -b:v se sploh ne odpre."""
         u = link_zaslon.ukaz_ffmpeg(":0", 1920, 1080, 1920, 1080, 30, "6M", "/dev/dri/renderD128", qp=24)
         self.assertIn("h264_vaapi", u)
+        self.assertEqual(u[u.index("-profile:v") + 1], "high")   # boljse za drobno besedilo
         self.assertIn("-rc_mode", u)
         self.assertEqual(u[u.index("-rc_mode") + 1], "CQP")
         self.assertEqual(u[u.index("-qp") + 1], "24")
         self.assertNotIn("-b:v", u)
+        # Varcnega nacina ne vsiljujemo: kjer obstaja boljsa pot, naj jo gonilnik izbere sam.
+        self.assertNotIn("-low_power", u)
         self.assertEqual(u[-1], "-")
 
     def test_programsko_kodiranje_brez_zamika(self):
@@ -29,6 +32,19 @@ class Ukaz(unittest.TestCase):
         self.assertEqual(u[u.index("-tune") + 1], "zerolatency")
         self.assertEqual(u[u.index("-b:v") + 1], "3M")
         self.assertEqual(u[u.index("-bf") + 1], "0")      # brez B-slik: manjsa zakasnitev
+
+    def test_brez_skaliranja_kadar_je_slika_ze_prava(self):
+        """Prevzorcenje zmehca besedilo; kadar je zaslon ze prave velikosti, ga ne delamo."""
+        enako = link_zaslon.ukaz_ffmpeg(":0", 1920, 1080, 1920, 1080, 30, "8M", "/dev/dri/renderD128")
+        self.assertNotIn("scale=", " ".join(enako))
+        manjse = link_zaslon.ukaz_ffmpeg(":0", 1280, 720, 1920, 1080, 30, "4M", "/dev/dri/renderD128")
+        self.assertIn("scale=1280:720", " ".join(manjse))
+
+    def test_kakovosti_so_stevilcno_smiselne(self):
+        """Visja kakovost = nizji qp; imena so del dogovora s televizorjem."""
+        qp = [link_zaslon.KAKOVOSTI[k]["qp"] for k in ("nizka", "srednja", "visoka", "najvisja")]
+        self.assertEqual(qp, sorted(qp, reverse=True))
+        self.assertIn(link_zaslon.PRIVZETA_KAKOVOST, link_zaslon.KAKOVOSTI)
 
     def test_slika_ohrani_razmerje_in_ne_povecuje(self):
         self.assertEqual(link_zaslon.Zaslon._prilagodi((3840, 2160), 1920, 1080), (1920, 1080))
