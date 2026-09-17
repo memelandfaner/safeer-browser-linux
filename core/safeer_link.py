@@ -140,6 +140,8 @@ class SafeerLink:
         # in Hub vidi napravo dvakrat.
         self._zaklep_povezave = threading.Lock()
         self._dovoljeni_koren = ""
+        # Kdor Link gosti brez okna (Safeer Control v pladnju), zeli vedeti, ali je povezan.
+        self.ob_povezavi: Optional[Callable[[bool], None]] = None
 
     # ------------------------------------------------------------------
     # Stanje
@@ -611,6 +613,11 @@ class SafeerLink:
 
     def _na_stanje_povezave(self, povezan: bool) -> None:
         self._odziv("povezava", povezan)
+        if self.ob_povezavi is not None:
+            try:
+                self.ob_povezavi(povezan)
+            except Exception:
+                pass
         if povezan:
             return
         # Sredisce je ugasnilo ali dobilo nov naslov. Cez nekaj sekund pogledamo, ali se

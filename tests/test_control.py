@@ -118,3 +118,35 @@ class ControlSorodnik(unittest.TestCase):
                 self.assertEqual(klici, [])
             finally:
                 link_hub.NASTAVITVE_MAPA, link_tls.zahteva = stara_mapa, stara_zahteva
+
+
+class ControlOzadje(unittest.TestCase):
+    """Tihi zagon: vnos za zagon ob prijavi in besedila pladnja."""
+
+    def test_samozagon_in_besedila(self):
+        try:
+            import safeer_control as sc
+        except ImportError as e:
+            self.skipTest(f"GTK ni na voljo: {e}")
+        with tempfile.TemporaryDirectory() as mapa:
+            pot = os.path.join(mapa, "autostart", "safeer-control.desktop")
+            stara = sc.SAMOZAGON_POT
+            sc.SAMOZAGON_POT = pot
+            try:
+                self.assertFalse(sc.Samozagon.je_vklopljen())
+                sc.Samozagon.nastavi(True)
+                self.assertTrue(sc.Samozagon.je_vklopljen())
+                vsebina = open(pot, encoding="utf-8").read()
+                self.assertIn("[Desktop Entry]", vsebina)
+                self.assertIn("--ozadje", vsebina)
+                self.assertIn("X-GNOME-Autostart-enabled=true", vsebina)
+                sc.Samozagon.nastavi(False)
+                self.assertFalse(os.path.exists(pot))
+                self.assertFalse(sc.Samozagon.je_vklopljen())
+            finally:
+                sc.SAMOZAGON_POT = stara
+        for jezik in ("sl", "en", "de", "es", "fr", "it"):
+            for kljuc in ("odpri", "samozagon", "koncaj", "povezan", "ni"):
+                self.assertTrue(sc.besedilo(jezik, kljuc))
+        self.assertEqual(sc.besedilo("xx", "koncaj"), sc.besedilo("en", "koncaj"))
+        self.assertEqual(sc.besedilo(None, "odpri"), sc.besedilo("en", "odpri"))

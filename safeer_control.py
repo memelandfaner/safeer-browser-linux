@@ -12,6 +12,11 @@ Kar potrebuje brskalnik (posiljanje odprte strani, zaznamki), stran v Controlu s
 Svoja identiteta in shramba: ~/.config/safeer-control/link.json. Ce je na tem racunalniku
 Safeer Browser ze povezan v Safeer Link, Control tega ne podira - obe aplikaciji sta v Linku
 vsaka s svojim imenom.
+
+Tiho v ozadju: `safeer-control --ozadje` se poveze v Safeer Link brez okna in pusti ikono v
+pladnju (Odpri, Zazeni ob prijavi, Koncaj). Ko je racunalnik enkrat seznanjen, se Control ob
+prijavi zaganja sam (~/.config/autostart) - uporabnik ne zaganja nicesar; televizor in telefon
+ga vidita, kadar je racunalnik prizgan. Zapiranje okna Control le skrije.
 """
 
 from __future__ import annotations
@@ -37,6 +42,21 @@ from core.safeer_link import SafeerLink  # noqa: E402
 
 APP_ID = "io.github.memelandfaner.SafeerControl"
 NASTAVITVE_MAPA = os.path.expanduser("~/.config/safeer-control")
+SAMOZAGON_POT = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")), "autostart", "safeer-control.desktop")
+
+# Besedila pladnja v jezikih vmesnika (isti nabor kot Safeer Browser).
+BESEDILA = {
+    "sl": {"odpri": "Odpri Safeer Control", "samozagon": "Zaženi ob prijavi", "koncaj": "Končaj", "povezan": "Safeer Link: povezan", "ni": "Safeer Link: ni povezave"},
+    "en": {"odpri": "Open Safeer Control", "samozagon": "Start at login", "koncaj": "Quit", "povezan": "Safeer Link: connected", "ni": "Safeer Link: not connected"},
+    "de": {"odpri": "Safeer Control öffnen", "samozagon": "Beim Anmelden starten", "koncaj": "Beenden", "povezan": "Safeer Link: verbunden", "ni": "Safeer Link: nicht verbunden"},
+    "es": {"odpri": "Abrir Safeer Control", "samozagon": "Iniciar al iniciar sesión", "koncaj": "Salir", "povezan": "Safeer Link: conectado", "ni": "Safeer Link: sin conexión"},
+    "fr": {"odpri": "Ouvrir Safeer Control", "samozagon": "Lancer à la connexion", "koncaj": "Quitter", "povezan": "Safeer Link : connecté", "ni": "Safeer Link : non connecté"},
+    "it": {"odpri": "Apri Safeer Control", "samozagon": "Avvia all’accesso", "koncaj": "Esci", "povezan": "Safeer Link: connesso", "ni": "Safeer Link: non connesso"},
+}
+
+
+def besedilo(jezik: Optional[str], kljuc: str) -> str:
+    return BESEDILA.get((jezik or "en")[:2], BESEDILA["en"]).get(kljuc, BESEDILA["en"][kljuc])
 
 
 def razlicica() -> str:
@@ -154,40 +174,193 @@ def identiteta() -> tuple:
     return link_hub.id_naprave() + "-control", "Safeer Control (" + ime + ")"
 
 
+class Samozagon:
+    """Zagon ob prijavi: vnos v ~/.config/autostart (XDG), ki pozene `safeer-control --ozadje`."""
+
+    @staticmethod
+    def je_vklopljen() -> bool:
+        try:
+            with open(SAMOZAGON_POT, "r", encoding="utf-8") as d:
+                v = d.read()
+            return "safeer-control" in v and "X-GNOME-Autostart-enabled=false" not in v and "Hidden=true" not in v
+        except Exception:
+            return False
+
+    @staticmethod
+    def nastavi(vklopljen: bool) -> None:
+        try:
+            if not vklopljen:
+                if os.path.exists(SAMOZAGON_POT):
+                    os.remove(SAMOZAGON_POT)
+                return
+            os.makedirs(os.path.dirname(SAMOZAGON_POT), exist_ok=True)
+            ukaz = "safeer-control --ozadje"
+            if not shutil_which("safeer-control"):
+                ukaz = f'"{sys.executable}" "{os.path.abspath(__file__)}" --ozadje'
+            with open(SAMOZAGON_POT, "w", encoding="utf-8") as d:
+                d.write("[Desktop Entry]\nType=Application\nName=Safeer Control\n"
+                        "Comment=Safeer Link v ozadju (daljinec, deljenje) / Safeer Link in the background\n"
+                        f"Exec={ukaz}\nIcon=safeer-control\nTerminal=false\nNoDisplay=true\n"
+                        "X-GNOME-Autostart-enabled=true\nX-GNOME-Autostart-Delay=8\n")
+        except Exception as e:  # noqa: BLE001
+            print(f"[SafeerControl] Samozagona ni bilo mogoče nastaviti: {e}")
+
+
+def shutil_which(ime: str) -> Optional[str]:
+    import shutil
+    return shutil.which(ime)
+
+
+class Pladenj:
+    """Ikona v pladnju: XApp.StatusIcon (Linux Mint/Cinnamon), sicer Gtk.StatusIcon."""
+
+    def __init__(self, app: "SafeerControl") -> None:
+        self.app = app
+        self.jezik = app.nastavitve.get("ui_language")
+        self.meni = Gtk.Menu()
+        self.odpri = Gtk.MenuItem(label=besedilo(self.jezik, "odpri"))
+        self.odpri.connect("activate", lambda *_a: app.pokazi_okno())
+        self.samozagon = Gtk.CheckMenuItem(label=besedilo(self.jezik, "samozagon"))
+        self.samozagon.set_active(Samozagon.je_vklopljen())
+        self._preklop_id = self.samozagon.connect("toggled", self._preklop)
+        self.koncaj = Gtk.MenuItem(label=besedilo(self.jezik, "koncaj"))
+        self.koncaj.connect("activate", lambda *_a: app.koncaj())
+        for m in (self.odpri, Gtk.SeparatorMenuItem(), self.samozagon, Gtk.SeparatorMenuItem(), self.koncaj):
+            self.meni.append(m)
+        self.meni.show_all()
+        self.ikona = None
+        self.xapp = None
+        ikona = "safeer-control"
+        try:
+            if not Gtk.IconTheme.get_default().has_icon(ikona):
+                ikona = os.path.join(KOREN, "assets", "icon.png")  # zagon iz izvorne kode brez namescene teme
+        except Exception:
+            pass
+        try:
+            gi.require_version("XApp", "1.0")
+            from gi.repository import XApp  # noqa: WPS433
+            self.xapp = XApp.StatusIcon()
+            self.xapp.set_icon_name(ikona)
+            self.xapp.set_name("safeer-control")
+            self.xapp.set_secondary_menu(self.meni)
+            self.xapp.connect("activate", lambda *_a: app.pokazi_okno())
+        except Exception:
+            self.ikona = Gtk.StatusIcon()
+            if os.path.isabs(ikona):
+                self.ikona.set_from_file(ikona)
+            else:
+                self.ikona.set_from_icon_name(ikona)
+            self.ikona.set_title("Safeer Control")
+            self.ikona.connect("activate", lambda *_a: app.pokazi_okno())
+            self.ikona.connect("popup-menu", lambda ikona, gumb, cas: self.meni.popup(None, None, Gtk.StatusIcon.position_menu, ikona, gumb, cas))
+        self.stanje(False)
+
+    def stanje(self, povezan: bool) -> None:
+        napis = besedilo(self.jezik, "povezan" if povezan else "ni")
+        try:
+            if self.xapp is not None:
+                self.xapp.set_tooltip_text(napis)
+            elif self.ikona is not None:
+                self.ikona.set_tooltip_text(napis)
+        except Exception:
+            pass
+
+    def _preklop(self, element) -> None:
+        self.app.nastavi_samozagon(element.get_active())
+
+    def osvezi_samozagon(self) -> None:
+        self.samozagon.handler_block(self._preklop_id)
+        self.samozagon.set_active(Samozagon.je_vklopljen())
+        self.samozagon.handler_unblock(self._preklop_id)
+
+
 class SafeerControl(Gtk.Application):
-    def __init__(self) -> None:
+    def __init__(self, ozadje: bool = False) -> None:
         super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.FLAGS_NONE)
         self.link: Optional[SafeerLink] = None
         self.nastavitve = Nastavitve(os.path.join(NASTAVITVE_MAPA, "control.json"))
         self.web_context = WebKit2.WebContext.get_default()
         self.gledalec: Optional[Gtk.Window] = None
+        # --ozadje: brez okna, z ikono v pladnju; okno se odpre iz pladnja ali ob ponovnem zagonu iz menija.
+        self.ozadje = ozadje
+        self.pladenj: Optional[Pladenj] = None
+        self._prva_aktivacija = True
 
-    def do_activate(self) -> None:
-        if self.link is not None and self.link.okno is not None:
+    def do_startup(self) -> None:
+        Gtk.Application.do_startup(self)
+        if self.ozadje:
+            self.hold()  # brez okna bi se GApplication koncal; ikona v pladnju ga drzi
+
+    def _pripravi_link(self) -> None:
+        nastavitve_linka = link_hub.Nastavitve(os.path.join(NASTAVITVE_MAPA, "link.json"))
+        id_naprave, ime = identiteta()
+        try:
+            if prevzemi_seznanitev_brskalnika(nastavitve_linka, id_naprave, ime):
+                print("[SafeerControl] Seznanitev prevzeta od Safeer Browserja (brez kode).")
+        except Exception as e:  # noqa: BLE001
+            print(f"[SafeerControl] Seznanitve brskalnika ni bilo mogoče prevzeti: {e}")
+        self.link = SafeerLink(
+            None, self.nastavitve,
+            trenutna_stran=lambda: {},
+            odpri_naslov=self.odpri_naslov,
+            koren_programa=KOREN,
+            dovoli_potrdilo=self.dovoli_potrdilo,
+            nastavitve=nastavitve_linka,
+            identiteta=(id_naprave, ime),
+            control=True,
+            ob_zaprtju=self.ob_zaprtju_okna,
+        )
+        self.link.ob_povezavi = self._na_povezavo
+
+    def _na_povezavo(self, povezan: bool) -> None:
+        if self.pladenj is not None:
+            GLib.idle_add(lambda: (self.pladenj.stanje(povezan), False)[1])
+        # Prvic seznanjen racunalnik: od zdaj naprej se Control zaganja ob prijavi, da ga naprave vidijo.
+        if povezan and not self.nastavitve.get("samozagon_nastavljen"):
+            self.nastavitve.set("samozagon_nastavljen", True)
+            if self.nastavitve.get("samozagon", True):
+                Samozagon.nastavi(True)
+                if self.pladenj is not None:
+                    GLib.idle_add(lambda: (self.pladenj.osvezi_samozagon(), False)[1])
+
+    def nastavi_samozagon(self, vklopljen: bool) -> None:
+        self.nastavitve.set("samozagon", bool(vklopljen))
+        self.nastavitve.set("samozagon_nastavljen", True)
+        Samozagon.nastavi(bool(vklopljen))
+
+    def ob_zaprtju_okna(self) -> None:
+        # Z ikono v pladnju zapiranje okna Control samo skrije; Link tece naprej.
+        if self.pladenj is None:
+            self.quit()
+
+    def koncaj(self) -> None:
+        try:
+            if self.link is not None and self.link.povezava is not None:
+                self.link.povezava.zapri()
+        except Exception:
+            pass
+        self.quit()
+
+    def pokazi_okno(self) -> None:
+        if self.link is None:
+            self._pripravi_link()
+        if self.link.okno is not None:
             self.link.okno.present()
             return
-        if self.link is None:
-            nastavitve_linka = link_hub.Nastavitve(os.path.join(NASTAVITVE_MAPA, "link.json"))
-            id_naprave, ime = identiteta()
-            try:
-                if prevzemi_seznanitev_brskalnika(nastavitve_linka, id_naprave, ime):
-                    print("[SafeerControl] Seznanitev prevzeta od Safeer Browserja (brez kode).")
-            except Exception as e:  # noqa: BLE001
-                print(f"[SafeerControl] Seznanitve brskalnika ni bilo mogoče prevzeti: {e}")
-            self.link = SafeerLink(
-                None, self.nastavitve,
-                trenutna_stran=lambda: {},
-                odpri_naslov=self.odpri_naslov,
-                koren_programa=KOREN,
-                dovoli_potrdilo=self.dovoli_potrdilo,
-                nastavitve=nastavitve_linka,
-                identiteta=(id_naprave, ime),
-                control=True,
-                ob_zaprtju=self.quit,
-            )
         self.link.pokazi()
         if self.link.okno is not None:
             self.add_window(self.link.okno)
+
+    def do_activate(self) -> None:
+        if self.ozadje and self._prva_aktivacija:
+            self._prva_aktivacija = False
+            if self.link is None:
+                self._pripravi_link()
+            self.pladenj = Pladenj(self)
+            self.link.povezi_v_ozadju()
+            return
+        self._prva_aktivacija = False
+        self.pokazi_okno()
 
     # ------------------------------------------------------------------
     # Odpiranje naslovov: gledalec zaslona s Huba v svojem oknu, vse drugo v sistemskem brskalniku
@@ -251,10 +424,12 @@ def main() -> int:
     if "--version" in sys.argv[1:]:
         print(f"Safeer Control {APP_VERSION}")
         return 0
+    ozadje = "--ozadje" in sys.argv[1:]
+    argv = [a for a in sys.argv if a != "--ozadje"]
     GLib.set_prgname("safeer-control")
     GLib.set_application_name("Safeer Control")
-    app = SafeerControl()
-    return app.run(sys.argv)
+    app = SafeerControl(ozadje=ozadje)
+    return app.run(argv)
 
 
 if __name__ == "__main__":
