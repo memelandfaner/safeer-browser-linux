@@ -30,7 +30,12 @@ import time
 from typing import Dict, List, Optional
 
 from core.link_datoteke import TLS_MAPA, zagotovi_potrdilo
+from core.link_vnos import Vnos
 
+#: Vrste okvirjev v pretoku.
+OKVIR_SLIKA, OKVIR_ZVOK = 1, 2
+#: Zvok: surov PCM, ker je najpreprostejsi in brez zakasnitve (1,5 Mb/s je v domacem omrezju nic).
+ZVOK_HZ, ZVOK_KANALI = 48000, 2
 #: Kolikor casa cakamo, da se televizor javi, preden sejo zavrzemo.
 CAKANJE_S = 30
 #: Najvecja slika, ki jo posiljamo (televizor je 4K, a 1080p je za namizje dovolj in hitreje).
@@ -118,6 +123,34 @@ def ukaz_ffmpeg(display: str, sirina: int, visina: int, izvor_sirina: int, izvor
     return u
 
 
+def privzeti_monitor() -> Optional[str]:
+    """Kar racunalnik ta trenutek predvaja (monitor privzetega izhoda).
+
+    Ime izhoda vprasamo `pactl`; ce ga ni ali ce se ne more povezati (to se zgodi procesu, ki ne
+    tece v uporabnikovi seji), uporabimo `@DEFAULT_MONITOR@` - to ime razresi zvocni streznik sam.
+    None vrnemo samo, kadar zvocnega streznika ocitno ni.
+    """
+    if shutil.which("pactl"):
+        try:
+            r = subprocess.run(["pactl", "get-default-sink"], text=True, capture_output=True, timeout=3)
+            ime = (r.stdout or "").strip()
+            if ime:
+                return ime + ".monitor"
+        except Exception:
+            pass
+    zvocni_vticnik = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/run/user/%d" % os.getuid()), "pulse", "native")
+    if os.path.exists(zvocni_vticnik) or os.environ.get("PULSE_SERVER"):
+        return "@DEFAULT_MONITOR@"
+    return None
+
+
+def ukaz_zvok(vir: str, ffmpeg: str = "ffmpeg") -> List[str]:
+    """Zajem zvoka racunalnika kot surov PCM. Majhni koscki (10 ms), da zvok ne zaostaja za sliko."""
+    return [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin",
+            "-f", "pulse", "-fragment_size", "1920", "-i", vir,
+            "-ac", str(ZVOK_KANALI), "-ar", str(ZVOK_HZ), "-f", "s16le", "-"]
+
+
 class Zaslon:
     """Deljenje zaslona racunalnika s televizorjem: ena seja naenkrat, samo na uporabnikov ukaz."""
 
@@ -137,9 +170,14 @@ class Zaslon:
         self._naprava = ""
         self._kakovost = PRIVZETA_KAKOVOST
         self._slika: Dict[str, int] = {}
+        self._zvok_vir: Optional[str] = None
         self._posluh: Optional[socket.socket] = None
         self._proces: Optional[subprocess.Popen] = None
+        self._zvocni: Optional[subprocess.Popen] = None
         self._nit: Optional[threading.Thread] = None
+        self._pisalo = threading.Lock()
+        self._vnos = Vnos()
+        self._vnosov = 0
         self._tece_od = 0.0
         self._povezan = False
         self._kljucavnica = threading.Lock()
@@ -156,6 +194,8 @@ class Zaslon:
             "ffmpeg": bool(self.ffmpeg),
             "zaslon": display,
             "strojno": bool(vaapi),
+            "zvok": bool(privzeti_monitor()),
+            "vnos": self._vnos.mozno,
             "kakovosti": sorted(KAKOVOSTI),
         }
 
@@ -166,6 +206,7 @@ class Zaslon:
             s.update(self._slika)
         if self._tece_od:
             s["sekund"] = int(time.time() - self._tece_od)
+        s["vnosov"] = self._vnosov
         return s
 
     # ------------------------------------------------------------------ zagon
@@ -212,13 +253,17 @@ class Zaslon:
             self._posluh = posluh
             self._tece_od = time.time()
             self._povezan = False
+            self._zvok_vir = privzeti_monitor()
+            self._vnos = Vnos(display=display)
             ukaz = ukaz_ffmpeg(display, sirina, visina, izvor[0], izvor[1], int(k["fps"]),
                                str(k["bitrate"]), vaapi_naprava(), self.ffmpeg, int(k["qp"]))
             self._nit = threading.Thread(target=self._streci, args=(posluh, ctx, ukaz),
                                          name="safeer-zaslon", daemon=True)
             self._nit.start()
-        return {"port": self.vrata, "fp": self.odtis, "token": self._zeton,
-                "codec": "h264", **self._slika, "quality": self._kakovost}
+        return {"port": self.vrata, "fp": self.odtis, "token": self._zeton, "v": 2,
+                "codec": "h264", **self._slika, "quality": self._kakovost,
+                "audio": {"hz": ZVOK_HZ, "channels": ZVOK_KANALI, "format": "s16le"} if self._zvok_vir else None,
+                "input": self._vnos.mozno}
 
     @staticmethod
     def _prilagodi(izvor, najvec_sirina, najvec_visina) -> tuple:
@@ -239,18 +284,35 @@ class Zaslon:
             if not pozdrav.startswith("SAFEER-ZASLON ") or pozdrav.split(" ", 1)[1].strip() != self._zeton:
                 odjemalec.close()
                 return
-            odjemalec.sendall((json.dumps({"w": self._slika["width"], "h": self._slika["height"],
-                                           "fps": self._slika["fps"]}) + "\n").encode("utf-8"))
+            glava = {"v": 2, "w": self._slika["width"], "h": self._slika["height"],
+                     "fps": self._slika["fps"],
+                     "zvok": {"hz": ZVOK_HZ, "kanali": ZVOK_KANALI, "oblika": "s16le"} if self._zvok_vir else None,
+                     "vnos": self._vnos.mozno}
+            odjemalec.sendall((json.dumps(glava) + "\n").encode("utf-8"))
             odjemalec.settimeout(None)
             self._povezan = True
-            proces = subprocess.Popen(ukaz, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                      stdin=subprocess.DEVNULL, bufsize=0)
-            self._proces = proces
-            while True:
-                kos = proces.stdout.read(32 * 1024)
-                if not kos:
-                    break
-                odjemalec.sendall(kos)
+
+            slika = subprocess.Popen(ukaz, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                     stdin=subprocess.DEVNULL, bufsize=0)
+            self._proces = slika
+            niti = [threading.Thread(target=self._crpaj, args=(slika, OKVIR_SLIKA, odjemalec, 32 * 1024),
+                                     name="safeer-zaslon-slika", daemon=True)]
+            if self._zvok_vir:
+                try:
+                    zvok = subprocess.Popen(ukaz_zvok(self._zvok_vir, self.ffmpeg), stdout=subprocess.PIPE,
+                                            stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, bufsize=0)
+                    self._zvocni = zvok
+                    # Zvok beremo v majhnih koscih (10 ms), da ne caka za veliko sliko.
+                    niti.append(threading.Thread(target=self._crpaj, args=(zvok, OKVIR_ZVOK, odjemalec, 1920),
+                                                 name="safeer-zaslon-zvok", daemon=True))
+                except Exception:
+                    self._zvocni = None
+            # Vnos tece nazaj po isti povezavi; brati ga moramo sproti, sicer se vticnica zamasi.
+            niti.append(threading.Thread(target=self._beri_vnos, args=(odjemalec,),
+                                         name="safeer-zaslon-vnos", daemon=True))
+            for n in niti:
+                n.start()
+            niti[0].join()          # dokler tece slika, tece seja
         except (OSError, ssl.SSLError, ValueError):
             pass
         finally:
@@ -261,6 +323,47 @@ class Zaslon:
             except Exception:
                 pass
             self.ustavi()
+
+    def _crpaj(self, proces: subprocess.Popen, vrsta: int, odjemalec, kos: int) -> None:
+        """Bere en vir (slika ali zvok) in ga v okvirjih poslje televizorju. Pisanje je pod kljucem,
+        da se okvirja dveh virov nikoli ne prepletata."""
+        try:
+            while True:
+                podatki = proces.stdout.read(kos)
+                if not podatki:
+                    break
+                glava = bytes([vrsta]) + len(podatki).to_bytes(4, "big")
+                with self._pisalo:
+                    odjemalec.sendall(glava + podatki)
+        except (OSError, ssl.SSLError, ValueError, AttributeError):
+            pass
+
+    def _beri_vnos(self, odjemalec) -> None:
+        """Dogodki televizorja (ena vrstica JSON na dogodek). Kar ni na seznamu dovoljenega, pade."""
+        ostanek = b""
+        try:
+            while True:
+                kos = odjemalec.recv(4096)
+                if not kos:
+                    break
+                ostanek += kos
+                while b"\n" in ostanek:
+                    vrstica, ostanek = ostanek.split(b"\n", 1)
+                    if len(vrstica) > 4096:
+                        continue
+                    try:
+                        dogodek = json.loads(vrstica.decode("utf-8", "replace"))
+                    except ValueError:
+                        continue
+                    if self._vnos.izvedi(dogodek):
+                        self._vnosov += 1
+                        # Redko, a dovolj, da se v dnevniku vidi, da vnos res prihaja skozi.
+                        if self._vnosov in (1, 10, 100) or self._vnosov % 500 == 0:
+                            print("[zaslon] vnos #%d: %s" % (self._vnosov, dogodek.get("vrsta")), flush=True)
+                if len(ostanek) > 8192:
+                    ostanek = b""
+        except (OSError, ssl.SSLError, ValueError):
+            pass
 
     @staticmethod
     def _preberi_vrstico(s: socket.socket, najvec: int = 256) -> str:
@@ -275,19 +378,22 @@ class Zaslon:
     def ustavi(self) -> None:
         """Konca zajem in zapre vrata; zeton takoj ne velja vec."""
         with self._kljucavnica:
-            proces, posluh = self._proces, self._posluh
+            proces, zvocni, posluh = self._proces, self._zvocni, self._posluh
             self._proces = None
+            self._zvocni = None
             self._posluh = None
             self._zeton = ""
             self.vrata = 0
             self._tece_od = 0.0
-        if proces is not None:
+        for p in (proces, zvocni):
+            if p is None:
+                continue
             try:
-                proces.terminate()
-                proces.wait(timeout=3)
+                p.terminate()
+                p.wait(timeout=3)
             except Exception:
                 try:
-                    proces.kill()
+                    p.kill()
                 except Exception:
                     pass
         if posluh is not None:
