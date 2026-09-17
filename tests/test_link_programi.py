@@ -41,7 +41,7 @@ class Seznam(unittest.TestCase):
 
     def test_brez_dovoljenja_ni_seznama(self):
         p = link_programi.Programi(False, self.aplikacije)
-        self.assertEqual(p.seznam(), {"enabled": False, "items": []})
+        self.assertEqual(p.seznam(), {"enabled": False, "items": [], "total": 0, "offset": 0})
         self.assertFalse(p.zazeni("app:urejevalnik.desktop"), "brez dovoljenja se nic ne zazene")
 
     def test_seznam_pokaze_le_smiselne_programe(self):
@@ -65,7 +65,7 @@ class Seznam(unittest.TestCase):
         p = link_programi.Programi(True, self.aplikacije)
         p.seznam(z_ikonami=False)
         p.nastavi(False)
-        self.assertEqual(p.seznam(), {"enabled": False, "items": []})
+        self.assertEqual(p.seznam(), {"enabled": False, "items": [], "total": 0, "offset": 0})
 
 
 class Ukazi(unittest.TestCase):
@@ -97,3 +97,38 @@ class Ukazi(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StraniSeznama(unittest.TestCase):
+    """Cel seznam z ikonami preseze omejitev sporocila v Linku, zato gre po kosih."""
+
+    def setUp(self):
+        self.mapa = tempfile.mkdtemp()
+        for i in range(7):
+            with open(os.path.join(self.mapa, f"p{i}.desktop"), "w", encoding="utf-8") as f:
+                f.write(f"[Desktop Entry]\nType=Application\nName=Program {i}\nExec=/bin/true\n")
+        self.programi = link_programi.Programi(True, mape=[self.mapa])
+
+    def tearDown(self):
+        shutil.rmtree(self.mapa, ignore_errors=True)
+
+    def test_kos_vrne_del_in_skupno(self):
+        prvi = self.programi.seznam(z_ikonami=False, od=0, koliko=3)
+        self.assertEqual(len(prvi["items"]), 3)
+        self.assertEqual(prvi["total"], 7)
+        self.assertEqual(prvi["offset"], 0)
+        drugi = self.programi.seznam(z_ikonami=False, od=3, koliko=3)
+        self.assertEqual([v["name"] for v in drugi["items"]], ["Program 3", "Program 4", "Program 5"])
+        zadnji = self.programi.seznam(z_ikonami=False, od=6, koliko=3)
+        self.assertEqual(len(zadnji["items"]), 1)
+
+    def test_brez_koliko_vrne_vse(self):
+        vse = self.programi.seznam(z_ikonami=False)
+        self.assertEqual(len(vse["items"]), 7)
+        self.assertEqual(vse["total"], 7)
+
+    def test_izklopljeno_pove_skupno_nic(self):
+        p = link_programi.Programi(False, mape=[self.mapa])
+        odgovor = p.seznam(z_ikonami=False, od=0, koliko=3)
+        self.assertFalse(odgovor["enabled"])
+        self.assertEqual(odgovor["total"], 0)

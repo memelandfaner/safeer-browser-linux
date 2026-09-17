@@ -130,7 +130,13 @@ def izvedi_control(dejanje: str, parametri: dict, odpri_naslov: Callable[[str], 
             if programi is None:
                 koncaj(izid(False, "Programi tu niso na voljo", koda="ni_na_racunalniku"))
                 return
-            podatki = programi.seznam()
+            # Po kosih: cel seznam z ikonami preseze omejitev sporocila (256 kB).
+            koliko = parametri.get("limit")
+            koliko = int(koliko) if isinstance(koliko, (int, float)) and koliko else 0
+            od = parametri.get("offset")
+            od = int(od) if isinstance(od, (int, float)) else 0
+            z_ikonami = parametri.get("icons") is not False
+            podatki = programi.seznam(z_ikonami=z_ikonami, od=od, koliko=max(0, min(koliko, 60)))
             if not podatki.get("enabled"):
                 koncaj(izid(True, "Računalnik programov ne deli", podatki))
             else:
