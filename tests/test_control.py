@@ -50,7 +50,7 @@ class ControlPaket(unittest.TestCase):
                            check=True, capture_output=True)
             lib = os.path.join(mapa, "usr", "lib", "safeer-control")
             for pot in ("safeer_control.py", "core/safeer_link.py", "core/link_hub.py", "core/link_tls.py",
-                        "core/link_deljenje.py", "core/link_daljinec.py", "core/spake2.py",
+                        "core/link_deljenje.py", "core/link_daljinec.py", "core/link_datoteke.py", "core/spake2.py",
                         "assets/link/index.html", "assets/link/link.js", "assets/link/daljinec.js",
                         "packaging/VERSION_CONTROL"):
                 self.assertTrue(os.path.isfile(os.path.join(lib, pot)), pot)
@@ -68,6 +68,17 @@ class ControlPaket(unittest.TestCase):
         self.assertIn("function narisiControl()", js)
         for id_ in ("gumbZapri", "panelCast", "panelSync", "predvajalnik"):
             self.assertIn('pokazi("%s", false)' % id_, js)
+        # Deljene mape za televizor: plosca samo v Controlu, besedila v vseh jezikih, most zna dodati/odstraniti.
+        html = open(os.path.join(KOREN, "assets", "link", "index.html"), encoding="utf-8").read()
+        self.assertIn('id="panelMape" hidden', html)
+        for jezik in ("sl", "en", "de", "es", "fr", "it"):
+            blok = js.split("\n    %s: {\n" % jezik, 1)[1]
+            for kljuc in ("mapeNaslov", "mapeOpis", "mapeDodaj", "mapePrazno", "mapeOdstrani", "mapeStandardne"):
+                self.assertIn(kljuc + ":", blok.split("\n    },", 1)[0], (jezik, kljuc))
+        self.assertIn("most.dodajDeljenoMapo()", js)
+        self.assertIn("most.odstraniDeljenoMapo(i)", js)
+        most = open(os.path.join(KOREN, "core", "safeer_link.py"), encoding="utf-8").read()
+        self.assertIn("dodajDeljenoMapo: function", most)
 
 
 if __name__ == "__main__":

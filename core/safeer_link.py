@@ -70,6 +70,9 @@ MOST_JS = """
     poslji: function (id, url, naslov) { poslji("poslji", [id, url, naslov]); },
     nadzor: function (id, ukaz, vrednost) { poslji("nadzor", [id, ukaz, vrednost]); },
     ukaz: function (id, dejanje, parametri, ref) { poslji("ukaz", [id, dejanje, String(parametri || "{}"), String(ref || "")]); },
+    dodajDeljenoMapo: function () { poslji("dodajDeljenoMapo", []); },
+    odstraniDeljenoMapo: function (i) { poslji("odstraniDeljenoMapo", [i]); },
+    deliStandardneMape: function () { poslji("deliStandardneMape", []); },
     znaGovor: function () { return false; },
     lahkoVOspredje: function () { return true; },
     dovoliOspredje: function () {},
@@ -122,6 +125,8 @@ class SafeerLink:
         # (pem, gostitelj). Brez tega WebKit stran s Huba zavrne.
         self.dovoli_potrdilo = dovoli_potrdilo
         self.deljenje_zaslona: Optional[link_deljenje.DeljenjeZaslona] = None
+        # Safeer Control: deljene mape za televizor (core/link_datoteke.Datoteke); brskalnik jih nima.
+        self.datoteke = None
 
         self.nastavitve = nastavitve if nastavitve is not None else link_hub.Nastavitve()
         self.povezava: Optional[link_hub.Povezava] = None
@@ -177,7 +182,46 @@ class SafeerLink:
             "naprava": self._ime(),
             "id": self._id(),
             "control": self.control,
+            "deljeneMape": self._deljene_mape(),
+            "standardneDeljene": self._standardne_deljene(),
         }
+
+    def _deljene_mape(self) -> list:
+        """Deljene mape za stran: ime in pot (stran pot le izpise, nikamor je ne poslje)."""
+        if self.datoteke is None:
+            return []
+        dom = os.path.expanduser("~")
+        return [{"ime": os.path.basename(p) or p, "pot": ("~" + p[len(dom):]) if p.startswith(dom + os.sep) else p}
+                for p in self.datoteke.poti()]
+
+    @staticmethod
+    def _standardne_mape() -> List[str]:
+        """Videi, Glasba, Slike tega uporabnika (XDG), kolikor jih obstaja."""
+        mape = []
+        for vrsta in (GLib.UserDirectory.DIRECTORY_VIDEOS, GLib.UserDirectory.DIRECTORY_MUSIC,
+                      GLib.UserDirectory.DIRECTORY_PICTURES):
+            try:
+                p = GLib.get_user_special_dir(vrsta)
+            except Exception:
+                p = None
+            if p and os.path.isdir(p) and os.path.realpath(p) != os.path.realpath(os.path.expanduser("~")):
+                mape.append(p)
+        return mape
+
+    def _standardne_deljene(self) -> bool:
+        if self.datoteke is None:
+            return True
+        std = [os.path.realpath(p) for p in self._standardne_mape()]
+        return not std or all(p in self.datoteke.poti() for p in std)
+
+    def _odziv_mape(self) -> None:
+        self._odziv("deljeneMape", {"mape": self._deljene_mape(), "standardne": self._standardne_deljene()})
+
+    def _deli_standardne_mape(self) -> None:
+        if self.datoteke is None:
+            return
+        self.datoteke.nastavi(self.datoteke.poti() + self._standardne_mape())
+        self._odziv_mape()
 
     def _sinhronizacija(self) -> dict:
         try:
@@ -392,6 +436,9 @@ class SafeerLink:
             "shraniVzdevek": lambda: self._shrani_vzdevek(*argumenti[:2]),
             "pozabiNapravo": lambda: self._v_ozadju(self._pozabi_napravo),
             "potrdiNovNaslov": lambda: self._v_ozadju(self._potrdi_nov_naslov),
+            "dodajDeljenoMapo": lambda: self._dodaj_deljeno_mapo(),
+            "odstraniDeljenoMapo": lambda: self._odstrani_deljeno_mapo(argumenti[0] if argumenti else -1),
+            "deliStandardneMape": lambda: self._deli_standardne_mape(),
             "zapri": lambda: self.okno.destroy() if self.okno is not None else None,
         }.get(metoda)
         if obravnava is not None:
@@ -586,6 +633,7 @@ class SafeerLink:
             naslov, zeton, self._id(), self._ime(),
             sinhronizira=bool(self.nastavitve.get("sync_bookmarks", False)),
             odtis=self._odtis(),
+            dodatne_zmoznosti=["files"] if self.datoteke is not None else [],
         )
         povezava.ob_sporocilu = self._na_sporocilo_huba
         povezava.ob_stanju = self._na_stanje_povezave
@@ -691,7 +739,8 @@ class SafeerLink:
 
         def izvedi() -> bool:
             if self.control:
-                link_daljinec.izvedi_control(dejanje, parametri, self.odpri_naslov, koncaj)
+                link_daljinec.izvedi_control(dejanje, parametri, self.odpri_naslov, koncaj,
+                                             datoteke=self.datoteke, posiljatelj=posiljatelj, hub_url=self._hub())
                 return False
             if self.starsevsko is None:
                 koncaj(link_daljinec.izid(False, "Brskalnik ni odprt"))
@@ -873,6 +922,39 @@ class SafeerLink:
                 self._v_ozadju(lambda: self._poslji_datoteko(id_naprave, pot))
         okno.connect("response", odgovor)
         okno.show()
+
+    # Deljene mape (Safeer Control): stran pokaze seznam, uporabnik doda ali odstrani mapo.
+    def dodaj_deljeno_mapo(self, starsevsko: Optional[Gtk.Window] = None) -> None:
+        """Izbira map (lahko vec hkrati), ki jih sme televizor videti. Klice stran ali pladenj."""
+        if self.datoteke is None:
+            return
+        okno = Gtk.FileChooserDialog(title="Mape za televizor — Safeer Control",
+                                     transient_for=starsevsko or self.okno or self.starsevsko,
+                                     action=Gtk.FileChooserAction.SELECT_FOLDER)
+        okno.set_select_multiple(True)
+        okno.add_button("Prekliči", Gtk.ResponseType.CANCEL)
+        okno.add_button("Deli", Gtk.ResponseType.OK)
+
+        def odgovor(d, r):
+            poti = list(d.get_filenames() or []) if r == Gtk.ResponseType.OK else []
+            d.destroy()
+            if poti:
+                self.datoteke.nastavi(self.datoteke.poti() + poti)
+                self._odziv_mape()
+        okno.connect("response", odgovor)
+        okno.show()
+
+    def _dodaj_deljeno_mapo(self) -> None:
+        self.dodaj_deljeno_mapo()
+
+    def _odstrani_deljeno_mapo(self, i) -> None:
+        if self.datoteke is None:
+            return
+        try:
+            self.datoteke.odstrani(int(i))
+        except (TypeError, ValueError):
+            return
+        self._odziv_mape()
 
     def _poslji_datoteko(self, id_naprave: str, pot: str) -> None:
         ime = os.path.basename(pot)

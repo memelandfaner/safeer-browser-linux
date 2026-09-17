@@ -94,16 +94,32 @@ def izvedi(app, dejanje: str, parametri: dict, odpri_naslov: Callable[[str], Non
 
 
 DEJANJA_CONTROL = ["open_url", "volume", "status"]
+DEJANJA_DATOTEKE = ["files.list"]
 
 
 def izvedi_control(dejanje: str, parametri: dict, odpri_naslov: Callable[[str], None],
-                   koncaj: Callable[[dict], None]) -> None:
+                   koncaj: Callable[[dict], None], datoteke=None, posiljatelj: str = "",
+                   hub_url: str = "") -> None:
     """Safeer Control (namizna aplikacija brez brskalnika): kar zna racunalnik brez brskalnika --
-    glasnost, odpiranje strani v sistemskem brskalniku in stanje. Vse drugo vrne razumljivo napako."""
+    glasnost, odpiranje strani v sistemskem brskalniku, stanje in seznam deljenih map
+    (`files.list`, core/link_datoteke.py, ce je `datoteke` podan). Vse drugo vrne razumljivo napako."""
     d = (dejanje or "").strip().lower()
     parametri = parametri if isinstance(parametri, dict) else {}
     try:
-        if d == "open_url":
+        if d == "files.list":
+            if datoteke is None:
+                koncaj(izid(False, "Deljenje datotek tu ni na voljo", koda="ni_na_racunalniku"))
+                return
+            try:
+                podatki = datoteke.seznam(str(parametri.get("folder", "") or ""), posiljatelj, hub_url)
+            except FileNotFoundError as e:
+                koncaj(izid(False, str(e), koda="ni_mape"))
+                return
+            if not podatki.get("shared"):
+                koncaj(izid(True, "Na računalniku ni izbrane nobene mape", podatki))
+            else:
+                koncaj(izid(True, f"{len(podatki['items'])} vnosov", podatki))
+        elif d == "open_url":
             url = str(parametri.get("url", "")).strip()
             if not (url.startswith("http://") or url.startswith("https://")):
                 koncaj(izid(False, "Dovoljeni so samo naslovi http(s)"))
@@ -114,7 +130,10 @@ def izvedi_control(dejanje: str, parametri: dict, odpri_naslov: Callable[[str], 
             koncaj(_glasnost(parametri))
         elif d == "status":
             s = {"app": "safeer-control-linux", "version": _razlicica_control(), "foreground": True,
-                 "actions": DEJANJA_CONTROL, "keys": [], "title": "Safeer Control"}
+                 "actions": DEJANJA_CONTROL + (DEJANJA_DATOTEKE if datoteke is not None else []),
+                 "keys": [], "title": "Safeer Control"}
+            if datoteke is not None:
+                s["shared_folders"] = len(datoteke.poti())
             try:
                 s["hostname"] = os.uname().nodename
             except Exception:
