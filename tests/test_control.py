@@ -89,7 +89,7 @@ class ControlSorodnik(unittest.TestCase):
             with open(brskalnik, "w", encoding="utf-8") as d:
                 d.write('{"hub_url": "wss://192.0.2.10:8990/cast/ws", "control_token": "saf_tv_brskalnik", "hub_fp": "AB:CD",'
                         ' "seznanitve": {"AB:CD": {"token": "saf_tv_brskalnik", "hub_url": "wss://192.0.2.10:8990/cast/ws"},'
-                        ' "EF:01": {"token": "saf_tv_telefon", "hub_url": "wss://192.168.0.50:8990/cast/ws"}}}')
+                        ' "EF:01": {"token": "saf_tv_telefon", "hub_url": "wss://192.0.2.20:8990/cast/ws"}}}')
             klici = []
 
             def lazna_zahteva(url, telo=None, zeton=None, timeout=5.0, pripeti=None, metoda=None):
@@ -103,18 +103,18 @@ class ControlSorodnik(unittest.TestCase):
             link_tls.zahteva = lazna_zahteva
             try:
                 n = link_hub.Nastavitve(os.path.join(mapa, "control", "link.json"))
-                self.assertTrue(sc.prevzemi_seznanitev_brskalnika(n, "pc-primer-control", "Safeer Control (uporabnik)"))
+                self.assertTrue(sc.prevzemi_seznanitev_brskalnika(n, "pc-primer-control", "Safeer Control (primer)"))
                 self.assertEqual(n.get("control_token"), "saf_tv_control")
                 self.assertEqual(n.get("hub_fp"), "AB:CD")
                 self.assertEqual(n.get("hub_url"), "wss://192.0.2.10:8990/cast/ws")
                 self.assertEqual(n.get("seznanitve"), {"AB:CD": {"token": "saf_tv_control", "hub_url": "wss://192.0.2.10:8990/cast/ws"}})
                 self.assertEqual(klici[0][0], "https://192.0.2.10:8990/cast/pair/sibling")
-                self.assertEqual(klici[0][1], {"device_id": "pc-primer-control", "name": "Safeer Control (uporabnik)"})
+                self.assertEqual(klici[0][1], {"device_id": "pc-primer-control", "name": "Safeer Control (primer)"})
                 self.assertEqual((klici[0][2], klici[0][3]), ("saf_tv_brskalnik", "AB:CD"))
-                self.assertTrue(any("192.168.0.50" in k[0] for k in klici), "poskusi tudi druge Hube brskalnika")
+                self.assertTrue(any("192.0.2.20" in k[0] for k in klici), "poskusi tudi druge Hube brskalnika")
                 # Ze seznanjen Control brskalnika ne sprasuje vec.
                 klici.clear()
-                self.assertFalse(sc.prevzemi_seznanitev_brskalnika(n, "pc-primer-control", "Safeer Control (uporabnik)"))
+                self.assertFalse(sc.prevzemi_seznanitev_brskalnika(n, "pc-primer-control", "Safeer Control (primer)"))
                 self.assertEqual(klici, [])
             finally:
                 link_hub.NASTAVITVE_MAPA, link_tls.zahteva = stara_mapa, stara_zahteva
