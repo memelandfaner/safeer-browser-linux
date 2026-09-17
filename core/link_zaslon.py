@@ -45,7 +45,11 @@ KAKOVOSTI = {
     "visoka": {"fps": 60, "bitrate": "16M", "qp": 18, "sirina": 1920, "visina": 1080},
     "najvisja": {"fps": 60, "bitrate": "24M", "qp": 16, "sirina": 1920, "visina": 1080},
 }
-PRIVZETA_KAKOVOST = "visoka"
+# Privzeto posljemo najboljse, kar zmoreta racunalnik in omrezje: ostrejsa slika je po meritvah
+# skoraj zastonj (strosek je zajem, ne kodiranje), pasovne sirine v domacem omrezju pa je na pretek.
+# Nizje stopnje ostajajo v dogovoru zato, da se bo mogoce samodejno umakniti, kadar povezava ali
+# racunalnik tega ne bosta zmogla - ne zato, da bi uporabnik izbiral.
+PRIVZETA_KAKOVOST = "najvisja"
 
 
 def _zaslon_geometrija(display: str) -> Optional[tuple]:

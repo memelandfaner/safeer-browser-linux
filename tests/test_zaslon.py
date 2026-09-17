@@ -45,6 +45,10 @@ class Ukaz(unittest.TestCase):
         qp = [link_zaslon.KAKOVOSTI[k]["qp"] for k in ("nizka", "srednja", "visoka", "najvisja")]
         self.assertEqual(qp, sorted(qp, reverse=True))
         self.assertIn(link_zaslon.PRIVZETA_KAKOVOST, link_zaslon.KAKOVOSTI)
+        # Privzeto je najboljse, kar zmoremo: uporabnik kakovosti ne izbira.
+        self.assertEqual(link_zaslon.PRIVZETA_KAKOVOST, "najvisja")
+        self.assertEqual(min(k["qp"] for k in link_zaslon.KAKOVOSTI.values()),
+                         link_zaslon.KAKOVOSTI[link_zaslon.PRIVZETA_KAKOVOST]["qp"])
 
     def test_slika_ohrani_razmerje_in_ne_povecuje(self):
         self.assertEqual(link_zaslon.Zaslon._prilagodi((3840, 2160), 1920, 1080), (1920, 1080))
