@@ -69,6 +69,12 @@ MOST_JS = """
     posljiTrenutno: function (id) { poslji("posljiTrenutno", [id]); },
     poslji: function (id, url, naslov) { poslji("poslji", [id, url, naslov]); },
     nadzor: function (id, ukaz, vrednost) { poslji("nadzor", [id, ukaz, vrednost]); },
+    ukaz: function (id, dejanje, parametri, ref) { poslji("ukaz", [id, dejanje, String(parametri || "{}"), String(ref || "")]); },
+    znaGovor: function () { return false; },
+    lahkoVOspredje: function () { return true; },
+    dovoliOspredje: function () {},
+    poslusaj: function (jezik) {},
+    nehajPoslusati: function () {},
     posljiBesedilo: function (id, besedilo) { poslji("posljiBesedilo", [id, String(besedilo || "")]); },
     izberiDatoteko: function (id) { poslji("izberiDatoteko", [id]); },
     zacniDeljenjeZaslona: function (id, ime) { poslji("zacniDeljenjeZaslona", [id, String(ime || "")]); },
@@ -344,6 +350,7 @@ class SafeerLink:
             "posljiTrenutno": lambda: self._poslji_trenutno(*argumenti[:1]),
             "poslji": lambda: self._poslji(*argumenti[:3]),
             "nadzor": lambda: self._nadzor(*argumenti[:3]),
+            "ukaz": lambda: self._ukaz(*argumenti[:4]),
             "nastaviSinhronizacijo": lambda: self._v_ozadju(
                 lambda: self._nastavi_sinhronizacijo(bool(argumenti[0]) if argumenti else False)),
             "odpri": lambda: self._odpri(*argumenti[:1]),
@@ -609,6 +616,35 @@ class SafeerLink:
         elif vrsta == "cast.url":
             # Stran s televizorja ali druge naprave: odpremo jo v novem zavihku.
             self._prejmi_stran(sporocilo)
+        elif vrsta == "control.command":
+            # Daljinec Safeer Controla: ukaz izvede brskalnik, odgovor gre nazaj posiljatelju.
+            self._prejmi_ukaz(sporocilo)
+        elif vrsta in ("control.result", "control.ack"):
+            self._ukaz_odziv(sporocilo)
+
+    def _prejmi_ukaz(self, sporocilo: dict) -> None:
+        from core import link_daljinec
+        posiljatelj = str(sporocilo.get("sender", "") or "")
+        ref_id = str(sporocilo.get("id", "") or "")
+        telo = sporocilo.get("payload") or {}
+        dejanje = str(telo.get("action", "") or "")
+        parametri = telo.get("params") if isinstance(telo.get("params"), dict) else telo
+
+        def koncaj(izid: dict) -> None:
+            povezava = self.povezava
+            if povezava is not None and posiljatelj:
+                try:
+                    povezava.poslji(link_daljinec.sporocilo_izida(posiljatelj, ref_id, dejanje, izid))
+                except Exception as e:  # noqa: BLE001
+                    print(f"[SafeerLink] Odgovora na ukaz ni bilo mogoče poslati: {e}")
+
+        def izvedi() -> bool:
+            if self.starsevsko is None:
+                koncaj(link_daljinec.izid(False, "Brskalnik ni odprt"))
+                return False
+            link_daljinec.izvedi(self.starsevsko, dejanje, parametri, self.odpri_naslov, koncaj)
+            return False
+        GLib.idle_add(izvedi)
 
     # ------------------------------------------------------------------
     # Deljenje: sprejem
@@ -828,6 +864,46 @@ class SafeerLink:
             self._odziv("preimenovano", {"id": id_naprave, "ime": novo})
         else:
             self._odziv("napaka", {"koda": "preimenovanje_ni_uspelo", "sporocilo": n["sporocilo"]})
+
+    def _ukaz(self, id_naprave: str = "", dejanje: str = "", parametri_json: str = "{}", ref: str = "") -> None:
+        """Ukaz daljinca drugi napravi (control.command); odgovor pride kot odziv "ukaz" z istim ref."""
+        povezava = self.povezava
+        if povezava is None or not povezava.tece:
+            self._odziv("ukaz", {"ref": ref, "ok": False, "message": "Ni povezave s Safeer Linkom."})
+            return
+        try:
+            parametri = json.loads(parametri_json or "{}")
+            if not isinstance(parametri, dict):
+                parametri = {}
+        except Exception:
+            parametri = {}
+        poslano = povezava.poslji({
+            "id": ref or str(int(time.time() * 1000)),
+            "type": "control.command",
+            "target": id_naprave,
+            "payload": {"action": dejanje, "params": parametri},
+        })
+        if not poslano:
+            self._odziv("ukaz", {"ref": ref, "ok": False, "message": "Ukaza ni bilo mogoče poslati."})
+
+    def _ukaz_odziv(self, sporocilo: dict) -> None:
+        """Odgovor naprave (control.result) ali zavrnitev sredisca (control.ack) -> stran."""
+        telo = sporocilo.get("payload") or {}
+        o = {"ref": str(sporocilo.get("ref_id", "") or ""), "naprava": str(sporocilo.get("sender", "") or "")}
+        if sporocilo.get("type") == "control.ack":
+            if sporocilo.get("status") == "accepted":
+                return
+            o["ok"] = False
+            o["message"] = str(sporocilo.get("error") or "Središče je ukaz zavrnilo.")
+            o["koda"] = str(sporocilo.get("error_code") or "")
+        else:
+            o["ok"] = bool(telo.get("ok"))
+            o["message"] = str(telo.get("message") or "")
+            o["action"] = str(telo.get("action") or "")
+            o["koda"] = str(telo.get("code") or "")
+            if isinstance(telo.get("data"), dict):
+                o["data"] = telo["data"]
+        self._odziv("ukaz", o)
 
     def _poslji_trenutno(self, id_naprave: str = "") -> None:
         stran = self._stran()

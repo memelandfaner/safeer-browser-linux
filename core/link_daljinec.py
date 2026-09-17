@@ -1,0 +1,308 @@
+"""Daljinec Safeer Controla po Safeer Linku (sporocilo `control.command`) za linuxov brskalnik.
+
+Seznanjena naprava (racunalnik s Safeer Controlom, telefon) sme brskalniku narocati samo
+to, kar brskalnik sme narediti sam: tipke nazaj/domov/osvezi, drsenje, odpiranje strani,
+predvajaj/pavza, glasnost racunalnika, ponovni zagon, ciscenje predpomnilnika, stanje in
+posnetek odprtega zavihka. Enak nabor dejanj kot na televizorju in telefonu
+(link/Daljinec.kt); kar na racunalniku ni smiselno (zagon aplikacij, D-pad), vrne
+razumljivo napako.
+
+Vse se izvaja na glavni niti GTK; klicatelj (core/safeer_link.py) poskrbi za GLib.idle_add.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+import uuid
+from typing import Callable, Dict, Optional
+
+ZMOZNOST = "remote"
+
+DEJANJA = ["key", "scroll", "open_url", "volume", "restart", "clear_cache", "status", "screenshot"]
+
+TIPKE = ["back", "home", "reload", "forward", "up", "down", "page_up", "page_down",
+         "play_pause", "play", "pause", "stop", "mute", "unmute"]
+
+
+def izid(ok: bool, sporocilo: str, podatki: Optional[dict] = None, koda: str = "") -> dict:
+    d = {"ok": ok, "message": sporocilo}
+    if koda:
+        d["code"] = koda
+    if podatki is not None:
+        d["data"] = podatki
+    return d
+
+
+def sporocilo_izida(cilj: str, ref_id: str, dejanje: str, izid_: dict) -> dict:
+    """`control.result`, ki gre prek sredisca nazaj posiljatelju ukaza."""
+    telo = dict(izid_)
+    telo["action"] = dejanje
+    return {
+        "id": str(uuid.uuid4()),
+        "type": "control.result",
+        "target": cilj,
+        "ref_id": ref_id,
+        "payload": telo,
+    }
+
+
+def _razlicica() -> str:
+    glavni = sys.modules.get("__main__")
+    return str(getattr(glavni, "APP_VERSION", "") or "")
+
+
+def _js_video(telo: str) -> str:
+    return ("(function(){try{var m=document.querySelectorAll('video,audio');"
+            "for(var i=0;i<m.length;i++){var v=m[i];" + telo + "}}catch(e){}})()")
+
+
+def izvedi(app, dejanje: str, parametri: dict, odpri_naslov: Callable[[str], None],
+           koncaj: Callable[[dict], None]) -> None:
+    """Izvede ukaz in izid vrne prek `koncaj` (posnetek je asinhron, vse drugo takoj).
+
+    `app` je glavno okno brskalnika (get_active_webview, load_homepage, new_tab).
+    """
+    d = (dejanje or "").strip().lower()
+    parametri = parametri if isinstance(parametri, dict) else {}
+    if d not in DEJANJA:
+        koncaj(izid(False, f"Neznano dejanje: {d}" if d else "Manjka dejanje", koda="neznano_dejanje"))
+        return
+    try:
+        if d == "key":
+            koncaj(_tipka(app, str(parametri.get("key", "")).strip().lower()))
+        elif d == "scroll":
+            koncaj(_drsenje(app, str(parametri.get("direction", "down")).strip().lower()))
+        elif d == "open_url":
+            koncaj(_odpri(app, str(parametri.get("url", "")).strip(), odpri_naslov))
+        elif d == "volume":
+            koncaj(_glasnost(parametri))
+        elif d == "restart":
+            koncaj(_znova_zazeni(app))
+        elif d == "clear_cache":
+            koncaj(_pocisti(app))
+        elif d == "status":
+            koncaj(izid(True, "Stanje", stanje(app)))
+        elif d == "screenshot":
+            _posnetek(app, koncaj)
+    except Exception as e:  # noqa: BLE001 - izid mora vedno priti nazaj
+        koncaj(izid(False, f"Ukaz ni uspel: {e}"))
+
+
+def _webview(app):
+    try:
+        return app.get_active_webview()
+    except Exception:
+        return None
+
+
+def _tipka(app, ime: str) -> dict:
+    wv = _webview(app)
+    if ime == "home":
+        app.load_homepage()
+        return izid(True, "Domov")
+    if wv is None:
+        return izid(False, "Ni odprtega zavihka")
+    if ime == "back":
+        if wv.can_go_back():
+            wv.go_back()
+            return izid(True, "Nazaj")
+        return izid(False, "Ni strani za nazaj")
+    if ime == "forward":
+        if wv.can_go_forward():
+            wv.go_forward()
+            return izid(True, "Naprej")
+        return izid(False, "Ni strani za naprej")
+    if ime == "reload":
+        wv.reload()
+        return izid(True, "Osvezeno")
+    if ime in ("up", "page_up"):
+        return _drsenje(app, "up")
+    if ime in ("down", "page_down"):
+        return _drsenje(app, "down")
+    if ime in ("play_pause", "play", "pause", "stop", "mute", "unmute"):
+        telo = {
+            "play_pause": "if(v.paused){v.play();}else{v.pause();}",
+            "play": "v.play();",
+            "pause": "v.pause();",
+            "stop": "v.pause();v.currentTime=0;",
+            "mute": "v.muted=true;",
+            "unmute": "v.muted=false;",
+        }[ime]
+        wv.run_javascript(_js_video(telo), None, None, None)
+        return izid(True, f"Tipka {ime}")
+    if ime in ("left", "right", "ok", "center", "menu"):
+        return izid(False, "Tipke daljinca na racunalniku ni; uporabi misko ali tipkovnico", koda="ni_na_racunalniku")
+    return izid(False, f"Neznana tipka: {ime}", koda="neznana_tipka")
+
+
+def _drsenje(app, smer: str) -> dict:
+    wv = _webview(app)
+    if wv is None:
+        return izid(False, "Ni odprtega zavihka")
+    js = {
+        "up": "window.scrollBy({top:-Math.round(window.innerHeight*0.8),behavior:'smooth'})",
+        "down": "window.scrollBy({top:Math.round(window.innerHeight*0.8),behavior:'smooth'})",
+        "top": "window.scrollTo({top:0,behavior:'smooth'})",
+        "bottom": "window.scrollTo({top:document.documentElement.scrollHeight,behavior:'smooth'})",
+    }.get(smer)
+    if not js:
+        return izid(False, f"Neznana smer: {smer}")
+    wv.run_javascript(js, None, None, None)
+    return izid(True, f"Drsenje {smer}")
+
+
+def _odpri(app, url: str, odpri_naslov: Callable[[str], None]) -> dict:
+    if url in ("home", "safeer://home"):
+        app.load_homepage()
+        return izid(True, "Domov")
+    if not (url.startswith("http://") or url.startswith("https://")):
+        return izid(False, "Dovoljeni so samo naslovi http(s)")
+    odpri_naslov(url)
+    return izid(True, "Stran se odpira")
+
+
+def _pactl(*argumenti: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["pactl", *argumenti], capture_output=True, text=True, timeout=3)
+
+
+def _glasnost(parametri: dict) -> dict:
+    """Glasnost racunalnika prek PulseAudio/PipeWire (pactl); brez njega dejanja ni."""
+    if not shutil.which("pactl"):
+        return izid(False, "Glasnosti tu ni mogoce nastaviti (ni pactl)")
+    smer = str(parametri.get("direction", "")).strip().lower()
+    raven = parametri.get("level")
+    try:
+        if isinstance(raven, (int, float)) and 0 <= int(raven) <= 100:
+            _pactl("set-sink-volume", "@DEFAULT_SINK@", f"{int(raven)}%")
+        elif smer == "up":
+            _pactl("set-sink-volume", "@DEFAULT_SINK@", "+5%")
+        elif smer == "down":
+            _pactl("set-sink-volume", "@DEFAULT_SINK@", "-5%")
+        elif smer == "mute":
+            _pactl("set-sink-mute", "@DEFAULT_SINK@", "1")
+        elif smer == "unmute":
+            _pactl("set-sink-mute", "@DEFAULT_SINK@", "0")
+        elif smer == "toggle_mute":
+            _pactl("set-sink-mute", "@DEFAULT_SINK@", "toggle")
+        elif smer:
+            return izid(False, f"Neznana smer glasnosti: {smer}")
+        trenutno = _pactl("get-sink-volume", "@DEFAULT_SINK@").stdout
+        utisano = "yes" in _pactl("get-sink-mute", "@DEFAULT_SINK@").stdout.lower()
+    except Exception as e:  # noqa: BLE001
+        return izid(False, f"Glasnosti ni bilo mogoce nastaviti: {e}")
+    odstotki = None
+    for kos in trenutno.replace("/", " ").split():
+        if kos.endswith("%") and kos[:-1].isdigit():
+            odstotki = int(kos[:-1])
+            break
+    podatki = {"level": odstotki, "muted": utisano}
+    return izid(True, f"Glasnost {odstotki if odstotki is not None else '?'} %", podatki)
+
+
+def _znova_zazeni(app) -> dict:
+    """Zazene nov primerek istega programa in ta konca. Odprti zavihki se obnovijo iz seje."""
+    ukaz = [sys.executable] + list(sys.argv)
+    try:
+        subprocess.Popen(ukaz, start_new_session=True, close_fds=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception as e:  # noqa: BLE001
+        return izid(False, f"Ponovnega zagona ni bilo mogoce zaceti: {e}")
+    from gi.repository import GLib
+
+    def koncaj():
+        try:
+            app.close()
+        except Exception:
+            pass
+        try:
+            from gi.repository import Gtk
+            Gtk.main_quit()
+        except Exception:
+            pass
+        return False
+    GLib.timeout_add(600, koncaj)
+    return izid(True, "Safeer se znova zaganja")
+
+
+def _pocisti(app) -> dict:
+    """Pocisti predpomnilnik WebKita (ne piskotkov in ne gesel)."""
+    try:
+        import gi
+        gi.require_version("WebKit2", "4.1")
+        from gi.repository import WebKit2
+        wv = _webview(app)
+        kontekst = wv.get_context() if wv is not None else WebKit2.WebContext.get_default()
+        upravitelj = kontekst.get_website_data_manager()
+        vrste = (WebKit2.WebsiteDataTypes.DISK_CACHE | WebKit2.WebsiteDataTypes.MEMORY_CACHE
+                 | WebKit2.WebsiteDataTypes.OFFLINE_APPLICATION_CACHE)
+        upravitelj.clear(vrste, 0, None, None, None)
+        return izid(True, "Predpomnilnik pociscen")
+    except Exception as e:  # noqa: BLE001
+        return izid(False, f"Predpomnilnika ni bilo mogoce pocistiti: {e}")
+
+
+def stanje(app) -> dict:
+    wv = _webview(app)
+    s = {
+        "app": "safeer-browser-linux",
+        "version": _razlicica(),
+        "foreground": True,
+        "actions": DEJANJA,
+        "keys": TIPKE,
+        "url": (wv.get_uri() if wv is not None else "") or "",
+        "title": (wv.get_title() if wv is not None else "") or "",
+    }
+    try:
+        s["hostname"] = os.uname().nodename
+    except Exception:
+        pass
+    return s
+
+
+def _posnetek(app, koncaj: Callable[[dict], None]) -> None:
+    """Posnetek vidnega dela dejavnega zavihka, pomanjsan na 640 px, kot JPEG (data URL)."""
+    wv = _webview(app)
+    if wv is None:
+        koncaj(izid(False, "Ni odprtega zavihka"))
+        return
+    import gi
+    gi.require_version("WebKit2", "4.1")
+    gi.require_version("Gdk", "3.0")
+    from gi.repository import WebKit2, Gdk, GdkPixbuf  # noqa: F401
+    import base64
+
+    def gotovo(pogled, rezultat):
+        try:
+            povrsina = pogled.get_snapshot_finish(rezultat)
+            sirina, visina = povrsina.get_width(), povrsina.get_height()
+            if sirina <= 0 or visina <= 0:
+                koncaj(izid(False, "Zaslon se ni pripravljen"))
+                return
+            slika = Gdk.pixbuf_get_from_surface(povrsina, 0, 0, sirina, visina)
+            merilo = min(1.0, 640.0 / sirina)
+            if merilo < 1.0:
+                slika = slika.scale_simple(max(1, int(sirina * merilo)), max(1, int(visina * merilo)),
+                                           GdkPixbuf.InterpType.BILINEAR)
+            ok, bajti = slika.save_to_bufferv("jpeg", ["quality"], ["55"])
+            if not ok:
+                koncaj(izid(False, "Posnetka ni bilo mogoce zakodirati"))
+                return
+            koncaj(izid(True, "Posnetek zaslona", {
+                "image": "data:image/jpeg;base64," + base64.b64encode(bytes(bajti)).decode("ascii"),
+                "width": slika.get_width(), "height": slika.get_height(),
+            }))
+        except Exception as e:  # noqa: BLE001
+            koncaj(izid(False, f"Posnetka ni bilo mogoce narediti: {e}"))
+
+    try:
+        wv.get_snapshot(WebKit2.SnapshotRegion.VISIBLE, WebKit2.SnapshotOptions.NONE, None, gotovo)
+    except Exception as e:  # noqa: BLE001
+        koncaj(izid(False, f"Posnetka ni bilo mogoce narediti: {e}"))
+
+
+__all__ = ["ZMOZNOST", "DEJANJA", "TIPKE", "izvedi", "izid", "sporocilo_izida", "stanje"]
