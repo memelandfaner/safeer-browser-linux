@@ -620,8 +620,11 @@ class Povezava:
     """
 
     def __init__(self, ws_naslov: str, zeton: str, device_id: str, ime: str,
-                 sinhronizira: bool = False, odtis: Optional[str] = None) -> None:
+                 sinhronizira: bool = False, odtis: Optional[str] = None,
+                 dodatne_zmoznosti: Optional[List[str]] = None) -> None:
         self.ws_naslov = ws_naslov
+        # Zmoznosti, ki jih doda klicatelj (Safeer Control: "files" - deljene mape za televizor).
+        self.dodatne_zmoznosti = list(dodatne_zmoznosti or [])
         self.zeton = zeton
         self.odtis = odtis
         self.device_id = device_id
@@ -673,6 +676,9 @@ class Povezava:
         zmoznosti = ["url", "text", "file", "screen", "remote"]
         if self.sinhronizira:
             zmoznosti.append("sync")
+        for z in self.dodatne_zmoznosti:
+            if z not in zmoznosti:
+                zmoznosti.append(z)
         prijava["payload"]["capabilities"] = zmoznosti
         try:
             odjemalec.poslji(json.dumps(prijava))

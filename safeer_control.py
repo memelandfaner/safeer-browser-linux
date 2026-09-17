@@ -13,6 +13,10 @@ Svoja identiteta in shramba: ~/.config/safeer-control/link.json. Ce je na tem ra
 Safeer Browser ze povezan v Safeer Link, Control tega ne podira - obe aplikaciji sta v Linku
 vsaka s svojim imenom.
 
+Datoteke za televizor: uporabnik izbere mape (stran Control ali pladenj), Safeer OS na
+televizorju jih pregleduje in predvaja naravnost z racunalnika (core/link_datoteke.py). Brez
+izbrane mape televizor ne vidi nic.
+
 Tiho v ozadju: `safeer-control --ozadje` se poveze v Safeer Link brez okna in pusti ikono v
 pladnju (Odpri, Zazeni ob prijavi, Koncaj). Ko je racunalnik enkrat seznanjen, se Control ob
 prijavi zaganja sam (~/.config/autostart) - uporabnik ne zaganja nicesar; televizor in telefon
@@ -37,7 +41,7 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("WebKit2", "4.1")
 from gi.repository import Gio, GLib, Gtk, WebKit2  # noqa: E402
 
-from core import link_hub, link_tls  # noqa: E402
+from core import link_datoteke, link_hub, link_tls  # noqa: E402
 from core.safeer_link import SafeerLink  # noqa: E402
 
 APP_ID = "io.github.memelandfaner.SafeerControl"
@@ -46,12 +50,12 @@ SAMOZAGON_POT = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.expanduse
 
 # Besedila pladnja v jezikih vmesnika (isti nabor kot Safeer Browser).
 BESEDILA = {
-    "sl": {"odpri": "Odpri Safeer Control", "samozagon": "Zaženi ob prijavi", "koncaj": "Končaj", "povezan": "Safeer Link: povezan", "ni": "Safeer Link: ni povezave"},
-    "en": {"odpri": "Open Safeer Control", "samozagon": "Start at login", "koncaj": "Quit", "povezan": "Safeer Link: connected", "ni": "Safeer Link: not connected"},
-    "de": {"odpri": "Safeer Control öffnen", "samozagon": "Beim Anmelden starten", "koncaj": "Beenden", "povezan": "Safeer Link: verbunden", "ni": "Safeer Link: nicht verbunden"},
-    "es": {"odpri": "Abrir Safeer Control", "samozagon": "Iniciar al iniciar sesión", "koncaj": "Salir", "povezan": "Safeer Link: conectado", "ni": "Safeer Link: sin conexión"},
-    "fr": {"odpri": "Ouvrir Safeer Control", "samozagon": "Lancer à la connexion", "koncaj": "Quitter", "povezan": "Safeer Link : connecté", "ni": "Safeer Link : non connecté"},
-    "it": {"odpri": "Apri Safeer Control", "samozagon": "Avvia all’accesso", "koncaj": "Esci", "povezan": "Safeer Link: connesso", "ni": "Safeer Link: non connesso"},
+    "sl": {"odpri": "Odpri Safeer Control", "samozagon": "Zaženi ob prijavi", "mape": "Mape za televizor …", "koncaj": "Končaj", "povezan": "Safeer Link: povezan", "ni": "Safeer Link: ni povezave"},
+    "en": {"odpri": "Open Safeer Control", "samozagon": "Start at login", "mape": "Folders for the TV…", "koncaj": "Quit", "povezan": "Safeer Link: connected", "ni": "Safeer Link: not connected"},
+    "de": {"odpri": "Safeer Control öffnen", "samozagon": "Beim Anmelden starten", "mape": "Ordner für den Fernseher …", "koncaj": "Beenden", "povezan": "Safeer Link: verbunden", "ni": "Safeer Link: nicht verbunden"},
+    "es": {"odpri": "Abrir Safeer Control", "samozagon": "Iniciar al iniciar sesión", "mape": "Carpetas para el televisor…", "koncaj": "Salir", "povezan": "Safeer Link: conectado", "ni": "Safeer Link: sin conexión"},
+    "fr": {"odpri": "Ouvrir Safeer Control", "samozagon": "Lancer à la connexion", "mape": "Dossiers pour le téléviseur…", "koncaj": "Quitter", "povezan": "Safeer Link : connecté", "ni": "Safeer Link : non connecté"},
+    "it": {"odpri": "Apri Safeer Control", "samozagon": "Avvia all’accesso", "mape": "Cartelle per il televisore…", "koncaj": "Esci", "povezan": "Safeer Link: connesso", "ni": "Safeer Link: non connesso"},
 }
 
 
@@ -223,9 +227,11 @@ class Pladenj:
         self.samozagon = Gtk.CheckMenuItem(label=besedilo(self.jezik, "samozagon"))
         self.samozagon.set_active(Samozagon.je_vklopljen())
         self._preklop_id = self.samozagon.connect("toggled", self._preklop)
+        self.mape = Gtk.MenuItem(label=besedilo(self.jezik, "mape"))
+        self.mape.connect("activate", lambda *_a: app.izberi_mape())
         self.koncaj = Gtk.MenuItem(label=besedilo(self.jezik, "koncaj"))
         self.koncaj.connect("activate", lambda *_a: app.koncaj())
-        for m in (self.odpri, Gtk.SeparatorMenuItem(), self.samozagon, Gtk.SeparatorMenuItem(), self.koncaj):
+        for m in (self.odpri, self.mape, Gtk.SeparatorMenuItem(), self.samozagon, Gtk.SeparatorMenuItem(), self.koncaj):
             self.meni.append(m)
         self.meni.show_all()
         self.ikona = None
@@ -285,6 +291,10 @@ class SafeerControl(Gtk.Application):
         self.ozadje = ozadje
         self.pladenj: Optional[Pladenj] = None
         self._prva_aktivacija = True
+        # Deljene mape za televizor; seznam poti je v control.json ("deljene_mape").
+        mape = self.nastavitve.get("deljene_mape")
+        self.datoteke = link_datoteke.Datoteke(mape if isinstance(mape, list) else [])
+        self.datoteke.ob_spremembi = lambda poti: self.nastavitve.set("deljene_mape", poti)
 
     def do_startup(self) -> None:
         Gtk.Application.do_startup(self)
@@ -311,6 +321,13 @@ class SafeerControl(Gtk.Application):
             ob_zaprtju=self.ob_zaprtju_okna,
         )
         self.link.ob_povezavi = self._na_povezavo
+        self.link.datoteke = self.datoteke
+
+    def izberi_mape(self) -> None:
+        """Izbira map za televizor iz pladnja (isti pogovor kot na strani Control)."""
+        if self.link is None:
+            self._pripravi_link()
+        self.link.dodaj_deljeno_mapo()
 
     def _na_povezavo(self, povezan: bool) -> None:
         if self.pladenj is not None:
@@ -337,6 +354,10 @@ class SafeerControl(Gtk.Application):
         try:
             if self.link is not None and self.link.povezava is not None:
                 self.link.povezava.zapri()
+        except Exception:
+            pass
+        try:
+            self.datoteke.ustavi()
         except Exception:
             pass
         self.quit()
