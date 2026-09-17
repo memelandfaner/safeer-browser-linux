@@ -35,12 +35,17 @@ from core.link_datoteke import TLS_MAPA, zagotovi_potrdilo
 CAKANJE_S = 30
 #: Najvecja slika, ki jo posiljamo (televizor je 4K, a 1080p je za namizje dovolj in hitreje).
 NAJVEC_SIRINA, NAJVEC_VISINA = 1920, 1080
+# Kvantizator (qp) je pri tem kodirniku edini vzvod kakovosti - gonilnik zna samo CQP. Izmerjeno na
+# mirnem namizju: qp 28 = 0,6 Mb/s, qp 24 = 0,8, qp 20 = 0,9, qp 18 = 1,0, qp 16 = 1,3 Mb/s, in
+# procesor je pri vseh enak (strosek je zajem, ne kodiranje). Ker je pasovne sirine v domacem
+# omrezju na pretek, so privzete vrednosti izdatne - drobno besedilo mora biti ostro.
 KAKOVOSTI = {
-    "nizka": {"fps": 24, "bitrate": "3M", "qp": 28, "sirina": 1280, "visina": 720},
-    "srednja": {"fps": 30, "bitrate": "6M", "qp": 24, "sirina": 1920, "visina": 1080},
-    "visoka": {"fps": 60, "bitrate": "12M", "qp": 22, "sirina": 1920, "visina": 1080},
+    "nizka": {"fps": 30, "bitrate": "4M", "qp": 26, "sirina": 1280, "visina": 720},
+    "srednja": {"fps": 30, "bitrate": "8M", "qp": 20, "sirina": 1920, "visina": 1080},
+    "visoka": {"fps": 60, "bitrate": "16M", "qp": 18, "sirina": 1920, "visina": 1080},
+    "najvisja": {"fps": 60, "bitrate": "24M", "qp": 16, "sirina": 1920, "visina": 1080},
 }
-PRIVZETA_KAKOVOST = "srednja"
+PRIVZETA_KAKOVOST = "visoka"
 
 
 def _zaslon_geometrija(display: str) -> Optional[tuple]:
@@ -78,18 +83,29 @@ def ukaz_ffmpeg(display: str, sirina: int, visina: int, izvor_sirina: int, izvor
     u = [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin",
          "-f", "x11grab", "-draw_mouse", "1", "-framerate", str(fps),
          "-video_size", f"{izvor_sirina}x{izvor_visina}", "-i", display]
-    filter_lestvica = f"scale={sirina}:{visina}:flags=fast_bilinear"
+    # Kadar je slika ze prave velikosti, je ne prevzorcimo: vsako skaliranje zmehca besedilo in
+    # nekaj stane. To je najpogostejsi primer (zaslon 1920x1080 -> 1920x1080).
+    lestvica = (sirina, visina) != (izvor_sirina, izvor_visina)
+    filter_lestvica = f"scale={sirina}:{visina}:flags=lanczos," if lestvica else ""
     if vaapi:
         # Intelov gonilnik ima na tem prenosniku samo nizkoenergijski vhod (EncSliceLP), ta pa
         # podpira le CQP - z -b:v kodirnik sploh ne odpre ("no RC mode compatible"). Zato kakovost
         # dolocimo s kvantizatorjem, hitrost pa omejimo z velikostjo slike in sliko na sekundo.
+        # Profil high (CABAC, transformacija 8x8) je za besedilo opazno boljsi od main in
+        # televizor ga strojno dekodira (OMX.MTK.VIDEO.DECODER.AVC).
+        #
+        # Varcnega nacina (low_power) namenoma ne vsiljujemo: na tem prenosniku (Intel Gen12) drug
+        # nacin sploh ne obstaja - izmerjeno je z low_power 0 in 1 izid enak do decimalke - na
+        # drugih racunalnikih pa lahko gonilnik izbere boljso pot, ce mu je ne zvezemo.
+        # CQP je edini nacin hitrosti, ki ga ta gonilnik zna (CBR, VBR, ICQ in QVBR so preizkuseni
+        # in vsi padejo), obenem pa ga zna vsak - zato kakovost dolocimo s kvantizatorjem.
         u += ["-vaapi_device", vaapi,
-              "-vf", f"{filter_lestvica},format=nv12,hwupload",
-              "-c:v", "h264_vaapi", "-profile:v", "main",
-              "-low_power", "1", "-rc_mode", "CQP", "-qp", str(qp)]
+              "-vf", f"{filter_lestvica}format=nv12,hwupload",
+              "-c:v", "h264_vaapi", "-profile:v", "high",
+              "-rc_mode", "CQP", "-qp", str(qp)]
     else:
-        u += ["-vf", f"{filter_lestvica},format=yuv420p",
-              "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-profile:v", "main",
+        u += ["-vf", f"{filter_lestvica}format=yuv420p",
+              "-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency", "-profile:v", "high",
               "-b:v", bitrate, "-maxrate", bitrate, "-bufsize", "1M"]
     # Brez B-slik in z rednim kljucnim okvirjem: televizor se lahko prikljuci hitro,
     # izguba paketa pa se popravi v eni sekundi.
