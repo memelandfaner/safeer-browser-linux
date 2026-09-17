@@ -52,6 +52,7 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.0.32" date="2026-09-17"><description><p>Safeer Link: control your TV from this computer. Click the TV in the Safeer Link window and choose Remote: keys, volume, the TV's apps and a screenshot of its screen; type a command, a page or a search. Your phone or TV can control this computer's Safeer the same way (open pages, scroll, play or pause, volume).</p></description></release>
     <release version="1.0.31" date="2026-09-16"><description><p>Safeer Link: give your devices your own names, kept on this computer only; the name is used in the device list, when sending a page and in notifications.</p></description></release>
     <release version="1.0.30" date="2026-09-16"><description><p>PDF files on your computer open in Safeer: choose "Open with Safeer" in the file manager or enter a file:// address. Safeer Link texts no longer use the word "hub": start on any device, the others join.</p></description></release>
     <release version="1.0.29" date="2026-09-16"><description><p>Saving from the built-in PDF viewer works again and keeps the document's file name; downloads that web pages generate in the browser (for example exported CSV files) are no longer blocked.</p></description></release>

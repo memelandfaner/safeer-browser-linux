@@ -659,7 +659,8 @@ class Povezava:
             },
         }
         # Racunalnik sprejema besedilo, datoteke in zaslon; sync samo, ce je vklopljen.
-        zmoznosti = ["url", "text", "file", "screen"]
+        # "remote": Safeer Control sme temu racunalniku posiljati ukaze daljinca (core/link_daljinec.py).
+        zmoznosti = ["url", "text", "file", "screen", "remote"]
         if self.sinhronizira:
             zmoznosti.append("sync")
         prijava["payload"]["capabilities"] = zmoznosti
