@@ -18,7 +18,7 @@ import json
 import os
 import threading
 import time
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 import gi
 
@@ -103,8 +103,17 @@ class SafeerLink:
                  trenutna_stran: Callable[[], Dict[str, str]],
                  odpri_naslov: Callable[[str], None],
                  koren_programa: str,
-                 dovoli_potrdilo: Optional[Callable[[str, str], None]] = None) -> None:
+                 dovoli_potrdilo: Optional[Callable[[str, str], None]] = None,
+                 nastavitve: Optional[link_hub.Nastavitve] = None,
+                 identiteta: Optional[Tuple[str, str]] = None,
+                 control: bool = False,
+                 ob_zaprtju: Optional[Callable[[], None]] = None) -> None:
         self.starsevsko = starsevsko
+        # Safeer Control: ista stran in isti Link, a brez brskalnika (svoja identiteta in shramba,
+        # okno je glavno okno programa, prejete strani odpre sistemski brskalnik).
+        self.control = control
+        self.ob_zaprtju = ob_zaprtju
+        self._identiteta = identiteta
         self.config = config
         self.trenutna_stran = trenutna_stran
         self.odpri_naslov = odpri_naslov
@@ -114,7 +123,7 @@ class SafeerLink:
         self.dovoli_potrdilo = dovoli_potrdilo
         self.deljenje_zaslona: Optional[link_deljenje.DeljenjeZaslona] = None
 
-        self.nastavitve = link_hub.Nastavitve()
+        self.nastavitve = nastavitve if nastavitve is not None else link_hub.Nastavitve()
         self.povezava: Optional[link_hub.Povezava] = None
         self.naprave: List[dict] = []
         self.okno: Optional[Gtk.Window] = None
@@ -139,6 +148,14 @@ class SafeerLink:
     def _hub(self) -> str:
         return str(self.nastavitve.get("hub_url", "") or "")
 
+    def _id(self) -> str:
+        return self._identiteta[0] if self._identiteta else link_hub.id_naprave()
+
+    def _ime(self) -> str:
+        if self._identiteta:
+            return self._identiteta[1]
+        return "Safeer (" + link_hub._ime_naprave().split(".")[0] + ")"
+
     def _zeton(self) -> Optional[str]:
         z = self.nastavitve.get("control_token")
         return z if isinstance(z, str) and z else None
@@ -155,8 +172,9 @@ class SafeerLink:
             # Seznanjena je naprava z zetonom IN odtisom Hubovega potrdila; stara
             # seznanitev brez odtisa (pred TLS) ne velja vec - stran ponudi novo.
             "seznanjen": self._zeton() is not None and self._odtis() is not None,
-            "naprava": "Safeer (" + link_hub._ime_naprave().split(".")[0] + ")",
-            "id": link_hub.id_naprave(),
+            "naprava": self._ime(),
+            "id": self._id(),
+            "control": self.control,
         }
 
     def _sinhronizacija(self) -> dict:
@@ -233,8 +251,11 @@ class SafeerLink:
         nastavitve.set_property("enable-webgl", False)
         pogled.set_background_color(_barva(0x0b, 0x10, 0x17))
 
-        okno = Gtk.Window(title="Safeer Link")
-        okno.set_default_size(560, 760)
+        okno = Gtk.Window(title="Safeer Control" if self.control else "Safeer Link")
+        okno.set_default_size(560, 760 if not self.control else 820)
+        if self.control:
+            okno.set_wmclass("safeer-control", "Safeer Control")
+            okno.set_icon_name("safeer-control")
         if self.starsevsko is not None:
             okno.set_transient_for(self.starsevsko)
         okno.add(pogled)
@@ -279,6 +300,11 @@ class SafeerLink:
         # in zaslon tudi, ko Safeer Link ni odprt - kot telefon s storitvijo.
         self.okno = None
         self.pogled = None
+        if self.ob_zaprtju is not None:
+            try:
+                self.ob_zaprtju()
+            except Exception:
+                pass
 
     def povezi_v_ozadju(self) -> None:
         """Ob zagonu brskalnika: ce je racunalnik seznanjen, se poveze brez okna."""
@@ -288,7 +314,9 @@ class SafeerLink:
     def _na_nalozeno(self, pogled, dogodek) -> None:
         if dogodek != WebKit2.LoadEvent.FINISHED:
             return
-        self._osvezi_stanje_v_strani()
+        # Stran je svoje prvo stanje prebrala ze ob DOMContentLoaded (pred tem vstavkom): povemo ji,
+        # naj ga prebere znova, sicer do prvega dogodka kaze »ni nastavljeno«.
+        self._odziv("stanje", None)
         # Ce Huba se ne poznamo, ga poiscemo sami -- uporabniku ni treba nicesar vedeti.
         if not self._hub():
             self._v_ozadju(self._poisci_hub)
@@ -487,8 +515,7 @@ class SafeerLink:
         self._prijava = None
         try:
             zacetek = link_hub.zacni_seznanitev(
-                naslov, link_hub.id_naprave(),
-                "Safeer (" + link_hub._ime_naprave().split(".")[0] + ")")
+                naslov, self._id(), self._ime())
             if not zacetek:
                 self._odziv("napaka", {"koda": "seznanitev_ni_stekla",
                                        "sporocilo": "Seznanitve ni bilo mogoče začeti."})
@@ -513,7 +540,7 @@ class SafeerLink:
         if not prijava or not naslov:
             self._odziv("kodaNiSprejeta", {"razlog": "prijava_ne_obstaja"})
             return
-        zeton, razlog = link_hub.potrdi_kodo(naslov, prijava, link_hub.id_naprave(), koda)
+        zeton, razlog = link_hub.potrdi_kodo(naslov, prijava, self._id(), koda)
         if not zeton:
             if razlog in ("prevec_poskusov", "prijava_ne_obstaja"):
                 self._prijava = None
@@ -554,8 +581,7 @@ class SafeerLink:
             self.povezava = None
 
         povezava = link_hub.Povezava(
-            naslov, zeton, link_hub.id_naprave(),
-            "Safeer (" + link_hub._ime_naprave().split(".")[0] + ")",
+            naslov, zeton, self._id(), self._ime(),
             sinhronizira=bool(self.nastavitve.get("sync_bookmarks", False)),
             odtis=self._odtis(),
         )
@@ -640,6 +666,9 @@ class SafeerLink:
                     print(f"[SafeerLink] Odgovora na ukaz ni bilo mogoče poslati: {e}")
 
         def izvedi() -> bool:
+            if self.control:
+                link_daljinec.izvedi_control(dejanje, parametri, self.odpri_naslov, koncaj)
+                return False
             if self.starsevsko is None:
                 koncaj(link_daljinec.izid(False, "Brskalnik ni odprt"))
                 return False
@@ -799,7 +828,7 @@ class SafeerLink:
             return
         self._deljenje("besedilo", "posiljam", id_naprave)
         ok, n = link_deljenje.poslji_besedilo(self._hub(), self._zeton() or "", self._odtis() or "",
-                                              link_hub.id_naprave(), id_naprave, cisto)
+                                              self._id(), id_naprave, cisto)
         if ok:
             self._deljenje("besedilo", "poslano", id_naprave)
         else:
@@ -825,7 +854,7 @@ class SafeerLink:
         ime = os.path.basename(pot)
         self._deljenje("datoteka", "posiljam", id_naprave, ime, odstotek=0)
         ok, n = link_deljenje.poslji_datoteko(
-            self._hub(), self._zeton() or "", self._odtis() or "", link_hub.id_naprave(), id_naprave, pot,
+            self._hub(), self._zeton() or "", self._odtis() or "", self._id(), id_naprave, pot,
             napredek=lambda o: self._deljenje("datoteka", "posiljam", id_naprave, ime, odstotek=o))
         if ok:
             self._deljenje("datoteka", "poslano", id_naprave, ime, odstotek=100)
@@ -843,7 +872,7 @@ class SafeerLink:
         if self.deljenje_zaslona is not None and self.deljenje_zaslona.tece:
             self.deljenje_zaslona.ustavi()
         d = link_deljenje.DeljenjeZaslona(self._hub(), self._zeton() or "", self._odtis() or "",
-                                          link_hub.id_naprave(), id_naprave, ime_naprave,
+                                          self._id(), id_naprave, ime_naprave,
                                           ob_spremembi=self._na_spremembo_zaslona)
         self.deljenje_zaslona = d
         d.zacni()
@@ -941,7 +970,7 @@ class SafeerLink:
         if not (cist.startswith("http://") or cist.startswith("https://")):
             return
         def naredi():
-            if self.okno is not None:
+            if self.okno is not None and not self.control:
                 self.okno.destroy()
             try:
                 self.odpri_naslov(cist)
