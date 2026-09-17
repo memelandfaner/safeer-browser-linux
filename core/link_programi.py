@@ -141,20 +141,30 @@ class Programi:
                 "ikona": (vnos.get("Icon", "") or "").strip()}
 
     # ------------------------------------------------------------------ za Safeer Link
-    def seznam(self, z_ikonami: bool = True) -> dict:
-        """Odgovor na `apps.list`: {"enabled": bool, "items": [...]}."""
+    def seznam(self, z_ikonami: bool = True, od: int = 0, koliko: int = 0) -> dict:
+        """Odgovor na `apps.list`: {"enabled", "items", "total", "offset"}.
+
+        Ikone so PNG v base64 in seznam je lahko dolg (na tem racunalniku 84 programov), sporocila
+        v Safeer Linku pa so omejena na 256 kB - cel seznam z ikonami je bil prevelik in je padel
+        skozi. Zato ga posiljamo po kosih: [od, od+koliko). `koliko = 0` pomeni vse (za teste in
+        odjemalce brez strani).
+        """
         if not self.vklopljeno:
-            return {"enabled": False, "items": []}
+            return {"enabled": False, "items": [], "total": 0, "offset": 0}
         self._vnosi = self._preberi()
+        urejeni = sorted(self._vnosi.items(), key=lambda p: p[1]["ime"].lower())
+        skupaj = len(urejeni)
+        od = max(0, int(od or 0))
+        kos = urejeni[od:od + koliko] if koliko else urejeni[od:]
         vnosi = []
-        for oznaka, v in sorted(self._vnosi.items(), key=lambda p: p[1]["ime"].lower()):
+        for oznaka, v in kos:
             element = {"id": PREDPONA + oznaka, "name": v["ime"], "comment": v["opis"]}
             if z_ikonami:
                 ikona = self._ikona(v["ikona"])
                 if ikona:
                     element["icon_png"] = ikona
             vnosi.append(element)
-        return {"enabled": True, "items": vnosi}
+        return {"enabled": True, "items": vnosi, "total": skupaj, "offset": od}
 
     def zazeni(self, oznaka: str) -> bool:
         """Zazene program z oznako s seznama. Nic drugega; ukaza z omrezja ne izvajamo."""
