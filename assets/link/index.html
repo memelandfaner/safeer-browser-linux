@@ -37,6 +37,29 @@
     <p class="opomba" id="opombaHubVklop"></p>
   </div>
 
+  <!-- Stanje 4: sredisce tece v tem brskalniku (na televizorju, telefonu ali racunalniku). -->
+  <section class="zaslon" id="zaslonHubTu" hidden>
+
+    <div class="panel" id="panelPrijave" hidden>
+      <h2 data-t="cakaPrijava">Naprava se želi povezati</h2>
+      <ul class="seznam" id="seznamPrijav"></ul>
+    </div>
+
+    <div class="panel">
+      <div class="vrsticaGlave">
+        <h2 id="naslovHubTu">Ta naprava je središče</h2>
+        <button class="drobniGumb" id="gumbHubOsvezi" data-t="osvezi">Osveži</button>
+      </div>
+      <p class="pojasnilo" data-t="tuPojasnilo">
+        Naprave v domačem omrežju se povezujejo na to napravo. Ko se povežejo, si lahko med
+        seboj pošiljajo strani, besedila, datoteke in zaslon.
+      </p>
+      <ul class="seznam" id="seznamHubNaprav"></ul>
+      <p class="opomba" id="opombaHub"></p>
+    </div>
+
+  </section>
+
   <!-- Stanje 1: Huba ni -->
   <section class="zaslon" id="zaslonBrezHuba">
     <div class="kartica sredina">
@@ -195,29 +218,6 @@
 
   </section>
 
-  <!-- Stanje 4: sredisce tece v tem brskalniku (na televizorju, telefonu ali racunalniku). -->
-  <section class="zaslon" id="zaslonHubTu" hidden>
-
-    <div class="panel" id="panelPrijave" hidden>
-      <h2 data-t="cakaPrijava">Naprava se želi povezati</h2>
-      <ul class="seznam" id="seznamPrijav"></ul>
-    </div>
-
-    <div class="panel">
-      <div class="vrsticaGlave">
-        <h2 id="naslovHubTu">Ta naprava je središče</h2>
-        <button class="drobniGumb" id="gumbHubOsvezi" data-t="osvezi">Osveži</button>
-      </div>
-      <p class="pojasnilo" data-t="tuPojasnilo">
-        Naprave v domačem omrežju se povezujejo na to napravo. Ko se povežejo, si lahko med
-        seboj pošiljajo strani, besedila, datoteke in zaslon.
-      </p>
-      <ul class="seznam" id="seznamHubNaprav"></ul>
-      <p class="opomba" id="opombaHub"></p>
-    </div>
-
-  </section>
-
   <!-- Stanje 5: daljinec za izbrano napravo (Safeer Control prek Safeer Linka).
        Vsa besedila napolni daljinec.js v jeziku uporabnika; slovenscina je privzetek. -->
   <section class="zaslon daljinec" id="zaslonDaljinec" hidden>
@@ -230,6 +230,7 @@
         <p class="oznaka" data-d="upravljam">Upravljam</p>
         <h2 id="daljinecIme">Televizor</h2>
         <p class="daljinecStanje" id="daljinecStanje"></p>
+        <p class="daljinecSredisce" id="daljinecSredisce"></p>
       </div>
       <button class="daljinecPosnetekGumb" id="daljinecPosnetekGumb" data-d-naslov="pokaziZaslon" aria-label="Pokaži zaslon">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 5h20v13H2z M8 21h8"/></svg>
@@ -295,7 +296,7 @@
     <!-- Aplikacije na napravi: prave, z ikonami, ne vnaprej izbrane. -->
     <div class="panel" id="daljinecAplikacijePanel">
       <div class="vrsticaGlave">
-        <h2 data-d="aplikacije">Aplikacije na napravi</h2>
+        <h2 id="daljinecAplikacijeNaslov">Aplikacije na napravi</h2>
         <button class="drobniGumb" id="daljinecAplikacijeOsvezi" data-d="osvezi">Osveži</button>
       </div>
       <div class="aplikacije" id="daljinecAplikacije"></div>
