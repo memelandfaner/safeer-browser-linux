@@ -375,12 +375,18 @@ def potrdi_kodo(ws_naslov: str, prijava: dict, device_id: str, koda: str) -> Tup
     return zeton, ""
 
 
-def vzemi_vstopnico(ws_naslov: str, zeton: str, odtis: Optional[str] = None) -> Optional[str]:
+def vzemi_vstopnico_s_kodo(ws_naslov: str, zeton: str, odtis: Optional[str] = None) -> Tuple[Optional[str], int]:
+    """(vstopnica, koda HTTP). Koda 401 pomeni: Hub tega zetona ne pozna vec (npr. gostitelj
+    je bil ponastavljen ali je napravo odstranil) - naprava se mora znova seznaniti."""
     koda, odgovor = _zahteva(_osnova(ws_naslov) + POT_VSTOPNICE, {}, zeton=zeton, odtis=odtis)
     if koda != 200:
-        return None
+        return None, koda
     vstopnica = odgovor.get("ticket")
-    return vstopnica if isinstance(vstopnica, str) and vstopnica else None
+    return (vstopnica if isinstance(vstopnica, str) and vstopnica else None), koda
+
+
+def vzemi_vstopnico(ws_naslov: str, zeton: str, odtis: Optional[str] = None) -> Optional[str]:
+    return vzemi_vstopnico_s_kodo(ws_naslov, zeton, odtis)[0]
 
 
 # ----------------------------------------------------------------------
@@ -620,6 +626,8 @@ class Povezava:
         self.odtis = odtis
         self.device_id = device_id
         self.ime = ime
+        # True, ko je Hub zeton zavrnil (401/403): naprava ni vec seznanjena.
+        self.zavrnjena = False
         self.sinhronizira = sinhronizira
         self.odjemalec: Optional[WsOdjemalec] = None
         self.nit: Optional[threading.Thread] = None
@@ -638,7 +646,9 @@ class Povezava:
         # znova seznani.
         if not self.ws_naslov.startswith("wss://") or not self.odtis:
             return False
-        vstopnica = vzemi_vstopnico(self.ws_naslov, self.zeton, self.odtis)
+        vstopnica, koda = vzemi_vstopnico_s_kodo(self.ws_naslov, self.zeton, self.odtis)
+        # Hub nas ne pozna vec: brez nove seznanitve ne bo slo, zato tega ne poskusamo v krogu.
+        self.zavrnjena = koda in (401, 403)
         if not vstopnica:
             return False
         locilo = "&" if "?" in self.ws_naslov else "?"
