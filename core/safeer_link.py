@@ -596,6 +596,7 @@ class SafeerLink:
                     "ime": d.get("name", ""),
                     "vloga": d.get("role", "receiver"),
                     "zmoznosti": d.get("capabilities") or [],
+                    "naslov": d.get("ip") or "",
                 })
             self.naprave = naprave
             self._odziv("naprave", naprave)
