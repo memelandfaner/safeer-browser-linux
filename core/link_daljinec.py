@@ -96,6 +96,7 @@ def izvedi(app, dejanje: str, parametri: dict, odpri_naslov: Callable[[str], Non
 DEJANJA_CONTROL = ["open_url", "volume", "status"]
 DEJANJA_DATOTEKE = ["files.list"]
 DEJANJA_PROGRAMI = ["apps.list", "apps.launch"]
+DEJANJA_HOST = ["host.info"]
 
 
 def izvedi_control(dejanje: str, parametri: dict, odpri_naslov: Callable[[str], None],
@@ -120,6 +121,10 @@ def izvedi_control(dejanje: str, parametri: dict, odpri_naslov: Callable[[str], 
                 koncaj(izid(True, "Na računalniku ni izbrane nobene mape", podatki))
             else:
                 koncaj(izid(True, f"{len(podatki['items'])} vnosov", podatki))
+        elif d == "host.info":
+            # Kaj ima ta racunalnik (host): procesor, pomnilnik, prostor. Samo stevilke o zmogljivosti,
+            # nic o vsebini - televizor mora vedeti, koliko moci ima na voljo.
+            koncaj(izid(True, "Podatki o računalniku", podatki_hosta()))
         elif d == "apps.list":
             # Programi racunalnika za televizor; brez dovoljenja uporabnika vrne prazen seznam.
             if programi is None:
@@ -150,7 +155,7 @@ def izvedi_control(dejanje: str, parametri: dict, odpri_naslov: Callable[[str], 
             koncaj(_glasnost(parametri))
         elif d == "status":
             s = {"app": "safeer-control-linux", "version": _razlicica_control(), "foreground": True,
-                 "actions": DEJANJA_CONTROL + (DEJANJA_DATOTEKE if datoteke is not None else [])
+                 "actions": DEJANJA_CONTROL + DEJANJA_HOST + (DEJANJA_DATOTEKE if datoteke is not None else [])
                             + (DEJANJA_PROGRAMI if programi is not None and programi.vklopljeno else []),
                  "keys": [], "title": "Safeer Control"}
             if datoteke is not None:
@@ -170,6 +175,62 @@ def izvedi_control(dejanje: str, parametri: dict, odpri_naslov: Callable[[str], 
             koncaj(izid(False, f"Neznano dejanje: {d}" if d else "Manjka dejanje", koda="neznano_dejanje"))
     except Exception as e:  # noqa: BLE001
         koncaj(izid(False, f"Ukaz ni uspel: {e}"))
+
+
+def podatki_hosta() -> dict:
+    """Procesor, pomnilnik in prostor tega racunalnika (Linux: /proc in os.statvfs)."""
+    p: Dict[str, object] = {}
+    try:
+        p["hostname"] = os.uname().nodename
+        p["sistem"] = _ime_sistema()
+    except Exception:
+        pass
+    # Procesor: ime, stevilo jeder, povprecna obremenitev zadnje minute
+    cpu: Dict[str, object] = {}
+    try:
+        cpu["jedra"] = os.cpu_count() or 0
+        with open("/proc/cpuinfo", encoding="utf-8", errors="replace") as f:
+            for vrstica in f:
+                if vrstica.lower().startswith("model name"):
+                    cpu["model"] = vrstica.split(":", 1)[1].strip()
+                    break
+        cpu["obremenitev"] = round(os.getloadavg()[0], 2)
+    except Exception:
+        pass
+    if cpu:
+        p["cpu"] = cpu
+    # Pomnilnik: skupaj in res na voljo (MemAvailable, ne le prosti)
+    ram: Dict[str, object] = {}
+    try:
+        with open("/proc/meminfo", encoding="utf-8", errors="replace") as f:
+            for vrstica in f:
+                kljuc, _, vrednost = vrstica.partition(":")
+                if kljuc == "MemTotal":
+                    ram["skupaj"] = int(vrednost.split()[0]) * 1024
+                elif kljuc == "MemAvailable":
+                    ram["prosto"] = int(vrednost.split()[0]) * 1024
+    except Exception:
+        pass
+    if ram:
+        p["ram"] = ram
+    # Prostor: disk, na katerem je domaca mapa uporabnika
+    try:
+        st = os.statvfs(os.path.expanduser("~"))
+        p["disk"] = {"skupaj": st.f_blocks * st.f_frsize, "prosto": st.f_bavail * st.f_frsize}
+    except Exception:
+        pass
+    return p
+
+
+def _ime_sistema() -> str:
+    try:
+        with open("/etc/os-release", encoding="utf-8", errors="replace") as f:
+            for vrstica in f:
+                if vrstica.startswith("PRETTY_NAME="):
+                    return vrstica.split("=", 1)[1].strip().strip('"')
+    except Exception:
+        pass
+    return "Linux"
 
 
 def _razlicica_control() -> str:
