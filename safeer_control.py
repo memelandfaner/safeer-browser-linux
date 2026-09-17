@@ -32,7 +32,7 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("WebKit2", "4.1")
 from gi.repository import Gio, GLib, Gtk, WebKit2  # noqa: E402
 
-from core import link_hub  # noqa: E402
+from core import link_hub, link_tls  # noqa: E402
 from core.safeer_link import SafeerLink  # noqa: E402
 
 APP_ID = "io.github.memelandfaner.SafeerControl"
@@ -99,6 +99,55 @@ def _jezik_brskalnika() -> Optional[str]:
         return None
 
 
+def prevzemi_seznanitev_brskalnika(nastavitve: link_hub.Nastavitve, id_naprave: str, ime: str) -> bool:
+    """Ce je Safeer Browser na tem racunalniku ze v Safeer Linku, Control vstopi brez nove kode.
+
+    Brskalnikov zeton (ista datoteka istega uporabnika) Hubu dokaze, da smo isti racunalnik; Hub
+    izda Controlu njegov lasten zeton (sorodna naprava, /cast/pair/sibling). Brez brskalnika ali
+    s starim Hubom ostane obicajna pot s kodo. Vrne True, ce je seznanitev zdaj prevzeta.
+    """
+    if nastavitve.get("control_token") and nastavitve.get("hub_fp"):
+        return False  # Control je ze seznanjen sam
+    pot = os.path.join(link_hub.NASTAVITVE_MAPA, "link.json")
+    try:
+        with open(pot, "r", encoding="utf-8") as d:
+            brskalnik = json.load(d) or {}
+    except Exception:
+        return False
+    kandidati = []
+    hub, zeton, odtis = brskalnik.get("hub_url"), brskalnik.get("control_token"), brskalnik.get("hub_fp")
+    if hub and zeton and odtis:
+        kandidati.append((str(hub), str(zeton), str(odtis)))
+    seznanitve = brskalnik.get("seznanitve")
+    if isinstance(seznanitve, dict):
+        for fp, z in seznanitve.items():
+            if isinstance(z, dict) and z.get("token") and z.get("hub_url") and (str(z["hub_url"]), str(z["token"]), str(fp)) not in kandidati:
+                kandidati.append((str(z["hub_url"]), str(z["token"]), str(fp)))
+    uspelo = False
+    seznanitve_controla = nastavitve.get("seznanitve") if isinstance(nastavitve.get("seznanitve"), dict) else {}
+    for hub, zeton, odtis in kandidati:
+        if not hub.startswith("wss://"):
+            continue  # zeton gre samo po TLS
+        try:
+            koda, odgovor, _ = link_tls.zahteva(link_hub._osnova(hub) + "/cast/pair/sibling",
+                                                {"device_id": id_naprave, "name": ime}, zeton, 4.0, pripeti=odtis)
+        except Exception:
+            continue
+        nov = odgovor.get("token") if isinstance(odgovor, dict) else None
+        if koda != 200 or not nov:
+            continue
+        seznanitve_controla[odtis] = {"token": str(nov), "hub_url": hub}
+        if not uspelo:
+            nastavitve.podatki["hub_url"] = hub
+            nastavitve.podatki["control_token"] = str(nov)
+            nastavitve.podatki["hub_fp"] = odtis
+            uspelo = True
+    if uspelo:
+        nastavitve.podatki["seznanitve"] = seznanitve_controla
+        nastavitve.shrani()
+    return uspelo
+
+
 def identiteta() -> tuple:
     """Control ima v Linku svoje ime in id, da ne trka z brskalnikom na istem racunalniku."""
     ime = link_hub._ime_naprave().split(".")[0]
@@ -118,14 +167,21 @@ class SafeerControl(Gtk.Application):
             self.link.okno.present()
             return
         if self.link is None:
+            nastavitve_linka = link_hub.Nastavitve(os.path.join(NASTAVITVE_MAPA, "link.json"))
+            id_naprave, ime = identiteta()
+            try:
+                if prevzemi_seznanitev_brskalnika(nastavitve_linka, id_naprave, ime):
+                    print("[SafeerControl] Seznanitev prevzeta od Safeer Browserja (brez kode).")
+            except Exception as e:  # noqa: BLE001
+                print(f"[SafeerControl] Seznanitve brskalnika ni bilo mogoče prevzeti: {e}")
             self.link = SafeerLink(
                 None, self.nastavitve,
                 trenutna_stran=lambda: {},
                 odpri_naslov=self.odpri_naslov,
                 koren_programa=KOREN,
                 dovoli_potrdilo=self.dovoli_potrdilo,
-                nastavitve=link_hub.Nastavitve(os.path.join(NASTAVITVE_MAPA, "link.json")),
-                identiteta=identiteta(),
+                nastavitve=nastavitve_linka,
+                identiteta=(id_naprave, ime),
                 control=True,
                 ob_zaprtju=self.quit,
             )

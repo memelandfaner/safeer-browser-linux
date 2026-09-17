@@ -590,7 +590,24 @@ class SafeerLink:
         if povezava.poveži():
             self.povezava = povezava
             return True
+        if povezava.zavrnjena:
+            # Sredisce te naprave ne pozna vec (ponastavitev, odstranitev): stara seznanitev
+            # ne velja, stran ponudi novo s kodo - namesto vecnega »Povezujem …«.
+            self._pozabi_zeton()
+            self._odziv("stanje", None)
+            self._odziv("napaka", {"koda": "naprava_ni_znana",
+                                   "sporocilo": "Safeer Link te naprave ne pozna več. Poveži jo znova."})
+            return True  # iskanje drugih sredisc tu ne pomaga
         return False
+
+    def _pozabi_zeton(self) -> None:
+        """Zeton in odtis odpadeta, naslov sredisca ostane - nova seznanitev gre tja."""
+        s = self._seznanitve()
+        s.pop(self._odtis() or "", None)
+        self.nastavitve.podatki["seznanitve"] = s
+        for kljuc in ("control_token", "hub_fp"):
+            self.nastavitve.podatki.pop(kljuc, None)
+        self.nastavitve.shrani()
 
     def _na_stanje_povezave(self, povezan: bool) -> None:
         self._odziv("povezava", povezan)
