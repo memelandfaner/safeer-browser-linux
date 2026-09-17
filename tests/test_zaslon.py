@@ -170,3 +170,31 @@ class Seja(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class Okvirji(unittest.TestCase):
+    """Pretok v2: slika in zvok po isti povezavi, vsak v svojih okvirjih."""
+
+    def test_zvok_je_surov_pcm_v_majhnih_koscih(self):
+        u = link_zaslon.ukaz_zvok("izhod.monitor")
+        self.assertIn("pulse", u)
+        self.assertEqual(u[u.index("-i") + 1], "izhod.monitor")
+        self.assertEqual(u[u.index("-f", u.index("-ar")) + 1], "s16le")
+        self.assertEqual(u[u.index("-ar") + 1], str(link_zaslon.ZVOK_HZ))
+        # 1920 bajtov = 10 ms stereo 48 kHz: zvok ne sme cakati za veliko sliko
+        self.assertEqual(u[u.index("-fragment_size") + 1], "1920")
+
+    def test_vrsti_okvirjev_sta_razlicni(self):
+        self.assertNotEqual(link_zaslon.OKVIR_SLIKA, link_zaslon.OKVIR_ZVOK)
+
+    def test_glava_pove_razlicico_in_zvok(self):
+        z = link_zaslon.Zaslon(vklopljeno=True, ffmpeg="/bin/true")
+        os.environ.setdefault("DISPLAY", ":0")
+        seja = z.zacni("tv-test")
+        try:
+            self.assertEqual(seja["v"], 2)
+            self.assertIn("input", seja)
+            if seja["audio"] is not None:
+                self.assertEqual(seja["audio"]["format"], "s16le")
+        finally:
+            z.ustavi()
