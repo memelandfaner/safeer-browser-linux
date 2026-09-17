@@ -93,6 +93,54 @@ def izvedi(app, dejanje: str, parametri: dict, odpri_naslov: Callable[[str], Non
         koncaj(izid(False, f"Ukaz ni uspel: {e}"))
 
 
+DEJANJA_CONTROL = ["open_url", "volume", "status"]
+
+
+def izvedi_control(dejanje: str, parametri: dict, odpri_naslov: Callable[[str], None],
+                   koncaj: Callable[[dict], None]) -> None:
+    """Safeer Control (namizna aplikacija brez brskalnika): kar zna racunalnik brez brskalnika --
+    glasnost, odpiranje strani v sistemskem brskalniku in stanje. Vse drugo vrne razumljivo napako."""
+    d = (dejanje or "").strip().lower()
+    parametri = parametri if isinstance(parametri, dict) else {}
+    try:
+        if d == "open_url":
+            url = str(parametri.get("url", "")).strip()
+            if not (url.startswith("http://") or url.startswith("https://")):
+                koncaj(izid(False, "Dovoljeni so samo naslovi http(s)"))
+                return
+            odpri_naslov(url)
+            koncaj(izid(True, "Stran se odpira"))
+        elif d == "volume":
+            koncaj(_glasnost(parametri))
+        elif d == "status":
+            s = {"app": "safeer-control-linux", "version": _razlicica_control(), "foreground": True,
+                 "actions": DEJANJA_CONTROL, "keys": [], "title": "Safeer Control"}
+            try:
+                s["hostname"] = os.uname().nodename
+            except Exception:
+                pass
+            g = _glasnost({})
+            if g.get("ok") and g.get("data"):
+                s["volume"] = g["data"].get("level")
+                s["muted"] = g["data"].get("muted")
+            koncaj(izid(True, "Stanje", s))
+        elif d in DEJANJA:
+            koncaj(izid(False, "Na Safeer Controlu to ni na voljo (ni brskalnika)", koda="ni_v_ospredju"))
+        else:
+            koncaj(izid(False, f"Neznano dejanje: {d}" if d else "Manjka dejanje", koda="neznano_dejanje"))
+    except Exception as e:  # noqa: BLE001
+        koncaj(izid(False, f"Ukaz ni uspel: {e}"))
+
+
+def _razlicica_control() -> str:
+    try:
+        tu = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(tu, "packaging", "VERSION_CONTROL"), encoding="utf-8") as d:
+            return d.read().strip()
+    except Exception:
+        return ""
+
+
 def _webview(app):
     try:
         return app.get_active_webview()

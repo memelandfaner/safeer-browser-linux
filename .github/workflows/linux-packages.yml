@@ -50,6 +50,13 @@ jobs:
           xvfb-run -a safeer --version | tee /dev/stderr | grep -Fx "Safeer Browser $(cat packaging/VERSION)"
           desktop-file-validate /usr/share/applications/safeer-browser.desktop
           sudo apt-get remove -y safeer-browser
+      - name: Safeer Control package (desktop app, no browser required)
+        run: |
+          bash build_control_deb.sh
+          sudo apt-get install -y "./safeer-control_$(cat packaging/VERSION_CONTROL)_all.deb"
+          xvfb-run -a safeer-control --version | tee /dev/stderr | grep -Fx "Safeer Control $(cat packaging/VERSION_CONTROL)"
+          desktop-file-validate /usr/share/applications/safeer-control.desktop
+          sudo apt-get remove -y safeer-control
       - name: AppImage
         run: |
           bash packaging/fetch_linuxdeploy.sh
