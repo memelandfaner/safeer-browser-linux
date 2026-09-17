@@ -41,7 +41,7 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("WebKit2", "4.1")
 from gi.repository import Gio, GLib, Gtk, WebKit2  # noqa: E402
 
-from core import link_datoteke, link_hub, link_tls  # noqa: E402
+from core import link_datoteke, link_hub, link_programi, link_tls  # noqa: E402
 from core.safeer_link import SafeerLink  # noqa: E402
 
 APP_ID = "io.github.memelandfaner.SafeerControl"
@@ -50,12 +50,12 @@ SAMOZAGON_POT = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.expanduse
 
 # Besedila pladnja v jezikih vmesnika (isti nabor kot Safeer Browser).
 BESEDILA = {
-    "sl": {"odpri": "Odpri Safeer Control", "samozagon": "Zaženi ob prijavi", "mape": "Mape za televizor …", "koncaj": "Končaj", "povezan": "Safeer Link: povezan", "ni": "Safeer Link: ni povezave"},
-    "en": {"odpri": "Open Safeer Control", "samozagon": "Start at login", "mape": "Folders for the TV…", "koncaj": "Quit", "povezan": "Safeer Link: connected", "ni": "Safeer Link: not connected"},
-    "de": {"odpri": "Safeer Control öffnen", "samozagon": "Beim Anmelden starten", "mape": "Ordner für den Fernseher …", "koncaj": "Beenden", "povezan": "Safeer Link: verbunden", "ni": "Safeer Link: nicht verbunden"},
-    "es": {"odpri": "Abrir Safeer Control", "samozagon": "Iniciar al iniciar sesión", "mape": "Carpetas para el televisor…", "koncaj": "Salir", "povezan": "Safeer Link: conectado", "ni": "Safeer Link: sin conexión"},
-    "fr": {"odpri": "Ouvrir Safeer Control", "samozagon": "Lancer à la connexion", "mape": "Dossiers pour le téléviseur…", "koncaj": "Quitter", "povezan": "Safeer Link : connecté", "ni": "Safeer Link : non connecté"},
-    "it": {"odpri": "Apri Safeer Control", "samozagon": "Avvia all’accesso", "mape": "Cartelle per il televisore…", "koncaj": "Esci", "povezan": "Safeer Link: connesso", "ni": "Safeer Link: non connesso"},
+    "sl": {"odpri": "Odpri Safeer Control", "samozagon": "Zaženi ob prijavi", "mape": "Mape za televizor …", "programi": "Programi za televizor", "koncaj": "Končaj", "povezan": "Safeer Link: povezan", "ni": "Safeer Link: ni povezave"},
+    "en": {"odpri": "Open Safeer Control", "samozagon": "Start at login", "mape": "Folders for the TV…", "programi": "Apps for the TV", "koncaj": "Quit", "povezan": "Safeer Link: connected", "ni": "Safeer Link: not connected"},
+    "de": {"odpri": "Safeer Control öffnen", "samozagon": "Beim Anmelden starten", "mape": "Ordner für den Fernseher …", "programi": "Programme für den Fernseher", "koncaj": "Beenden", "povezan": "Safeer Link: verbunden", "ni": "Safeer Link: nicht verbunden"},
+    "es": {"odpri": "Abrir Safeer Control", "samozagon": "Iniciar al iniciar sesión", "mape": "Carpetas para el televisor…", "programi": "Programas para el televisor", "koncaj": "Salir", "povezan": "Safeer Link: conectado", "ni": "Safeer Link: sin conexión"},
+    "fr": {"odpri": "Ouvrir Safeer Control", "samozagon": "Lancer à la connexion", "mape": "Dossiers pour le téléviseur…", "programi": "Programmes pour le téléviseur", "koncaj": "Quitter", "povezan": "Safeer Link : connecté", "ni": "Safeer Link : non connecté"},
+    "it": {"odpri": "Apri Safeer Control", "samozagon": "Avvia all’accesso", "mape": "Cartelle per il televisore…", "programi": "Programmi per il televisore", "koncaj": "Esci", "povezan": "Safeer Link: connesso", "ni": "Safeer Link: non connesso"},
 }
 
 
@@ -229,9 +229,14 @@ class Pladenj:
         self._preklop_id = self.samozagon.connect("toggled", self._preklop)
         self.mape = Gtk.MenuItem(label=besedilo(self.jezik, "mape"))
         self.mape.connect("activate", lambda *_a: app.izberi_mape())
+        # Programi za televizor: privzeto izklopljeno; uporabnik vklopi tu in kadarkoli izklopi.
+        self.programi = Gtk.CheckMenuItem(label=besedilo(self.jezik, "programi"))
+        self.programi.set_active(bool(app.programi.vklopljeno))
+        self._programi_id = self.programi.connect("toggled", self._preklop_programi)
         self.koncaj = Gtk.MenuItem(label=besedilo(self.jezik, "koncaj"))
         self.koncaj.connect("activate", lambda *_a: app.koncaj())
-        for m in (self.odpri, self.mape, Gtk.SeparatorMenuItem(), self.samozagon, Gtk.SeparatorMenuItem(), self.koncaj):
+        for m in (self.odpri, self.mape, self.programi, Gtk.SeparatorMenuItem(), self.samozagon,
+                  Gtk.SeparatorMenuItem(), self.koncaj):
             self.meni.append(m)
         self.meni.show_all()
         self.ikona = None
@@ -271,6 +276,9 @@ class Pladenj:
         except Exception:
             pass
 
+    def _preklop_programi(self, postavka: Gtk.CheckMenuItem) -> None:
+        self.app.nastavi_programe(bool(postavka.get_active()))
+
     def _preklop(self, element) -> None:
         self.app.nastavi_samozagon(element.get_active())
 
@@ -295,6 +303,9 @@ class SafeerControl(Gtk.Application):
         mape = self.nastavitve.get("deljene_mape")
         self.datoteke = link_datoteke.Datoteke(mape if isinstance(mape, list) else [])
         self.datoteke.ob_spremembi = lambda poti: self.nastavitve.set("deljene_mape", poti)
+        # Programi racunalnika za televizor; privzeto izklopljeno ("programi_za_tv" v control.json).
+        self.programi = link_programi.Programi(bool(self.nastavitve.get("programi_za_tv", False)))
+        self.programi.ob_spremembi = lambda vklopljeno: self.nastavitve.set("programi_za_tv", bool(vklopljeno))
 
     def do_startup(self) -> None:
         Gtk.Application.do_startup(self)
@@ -322,6 +333,17 @@ class SafeerControl(Gtk.Application):
         )
         self.link.ob_povezavi = self._na_povezavo
         self.link.datoteke = self.datoteke
+        self.link.programi = self.programi
+
+    def nastavi_programe(self, vklopljeno: bool) -> None:
+        """Televizor sme (ali ne sme vec) videti programe tega racunalnika. Sprememba velja takoj:
+        ob naslednji povezavi se zmoznost `apps` javi ali odpade."""
+        self.programi.nastavi(bool(vklopljeno))
+        if self.link is not None:
+            try:
+                self.link.povezi_v_ozadju()   # zmoznost `apps` se javi (ali odpade) ob novi povezavi
+            except Exception:
+                pass
 
     def izberi_mape(self) -> None:
         """Izbira map za televizor iz pladnja (isti pogovor kot na strani Control)."""

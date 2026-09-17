@@ -95,11 +95,12 @@ def izvedi(app, dejanje: str, parametri: dict, odpri_naslov: Callable[[str], Non
 
 DEJANJA_CONTROL = ["open_url", "volume", "status"]
 DEJANJA_DATOTEKE = ["files.list"]
+DEJANJA_PROGRAMI = ["apps.list", "apps.launch"]
 
 
 def izvedi_control(dejanje: str, parametri: dict, odpri_naslov: Callable[[str], None],
                    koncaj: Callable[[dict], None], datoteke=None, posiljatelj: str = "",
-                   hub_url: str = "") -> None:
+                   hub_url: str = "", programi=None) -> None:
     """Safeer Control (namizna aplikacija brez brskalnika): kar zna racunalnik brez brskalnika --
     glasnost, odpiranje strani v sistemskem brskalniku, stanje in seznam deljenih map
     (`files.list`, core/link_datoteke.py, ce je `datoteke` podan). Vse drugo vrne razumljivo napako."""
@@ -119,6 +120,25 @@ def izvedi_control(dejanje: str, parametri: dict, odpri_naslov: Callable[[str], 
                 koncaj(izid(True, "Na računalniku ni izbrane nobene mape", podatki))
             else:
                 koncaj(izid(True, f"{len(podatki['items'])} vnosov", podatki))
+        elif d == "apps.list":
+            # Programi racunalnika za televizor; brez dovoljenja uporabnika vrne prazen seznam.
+            if programi is None:
+                koncaj(izid(False, "Programi tu niso na voljo", koda="ni_na_racunalniku"))
+                return
+            podatki = programi.seznam()
+            if not podatki.get("enabled"):
+                koncaj(izid(True, "Računalnik programov ne deli", podatki))
+            else:
+                koncaj(izid(True, f"{len(podatki['items'])} programov", podatki))
+        elif d == "apps.launch":
+            if programi is None:
+                koncaj(izid(False, "Programi tu niso na voljo", koda="ni_na_racunalniku"))
+                return
+            oznaka = str(parametri.get("app", "") or "")
+            if programi.zazeni(oznaka):
+                koncaj(izid(True, "Program se zaganja"))
+            else:
+                koncaj(izid(False, "Tega programa ni na seznamu", koda="ni_programa"))
         elif d == "open_url":
             url = str(parametri.get("url", "")).strip()
             if not (url.startswith("http://") or url.startswith("https://")):
@@ -130,7 +150,8 @@ def izvedi_control(dejanje: str, parametri: dict, odpri_naslov: Callable[[str], 
             koncaj(_glasnost(parametri))
         elif d == "status":
             s = {"app": "safeer-control-linux", "version": _razlicica_control(), "foreground": True,
-                 "actions": DEJANJA_CONTROL + (DEJANJA_DATOTEKE if datoteke is not None else []),
+                 "actions": DEJANJA_CONTROL + (DEJANJA_DATOTEKE if datoteke is not None else [])
+                            + (DEJANJA_PROGRAMI if programi is not None and programi.vklopljeno else []),
                  "keys": [], "title": "Safeer Control"}
             if datoteke is not None:
                 s["shared_folders"] = len(datoteke.poti())
