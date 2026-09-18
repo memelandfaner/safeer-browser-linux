@@ -5,6 +5,8 @@ let currentHomeLang = 'sl';
 
 const homeI18n = {
   sl: {
+    quick_default_browser: "🌐 Privzeti brskalnik",
+    quick_default_browser_title: "Nastavi Safeer kot privzeti sistemski brskalnik",
     hint_address: "Spletni naslov", hint_tab: "Nov zavihek", hint_find: "Najdi na strani",
     locale: "sl-SI",
     app_title: "Safeer Browser",
@@ -36,6 +38,8 @@ const homeI18n = {
     add_site_title: "Dodaj novo priljubljeno stran ali multimedijo"
   },
   en: {
+    quick_default_browser: "🌐 Default browser",
+    quick_default_browser_title: "Make Safeer the system's default browser",
     hint_address: "Address bar", hint_tab: "New tab", hint_find: "Find on page",
     locale: "en-US",
     app_title: "Safeer Browser",
@@ -67,6 +71,8 @@ const homeI18n = {
     add_site_title: "Add new favorite site or multimedia"
   },
   de: {
+    quick_default_browser: "🌐 Standardbrowser",
+    quick_default_browser_title: "Safeer als Standardbrowser des Systems festlegen",
     hint_address: "Adressleiste", hint_tab: "Neuer Tab", hint_find: "Auf Seite suchen",
     locale: "de-DE",
     app_title: "Safeer Browser",
@@ -98,6 +104,8 @@ const homeI18n = {
     add_site_title: "Neuen Favoriten oder Multimedia hinzufügen"
   },
   es: {
+    quick_default_browser: "🌐 Navegador predeterminado",
+    quick_default_browser_title: "Usar Safeer como navegador predeterminado del sistema",
     hint_address: "Dirección", hint_tab: "Nueva pestaña", hint_find: "Buscar en la página",
     locale: "es-ES",
     app_title: "Safeer Browser",
@@ -129,6 +137,8 @@ const homeI18n = {
     add_site_title: "Añadir nuevo sitio favorito o multimedia"
   },
   fr: {
+    quick_default_browser: "🌐 Navigateur par défaut",
+    quick_default_browser_title: "Définir Safeer comme navigateur par défaut du système",
     hint_address: "Adresse", hint_tab: "Nouvel onglet", hint_find: "Rechercher",
     locale: "fr-FR",
     app_title: "Safeer Browser",
@@ -160,6 +170,8 @@ const homeI18n = {
     add_site_title: "Ajouter un nouveau site favori ou multimédia"
   },
   it: {
+    quick_default_browser: "🌐 Browser predefinito",
+    quick_default_browser_title: "Imposta Safeer come browser predefinito di sistema",
     hint_address: "Indirizzo", hint_tab: "Nuova scheda", hint_find: "Trova nella pagina",
     locale: "it-IT",
     app_title: "Safeer Browser",

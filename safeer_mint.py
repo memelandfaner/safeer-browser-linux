@@ -479,14 +479,17 @@ class SafeerMintBrowser(Gtk.Window):
                 flags=0,
                 message_type=Gtk.MessageType.QUESTION,
                 buttons=Gtk.ButtonsType.NONE,
-                text=f"🔄 Obnovi prejšnjo sejo?"
+                text=t("session_restore_title")
             )
             dialog.format_secondary_text(
-                f"Safeer je shranil {count} zavihek{'ov' if count != 1 else ''} iz prejšnje seje.\n"
-                "Ali jih želite obnoviti?"
+                t("session_restore_one") if count == 1
+                else t("session_restore_many").format(count=count)
             )
-            dialog.add_button("Začni znova", Gtk.ResponseType.CANCEL)
-            btn_restore = dialog.add_button(f"Obnovi {count} zavihk{'ov' if count != 1 else 'ek'}", Gtk.ResponseType.OK)
+            dialog.add_button(t("session_start_fresh"), Gtk.ResponseType.CANCEL)
+            btn_restore = dialog.add_button(
+                t("session_restore_btn_one") if count == 1
+                else t("session_restore_btn_many").format(count=count),
+                Gtk.ResponseType.OK)
             btn_restore.get_style_context().add_class("suggested-action")
             response = dialog.run()
             dialog.destroy()
@@ -2161,7 +2164,7 @@ class SafeerMintBrowser(Gtk.Window):
         # izvedeti. Ko Huba ni, klik odpre zaslon, ki pove, kaj Safeer Link je.
         self.btn_link = Gtk.Button(label="🔗")
         self.btn_link.get_style_context().add_class("ff-nav-btn")
-        self.btn_link.set_tooltip_text("Safeer Link — poveži televizor in telefon")
+        self.btn_link.set_tooltip_text(t("tip_safeer_link"))
         self.btn_link.connect("clicked", lambda b: self.open_safeer_link())
         self.nav_bar.pack_start(self.btn_link, False, False, 0)
         GLib.idle_add(self._safeer_link_preveri_hub)
@@ -2188,19 +2191,19 @@ class SafeerMintBrowser(Gtk.Window):
         carovnik ni ponudil nicesar, kar bi lahko kliknil.
         """
         izbirnik = Gtk.FileChooserDialog(
-            title="Izberite datoteko z zaznamki (HTML)",
+            title=t("pick_bookmarks_title"),
             parent=starsevsko,
             action=Gtk.FileChooserAction.OPEN,
         )
-        izbirnik.add_buttons("Prekliči", Gtk.ResponseType.CANCEL,
-                             "Uvozi", Gtk.ResponseType.ACCEPT)
+        izbirnik.add_buttons(t("pick_cancel"), Gtk.ResponseType.CANCEL,
+                             t("pick_import"), Gtk.ResponseType.ACCEPT)
         filter_html = Gtk.FileFilter()
-        filter_html.set_name("Zaznamki (HTML)")
+        filter_html.set_name(t("filter_bookmarks"))
         filter_html.add_pattern("*.html")
         filter_html.add_pattern("*.htm")
         izbirnik.add_filter(filter_html)
         filter_vse = Gtk.FileFilter()
-        filter_vse.set_name("Vse datoteke")
+        filter_vse.set_name(t("filter_all"))
         filter_vse.add_pattern("*")
         izbirnik.add_filter(filter_vse)
         try:
@@ -2217,11 +2220,11 @@ class SafeerMintBrowser(Gtk.Window):
         try:
             dodanih = self.config.import_bookmarks_from_html(pot)
         except Exception as e:
-            oznaka_stanja.set_text(f"Uvoz ni uspel: {e}")
+            oznaka_stanja.set_text(t("import_failed").format(error=e))
             return
 
         if dodanih:
-            oznaka_stanja.set_text(f"✓ Uvoženih {dodanih} zaznamkov.")
+            oznaka_stanja.set_text(t("import_done").format(count=dodanih))
             try:
                 self.broadcast_portals_update()
             except Exception:
@@ -2399,7 +2402,7 @@ class SafeerMintBrowser(Gtk.Window):
 
         # Reload button in drawer
         self.btn_reload_drawer = Gtk.Button(label="⟳")
-        self.btn_reload_drawer.set_tooltip_text("Osveži stransko integracijo")
+        self.btn_reload_drawer.set_tooltip_text(t("tip_sidebar_reload"))
         self.btn_reload_drawer.get_style_context().add_class("nav-btn")
         self.btn_reload_drawer.connect("clicked", lambda b: self.sidebar_webview.reload())
         self.drawer_header.pack_start(self.btn_reload_drawer, False, False, 0)
@@ -2413,7 +2416,7 @@ class SafeerMintBrowser(Gtk.Window):
 
         # Expand / Shrink drawer width toggle (↔️)
         self.btn_expand_drawer = Gtk.Button(label="↔️")
-        self.btn_expand_drawer.set_tooltip_text("Razširi predal (720px) za sočasen celovit pogled klepeta ali skrči (420px)")
+        self.btn_expand_drawer.set_tooltip_text(t("tip_sidebar_width"))
         self.btn_expand_drawer.get_style_context().add_class("nav-btn")
         self.btn_expand_drawer.connect("clicked", self.toggle_drawer_width)
         self.drawer_header.pack_start(self.btn_expand_drawer, False, False, 0)
@@ -2476,7 +2479,7 @@ class SafeerMintBrowser(Gtk.Window):
 
         # Settings Button (⚙️)
         self.btn_settings_sidebar = Gtk.Button(label="⚙️")
-        self.btn_settings_sidebar.set_tooltip_text("Nastavitve in urejanje stranske vrstice")
+        self.btn_settings_sidebar.set_tooltip_text(t("tip_sidebar_settings"))
         self.btn_settings_sidebar.get_style_context().add_class("dock-btn")
         self.btn_settings_sidebar.connect("clicked", lambda b: self.open_settings_dialog())
         self.icon_dock.pack_start(self.btn_settings_sidebar, False, False, 0)
@@ -2902,23 +2905,23 @@ class SafeerMintBrowser(Gtk.Window):
         lbl_def_status = Gtk.Label()
         lbl_def_status.set_xalign(0.0)
         if is_def:
-            lbl_def_status.set_markup("<span color='#87cf3e'>✓ Safeer je vaš privzeti spletni brskalnik v sistemu Linux.</span>")
+            lbl_def_status.set_markup("<span color='#87cf3e'>%s</span>" % t("default_is_set"))
         else:
-            lbl_def_status.set_markup("<span color='#94a3b8'>Safeer trenutno ni nastavljen kot privzeti brskalnik.</span>")
+            lbl_def_status.set_markup("<span color='#94a3b8'>%s</span>" % t("default_not_set"))
         row_def.pack_start(lbl_def_status, True, True, 0)
 
         btn_make_def = Gtk.Button(label="Nastavi kot privzetega")
         btn_make_def.get_style_context().add_class("customizer-save-btn")
         if is_def:
             btn_make_def.set_sensitive(False)
-            btn_make_def.set_label("✓ Že privzeto")
+            btn_make_def.set_label(t("default_already_btn"))
 
         def on_make_default_clicked(b):
             ok = self.set_as_default_browser(show_dialog=True)
             if ok:
-                lbl_def_status.set_markup("<span color='#87cf3e'>✓ Safeer je vaš privzeti spletni brskalnik v sistemu Linux.</span>")
+                lbl_def_status.set_markup("<span color='#87cf3e'>%s</span>" % t("default_is_set"))
                 btn_make_def.set_sensitive(False)
-                btn_make_def.set_label("✓ Že privzeto")
+                btn_make_def.set_label(t("default_already_btn"))
 
         btn_make_def.connect("clicked", on_make_default_clicked)
         row_def.pack_end(btn_make_def, False, False, 0)
@@ -3592,7 +3595,7 @@ class SafeerMintBrowser(Gtk.Window):
 
         self.find_entry = Gtk.Entry()
         self.find_entry.set_width_chars(28)
-        self.find_entry.set_placeholder_text("Išči na strani…")
+        self.find_entry.set_placeholder_text(t("find_placeholder"))
         self.find_entry.get_style_context().add_class("find-bar-entry")
         self.find_entry.connect("changed", self._on_find_text_changed)
         self.find_entry.connect("activate", lambda e: self._find_next())
@@ -3604,19 +3607,19 @@ class SafeerMintBrowser(Gtk.Window):
         self.find_bar.pack_start(self.find_result_label, False, False, 4)
 
         btn_prev = Gtk.Button(label="◀")
-        btn_prev.set_tooltip_text("Prejšnje (Shift+Enter)")
+        btn_prev.set_tooltip_text(t("find_prev_tip"))
         btn_prev.get_style_context().add_class("find-nav-btn")
         btn_prev.connect("clicked", lambda b: self._find_prev())
         self.find_bar.pack_start(btn_prev, False, False, 0)
 
         btn_next = Gtk.Button(label="▶")
-        btn_next.set_tooltip_text("Naslednje (Enter)")
+        btn_next.set_tooltip_text(t("find_next_tip"))
         btn_next.get_style_context().add_class("find-nav-btn")
         btn_next.connect("clicked", lambda b: self._find_next())
         self.find_bar.pack_start(btn_next, False, False, 0)
 
         btn_close = Gtk.Button(label="✕")
-        btn_close.set_tooltip_text("Zapri iskanje (Escape)")
+        btn_close.set_tooltip_text(t("find_close_tip"))
         btn_close.get_style_context().add_class("find-close-btn")
         btn_close.connect("clicked", lambda b: self.hide_find_bar())
         self.find_bar.pack_end(btn_close, False, False, 0)
@@ -3818,14 +3821,14 @@ class SafeerMintBrowser(Gtk.Window):
         self.default_infobar.get_style_context().add_class("default-browser-infobar")
 
         content_area = self.default_infobar.get_content_area()
-        msg_lbl = Gtk.Label(label="🌐 <b>Safeer Browser ni vaš privzeti brskalnik.</b> Želite, da odpira spletne povezave?")
+        msg_lbl = Gtk.Label(label=t("infobar_default_msg"))
         msg_lbl.set_use_markup(True)
         msg_lbl.set_xalign(0.0)
         content_area.pack_start(msg_lbl, True, True, 6)
 
-        btn_set = self.default_infobar.add_button("Nastavi kot privzetega", Gtk.ResponseType.YES)
-        btn_later = self.default_infobar.add_button("Ne zdaj", Gtk.ResponseType.NO)
-        btn_never = self.default_infobar.add_button("Ne sprašuj več", Gtk.ResponseType.CLOSE)
+        btn_set = self.default_infobar.add_button(t("infobar_set"), Gtk.ResponseType.YES)
+        btn_later = self.default_infobar.add_button(t("infobar_later"), Gtk.ResponseType.NO)
+        btn_never = self.default_infobar.add_button(t("infobar_never"), Gtk.ResponseType.CLOSE)
 
         def on_infobar_response(ib, response_id):
             ib.hide()  # first: whatever happens next, the question is answered
@@ -3848,7 +3851,7 @@ class SafeerMintBrowser(Gtk.Window):
         detected = detect_browser_profiles()
 
         dialog = Gtk.Dialog(
-            title="✨ Dobrodošli v Safeer Browser",
+            title=t("wizard_title"),
             parent=self,
             flags=Gtk.DialogFlags.MODAL | Gtk.DialogFlags.DESTROY_WITH_PARENT
         )
@@ -3857,7 +3860,7 @@ class SafeerMintBrowser(Gtk.Window):
         dialog.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
         dialog.get_style_context().add_class("customizer-dialog")
 
-        btn_finish = dialog.add_button("Začni z brskanjem 🚀", Gtk.ResponseType.OK)
+        btn_finish = dialog.add_button(t("wizard_finish"), Gtk.ResponseType.OK)
         btn_finish.get_style_context().add_class("suggested-action")
 
         content = dialog.get_content_area()
@@ -3873,7 +3876,7 @@ class SafeerMintBrowser(Gtk.Window):
         lbl_h1.set_markup("<span size='x-large' weight='bold' color='#87cf3e'>🍃 Safeer Browser</span>")
         lbl_h1.set_xalign(0)
         lbl_sub = Gtk.Label()
-        lbl_sub.set_markup("<b>Hitra začetna nastavitev za Linux Mint</b>\nPrilagodite brskalnik svojim navadam v manj kot minuti.")
+        lbl_sub.set_markup("<b>%s</b>\n%s" % (t("wizard_sub_title"), t("wizard_sub_body")))
         lbl_sub.set_xalign(0)
         lbl_sub.get_style_context().add_class("dim-label")
         head_box.pack_start(lbl_h1, False, False, 0)
@@ -3887,14 +3890,14 @@ class SafeerMintBrowser(Gtk.Window):
         # 1. Search Engine Selection
         box_search = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         lbl_search = Gtk.Label()
-        lbl_search.set_markup("<b>🔍 Privzeti iskalnik</b>")
+        lbl_search.set_markup("<b>%s</b>" % t("wizard_search"))
         lbl_search.set_xalign(0)
         box_search.pack_start(lbl_search, False, False, 0)
 
         combo_search = Gtk.ComboBoxText()
         engines_order = [
-            ("duckduckgo", "🦆 DuckDuckGo (Priporočeno — visoka zasebnost)"),
-            ("brave", "🦁 Brave Search (Neodvisen spletni indeks)"),
+            ("duckduckgo", t("wizard_engine_ddg")),
+            ("brave", t("wizard_engine_brave")),
             ("google", "🔍 Google"),
             ("ecosia", "🌲 Ecosia"),
             ("bing", "🌐 Bing")
@@ -3912,7 +3915,7 @@ class SafeerMintBrowser(Gtk.Window):
         # 2. Bookmarks Import Checkbox
         box_bm = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         lbl_bm = Gtk.Label()
-        lbl_bm.set_markup("<b>📥 Zaznamki in priljubljene strani</b>")
+        lbl_bm.set_markup("<b>%s</b>" % t("wizard_bookmarks"))
         lbl_bm.set_xalign(0)
         box_bm.pack_start(lbl_bm, False, False, 0)
 
@@ -3935,11 +3938,11 @@ class SafeerMintBrowser(Gtk.Window):
         import_chk = None
         if detected_names:
             names_str = " & ".join(detected_names)
-            import_chk = Gtk.CheckButton(label=f"Uvozi moje obstoječe zaznamke iz {names_str} (1-klik)")
+            import_chk = Gtk.CheckButton(label=t("wizard_import_check").format(names=names_str))
             import_chk.set_active(True)
             box_bm.pack_start(import_chk, False, False, 0)
         else:
-            lbl_no_bm = Gtk.Label(label="Na tem računalniku nismo našli drugega brskalnika.")
+            lbl_no_bm = Gtk.Label(label=t("wizard_no_browser"))
             lbl_no_bm.set_xalign(0)
             lbl_no_bm.get_style_context().add_class("dim-label")
             box_bm.pack_start(lbl_no_bm, False, False, 0)
@@ -3950,11 +3953,9 @@ class SafeerMintBrowser(Gtk.Window):
         lbl_uvoz_stanje.set_xalign(0)
         lbl_uvoz_stanje.get_style_context().add_class("dim-label")
 
-        btn_uvoz_dat = Gtk.Button(label="📥 Uvozi iz datoteke (HTML) …")
+        btn_uvoz_dat = Gtk.Button(label=t("wizard_import_file"))
         btn_uvoz_dat.set_halign(Gtk.Align.START)
-        btn_uvoz_dat.set_tooltip_text(
-            "V starem brskalniku izberite Zaznamki → Izvozi zaznamke v datoteko HTML. "
-            "Datoteko prenesite sem (USB ključ, oblak) in jo izberite tukaj.")
+        btn_uvoz_dat.set_tooltip_text(t("wizard_import_file_tip"))
         btn_uvoz_dat.connect(
             "clicked",
             lambda b: self._carovnik_uvoz_iz_datoteke(dialog, lbl_uvoz_stanje))
@@ -3965,18 +3966,18 @@ class SafeerMintBrowser(Gtk.Window):
         # 3. Default Browser Option
         box_def = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         lbl_def = Gtk.Label()
-        lbl_def.set_markup("<b>🌐 Privzeti sistemski brskalnik</b>")
+        lbl_def.set_markup("<b>%s</b>" % t("wizard_default"))
         lbl_def.set_xalign(0)
         box_def.pack_start(lbl_def, False, False, 0)
 
         is_already_def = self.is_default_browser()
         def_chk = None
         if not is_already_def:
-            def_chk = Gtk.CheckButton(label="Nastavi Safeer kot privzeti brskalnik za odpiranje povezav")
+            def_chk = Gtk.CheckButton(label=t("wizard_default_check"))
             def_chk.set_active(False)
             box_def.pack_start(def_chk, False, False, 0)
         else:
-            lbl_is_def = Gtk.Label(label="✓ Safeer je že nastavljen kot vaš privzeti brskalnik.")
+            lbl_is_def = Gtk.Label(label=t("wizard_is_default"))
             lbl_is_def.set_xalign(0)
             lbl_is_def.get_style_context().add_class("dim-label")
             box_def.pack_start(lbl_is_def, False, False, 0)
@@ -4007,9 +4008,9 @@ class SafeerMintBrowser(Gtk.Window):
         self.url_entry.set_text("safeer://home")
         active = self.get_active_tab()
         if active:
-            active["title"] = "Safeer Domača Stran"
+            active["title"] = t("home_title")
             active["icon"] = "🍃"
-            active["title_label"].set_text("Safeer Domača Stran")
+            active["title_label"].set_text(t("home_title"))
             active["icon_label"].set_text("🍃")
         self.varnostna_ikona("🎚️")
 
@@ -4119,8 +4120,8 @@ class SafeerMintBrowser(Gtk.Window):
             dialog.format_secondary_text(f"{host}\n\n" + fake_bank_warning_text(verdict, "sl"))
             dialog.add_button("Vseeno nadaljuj", 3)
             if verdict.official_domain:
-                dialog.add_button(f"Odpri {verdict.official_domain}", 2)
-            dialog.add_button("⬅ Nazaj na varno", 1)
+                dialog.add_button(t("threat_open_official").format(domain=verdict.official_domain), 2)
+            dialog.add_button(t("threat_back_safe"), 1)
             dialog.set_default_response(1)
             response = dialog.run()
             dialog.destroy()
@@ -4775,7 +4776,7 @@ class SafeerMintBrowser(Gtk.Window):
         elif target == "safeer://home":
             home_path = os.path.join(BASE_DIR, "ui", "home.html")
             wv.load_uri(f"file://{home_path}")
-            tab_title.set_text("Safeer Domača Stran")
+            tab_title.set_text(t("home_title"))
             tab_icon.set_text("🍃")
         elif is_safe_web_url(target):
             wv.load_uri(target)
@@ -4783,7 +4784,7 @@ class SafeerMintBrowser(Gtk.Window):
             print(f"[New Tab Security] Zavrnjen neveljaven ali nevaren URL: {target}")
             home_path = os.path.join(BASE_DIR, "ui", "home.html")
             wv.load_uri(f"file://{home_path}")
-            tab_title.set_text("Safeer Domača Stran")
+            tab_title.set_text(t("home_title"))
             tab_icon.set_text("🍃")
 
         if switch:
@@ -5271,11 +5272,11 @@ class SafeerMintBrowser(Gtk.Window):
             if is_dark:
                 self._ikona_temnega_nacina(True)
                 self.btn_dark_mode.get_style_context().add_class("active")
-                self.btn_dark_mode.set_tooltip_text("Prisili temni način (Force Dark Mode) — VKLOPLJEN")
+                self.btn_dark_mode.set_tooltip_text(t("tip_dark_on"))
             else:
                 self._ikona_temnega_nacina(False)
                 self.btn_dark_mode.get_style_context().remove_class("active")
-                self.btn_dark_mode.set_tooltip_text("Prisili temni način (Force Dark Mode) — IZKLOPLJEN")
+                self.btn_dark_mode.set_tooltip_text(t("tip_dark_off"))
 
         for tab in self.tabs:
             wv = tab["webview"]
