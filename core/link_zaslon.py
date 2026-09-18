@@ -30,6 +30,7 @@ import time
 from typing import Dict, List, Optional
 
 from core.link_datoteke import TLS_MAPA, zagotovi_potrdilo
+from core.link_plosek import Plosek
 from core.link_vnos import Vnos
 
 #: Vrste okvirjev v pretoku.
@@ -177,6 +178,8 @@ class Zaslon:
         self._nit: Optional[threading.Thread] = None
         self._pisalo = threading.Lock()
         self._vnos = Vnos()
+        # Navidezni igralni plosek racunalnika: nastane sele, ko televizor res poslje plosek.
+        self._plosek = Plosek()
         self._vnosov = 0
         self._tece_od = 0.0
         self._povezan = False
@@ -196,6 +199,7 @@ class Zaslon:
             "strojno": bool(vaapi),
             "zvok": bool(privzeti_monitor()),
             "vnos": self._vnos.mozno,
+            "plosek": self._plosek.mozno(),
             "kakovosti": sorted(KAKOVOSTI),
         }
 
@@ -263,7 +267,7 @@ class Zaslon:
         return {"port": self.vrata, "fp": self.odtis, "token": self._zeton, "v": 2,
                 "codec": "h264", **self._slika, "quality": self._kakovost,
                 "audio": {"hz": ZVOK_HZ, "channels": ZVOK_KANALI, "format": "s16le"} if self._zvok_vir else None,
-                "input": self._vnos.mozno}
+                "input": self._vnos.mozno, "gamepad": self._plosek.mozno()}
 
     @staticmethod
     def _prilagodi(izvor, najvec_sirina, najvec_visina) -> tuple:
@@ -287,7 +291,7 @@ class Zaslon:
             glava = {"v": 2, "w": self._slika["width"], "h": self._slika["height"],
                      "fps": self._slika["fps"],
                      "zvok": {"hz": ZVOK_HZ, "kanali": ZVOK_KANALI, "oblika": "s16le"} if self._zvok_vir else None,
-                     "vnos": self._vnos.mozno}
+                     "vnos": self._vnos.mozno, "plosek": self._plosek.mozno()}
             odjemalec.sendall((json.dumps(glava) + "\n").encode("utf-8"))
             odjemalec.settimeout(None)
             self._povezan = True
@@ -355,7 +359,7 @@ class Zaslon:
                         dogodek = json.loads(vrstica.decode("utf-8", "replace"))
                     except ValueError:
                         continue
-                    if self._vnos.izvedi(dogodek):
+                    if self._plosek_dogodek(dogodek) or self._vnos.izvedi(dogodek):
                         self._vnosov += 1
                         # Redko, a dovolj, da se v dnevniku vidi, da vnos res prihaja skozi.
                         if self._vnosov in (1, 10, 100) or self._vnosov % 500 == 0:
@@ -367,6 +371,7 @@ class Zaslon:
         finally:
             # Povezava je padla ali se koncala: kar je televizor drzal, mora zdaj gor.
             self._vnos.sprosti_vse()
+            self._plosek.zapri()
 
     @staticmethod
     def _preberi_vrstico(s: socket.socket, najvec: int = 256) -> str:
@@ -378,9 +383,21 @@ class Zaslon:
             zbrano += b
         return zbrano.decode("utf-8", "replace")
 
+    def _plosek_dogodek(self, dogodek: dict) -> bool:
+        """Gumb ali os igralnega plosecka s televizorja. Vse drugo pusti vnosu (tipke, miska)."""
+        if not isinstance(dogodek, dict):
+            return False
+        vrsta = str(dogodek.get("vrsta", "") or "")
+        if vrsta == "plosek_gumb":
+            return self._plosek.gumb(str(dogodek.get("gumb", "") or ""), bool(dogodek.get("dol")))
+        if vrsta == "plosek_os":
+            return self._plosek.os(str(dogodek.get("os", "") or ""), dogodek.get("vrednost"))
+        return False
+
     def ustavi(self) -> None:
         """Konca zajem in zapre vrata; zeton takoj ne velja vec."""
         self._vnos.sprosti_vse()
+        self._plosek.zapri()
         with self._kljucavnica:
             proces, zvocni, posluh = self._proces, self._zvocni, self._posluh
             self._proces = None
