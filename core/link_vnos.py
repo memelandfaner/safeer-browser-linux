@@ -28,6 +28,10 @@ TIPKE: Dict[str, str] = {
     "celozaslonsko": "F11", "osvezi": "F5", "isci": "ctrl+f",
     "kopiraj": "ctrl+c", "prilepi": "ctrl+v", "izrezi": "ctrl+x", "razveljavi": "ctrl+z",
     "zapri_okno": "ctrl+w", "preklopi_okno": "alt+Tab",
+    # Delo z dokumentom: brez shranjevanja televizor ne bi bil uporaben za pisanje.
+    "shrani": "ctrl+s", "shrani_kot": "ctrl+shift+s", "izberi_vse": "ctrl+a",
+    "ponovi": "ctrl+y", "krepko": "ctrl+b", "lezece": "ctrl+i", "podcrtano": "ctrl+u",
+    "natisni": "ctrl+p", "iskanje_naprej": "F3",
     "f1": "F1", "f2": "F2", "f3": "F3", "f4": "F4", "f5": "F5", "f6": "F6",
     "f7": "F7", "f8": "F8", "f9": "F9", "f10": "F10", "f11": "F11", "f12": "F12",
 }

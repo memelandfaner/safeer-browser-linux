@@ -32,6 +32,24 @@ class Dovoljeno(unittest.TestCase):
         self.assertTrue(self.v.izvedi({"vrsta": "tipka", "tipka": "OK"}))
         self.assertEqual(self.v.ukazi[-1][-1], "Return")
 
+    def test_bliznjice_za_delo_z_dokumentom(self):
+        """Pisanje na televizorju brez shranjevanja ni pisanje; bliznjice so na seznamu."""
+        self.assertTrue(self.v.izvedi({"vrsta": "tipka", "tipka": "shrani"}))
+        self.assertEqual(self.v.ukazi[-1], ["key", "--clearmodifiers", "ctrl+s"])
+        self.assertTrue(self.v.izvedi({"vrsta": "tipka", "tipka": "Shrani_Kot"}))
+        self.assertEqual(self.v.ukazi[-1][-1], "ctrl+shift+s")
+        for oznaka, pricakovano in (("izberi_vse", "ctrl+a"), ("ponovi", "ctrl+y"),
+                                    ("krepko", "ctrl+b"), ("lezece", "ctrl+i"),
+                                    ("podcrtano", "ctrl+u"), ("natisni", "ctrl+p")):
+            self.assertTrue(self.v.izvedi({"vrsta": "tipka", "tipka": oznaka}), oznaka)
+            self.assertEqual(self.v.ukazi[-1][-1], pricakovano, oznaka)
+
+    def test_besedilo_s_sumniki(self):
+        """Tipkovnica na televizorju poslje tudi c, s, z - gredo skozi kot navadno besedilo."""
+        self.assertTrue(self.v.izvedi({"vrsta": "besedilo", "besedilo": "čšž ČŠŽ"}))
+        self.assertEqual(self.v.ukazi[-1][-1], "čšž ČŠŽ")
+        self.assertEqual(self.v.ukazi[-1][-2], "--")
+
     def test_neznana_tipka_ne_gre_skozi(self):
         self.assertFalse(self.v.izvedi({"vrsta": "tipka", "tipka": "rm -rf"}))
         self.assertFalse(self.v.izvedi({"vrsta": "tipka", "tipka": "ctrl+alt+F2"}))
