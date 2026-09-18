@@ -22,7 +22,15 @@ class ControlUkazi(unittest.TestCase):
         i = self._izvedi("status")
         self.assertTrue(i["ok"])
         self.assertEqual(i["data"]["app"], "safeer-control-linux")
-        self.assertEqual(i["data"]["actions"], ["open_url", "volume", "status"])
+        # Brez deljenih map, programov in zaslona Control ponudi le osnovna dejanja in podatke o
+        # racunalniku. Seznama ne pisemo na roko - tako test ne pade ob vsakem novem dejanju, pove
+        # pa tisto, kar je res pomembno: kar potrebuje uporabnikovo dovoljenje, brez njega ni na
+        # voljo.
+        dejanja = i["data"]["actions"]
+        self.assertEqual(dejanja, link_daljinec.DEJANJA_CONTROL + link_daljinec.DEJANJA_HOST)
+        for d in (link_daljinec.DEJANJA_DATOTEKE + link_daljinec.DEJANJA_PROGRAMI
+                  + link_daljinec.DEJANJA_ZASLON):
+            self.assertNotIn(d, dejanja)
         self.assertEqual(i["data"]["keys"], [])
         self.assertTrue(i["data"]["version"])
 

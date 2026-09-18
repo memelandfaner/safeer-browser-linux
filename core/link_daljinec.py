@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -261,7 +262,51 @@ def podatki_hosta() -> dict:
         p["disk"] = {"skupaj": st.f_blocks * st.f_frsize, "prosto": st.f_bavail * st.f_frsize}
     except Exception:
         pass
+    # Graficna kartica: od nje je odvisno, kako tekoca je slika racunalnika na televizorju
+    gpu = _graficna()
+    if gpu:
+        p["gpu"] = gpu
     return p
+
+
+def _graficna() -> Dict[str, object]:
+    """Ime graficne kartice, gonilnik jedra in ali zna strojno kodirati sliko (VA-API).
+
+    Beremo samo tisto, kar je na Linuxu pri roki: `lspci` za ime in /sys/class/drm za gonilnik.
+    Nicesar ne namescamo in nic ne gre v splet; ce cesa ni, tisti podatek preprosto izpustimo."""
+    g: Dict[str, object] = {}
+    lspci = shutil.which("lspci")
+    if lspci:
+        try:
+            izpis = subprocess.run([lspci, "-mm"], capture_output=True, text=True, timeout=3).stdout
+            for vrstica in izpis.splitlines():
+                if not any(razred in vrstica for razred in
+                           ('"VGA compatible controller"', '"3D controller"', '"Display controller"')):
+                    continue
+                deli = re.findall(r'"([^"]*)"', vrstica)
+                if len(deli) >= 3:
+                    ime = (deli[1] + " " + deli[2]).strip()
+                    g["model"] = re.sub(r"\s*\((rev|prog-if)[^)]*\)", "", ime).strip()
+                break
+        except Exception:
+            pass
+    try:
+        for kartica in sorted(os.listdir("/sys/class/drm")):
+            if not re.fullmatch(r"card\d+", kartica):
+                continue
+            gonilnik = os.path.basename(os.path.realpath(
+                os.path.join("/sys/class/drm", kartica, "device", "driver")))
+            if gonilnik and gonilnik != "driver":
+                g["gonilnik"] = gonilnik
+                break
+    except Exception:
+        pass
+    try:
+        from . import link_zaslon
+        g["strojno"] = bool(link_zaslon.vaapi_naprava())
+    except Exception:
+        pass
+    return g
 
 
 def _ime_sistema() -> str:
