@@ -174,7 +174,7 @@ class ConfigManager:
                     # If youtube was previously in integrations, remove it as requested
                     if "integrations" in merged and "youtube" in merged["integrations"]:
                         del merged["integrations"]["youtube"]
-                    # Migration: migrate hydrahd.ws to 365.rtvslo.si and disable sample script
+                    # Migracija: star privzeti zaznamek zamenjamo z RTV 365 in ugasnemo vzorcno skripto
                     migrated = False
                     if not user_settings.get("default_bookmarks_removed", False):
                         merged["custom_portals"] = [p for p in merged.get("custom_portals", []) if p not in LEGACY_DEFAULT_PORTALS]
