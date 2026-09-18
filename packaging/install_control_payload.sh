@@ -8,7 +8,11 @@ ID="safeer-control"
 LIB="$PREFIX/lib/safeer-control"
 mkdir -p "$PREFIX/bin" "$LIB/core" "$LIB/assets" "$LIB/packaging" "$PREFIX/share/applications" "$PREFIX/share/pixmaps"
 cp -a "$ROOT/safeer_control.py" "$LIB/"
-for modul in link_hub link_tls link_deljenje link_daljinec link_datoteke safeer_link spake2; do
+# Vsi moduli core, ki jih safeer_control.py uvozi - tudi posredno. Brez link_programi in
+# link_zaslon (ta uvozi link_vnos) se namesceni Control sploh ne zazene: uvoz pade takoj.
+# Seznam varuje tests/test_packaging.py: namesti tovor in ga uvozi brez izvorne mape.
+for modul in link_daljinec link_datoteke link_deljenje link_hub link_programi link_tls \
+             link_vnos link_zaslon safeer_link spake2; do
     cp -a "$ROOT/core/$modul.py" "$LIB/core/"
 done
 [ -f "$ROOT/core/__init__.py" ] && cp -a "$ROOT/core/__init__.py" "$LIB/core/" || true

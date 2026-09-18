@@ -11,6 +11,26 @@ from core import default_browser
 ROOT=Path(__file__).resolve().parents[1]
 
 class PackagingTests(unittest.TestCase):
+    def test_control_payload_can_actually_start(self):
+        """Namesceni Safeer Control mora biti uvozljiv brez izvorne mape.
+
+        Tovor je dolgo nosil rocno pisan seznam modulov in trije so manjkali (link_programi,
+        link_vnos, link_zaslon): iz izvorne mape je vse delovalo, namesceni paket pa je ob zagonu
+        padel z ImportError. Ta test namesti tovor in ga uvozi tako, kot ga uvozi zaganjalnik -
+        z izvorno mapo zunaj poti.
+        """
+        import sys
+        with tempfile.TemporaryDirectory() as directory:
+            prefix=Path(directory)/'usr'
+            subprocess.run(['bash',str(ROOT/'packaging/install_control_payload.sh'),str(prefix)],check=True)
+            lib=prefix/'lib/safeer-control'
+            environment={k:v for k,v in os.environ.items() if k!='PYTHONPATH'}
+            code=f"import sys; sys.path.insert(0, {str(lib)!r}); import safeer_control; print(safeer_control.APP_ID)"
+            result=subprocess.run([sys.executable,'-c',code],capture_output=True,text=True,
+                                  cwd=tempfile.gettempdir(),env=environment)
+            self.assertEqual(result.returncode,0,result.stderr[-800:])
+            self.assertIn('SafeerControl',result.stdout)
+
     def test_xdg_config_and_ipc_use_same_profile(self):
         with tempfile.TemporaryDirectory() as directory:
             result=subprocess.check_output(['/usr/bin/python3','-c','from core.config import CONFIG_DIR; print(CONFIG_DIR)'],cwd=ROOT,env={**os.environ,'XDG_CONFIG_HOME':directory},text=True).strip()
