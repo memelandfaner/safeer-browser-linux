@@ -58,5 +58,21 @@ class VSeznamu(unittest.TestCase):
         self.assertEqual(skupine, {"Igrica": "igre", "Pisalo": "pisarna", "Neznano": "drugo"})
 
 
+class BrezDvojnikov(unittest.TestCase):
+    """Isti napis dvakrat je na televizorju uganka, ne izbira."""
+
+    def test_isto_ime_le_enkrat(self):
+        with tempfile.TemporaryDirectory() as prva, tempfile.TemporaryDirectory() as druga:
+            zapisi(prva, "engrampa.desktop", vnos("Archive Manager", "Utility;Archiving;"))
+            zapisi(druga, "org.gnome.FileRoller.desktop", vnos("Archive Manager", "Utility;Archiving;"))
+            zapisi(druga, "mines.desktop", vnos("Mines", "Game;"))
+            s = link_programi.Programi(vklopljeno=True, mape=[prva, druga]).seznam(z_ikonami=False)
+        imena = sorted(v["name"] for v in s["items"])
+        self.assertEqual(imena, ["Archive Manager", "Mines"])
+        # Obdrzi prvo mapo po vrsti (uporabnikova pred sistemsko pred Flatpakom).
+        arhiv = [v for v in s["items"] if v["name"] == "Archive Manager"][0]
+        self.assertEqual(arhiv["id"], "app:engrampa.desktop")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

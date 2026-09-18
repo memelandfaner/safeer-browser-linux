@@ -131,6 +131,11 @@ class Programi:
     # ------------------------------------------------------------------ branje vnosov
     def _preberi(self) -> Dict[str, dict]:
         najdeni: Dict[str, dict] = {}
+        # Dvakrat isti napis je na televizorju uganka, ne izbira: en program je pogosto namescen
+        # dvakrat (sistemsko in kot Flatpak), vcasih pa imata dva razlicna programa isto ime
+        # ("Archive Manager", "Help"). Obdrzimo prvega - mape beremo po vrsti, kot jih gleda
+        # namizje, torej uporabnikove pred sistemskimi in te pred Flatpakom.
+        videna_imena = set()
         for mapa in (self._mape if self._mape is not None else _mape_vnosov()):
             try:
                 imena = sorted(os.listdir(mapa))
@@ -142,6 +147,10 @@ class Programi:
                 pot = os.path.join(mapa, ime)
                 podatki = self._vnos(pot)
                 if podatki is not None:
+                    kljuc_imena = podatki["ime"].strip().lower()
+                    if kljuc_imena in videna_imena:
+                        continue
+                    videna_imena.add(kljuc_imena)
                     najdeni[ime] = podatki
                 if len(najdeni) >= NAJVEC:
                     break
