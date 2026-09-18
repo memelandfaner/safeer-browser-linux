@@ -4,9 +4,9 @@ Priority: optional
 Maintainer: Safeer <memelandfaner@users.noreply.github.com>
 Build-Depends: debhelper-compat (= 13), python3, python3-pil
 Standards-Version: 4.6.2
-Homepage: https://github.com/memelandfaner/linux-mint-safeer-browser
-Vcs-Git: https://github.com/memelandfaner/linux-mint-safeer-browser.git
-Vcs-Browser: https://github.com/memelandfaner/linux-mint-safeer-browser
+Homepage: https://github.com/memelandfaner/safeer-browser-linux
+Vcs-Git: https://github.com/memelandfaner/safeer-browser-linux.git
+Vcs-Browser: https://github.com/memelandfaner/safeer-browser-linux
 
 Package: safeer-browser
 Architecture: all

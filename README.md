@@ -1,132 +1,110 @@
-# Safeer Browser — Linux Mint & Ubuntu Edition 🛡️
+# Safeer Browser for Linux
 
-[![Release](https://img.shields.io/badge/Release-v1.0.35-emerald?style=flat-square)](https://github.com/memelandfaner/linux-mint-safeer-browser/releases/tag/v1.0.35)
+A fast, light, privacy-first browser for Linux Mint, Ubuntu and Debian — GTK3 and WebKit2GTK,
+so it starts instantly and leaves the fans alone.
+
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Linux_Mint_%7C_Ubuntu_%7C_Debian-87cf3e?style=flat-square)](https://github.com/memelandfaner/linux-mint-safeer-browser)
-[![Package](https://img.shields.io/badge/Package-.deb_(all)-cyan?style=flat-square)](https://github.com/memelandfaner/linux-mint-safeer-browser/releases/tag/v1.0.35)
-[![Web](https://img.shields.io/badge/Spletna_stran-Linux_Izdaja-87cf3e?style=flat-square)](https://memelandfaner.github.io/-safeer-browser/linux/)
+[![Platform](https://img.shields.io/badge/Platform-Linux_Mint_%7C_Ubuntu_%7C_Debian-87cf3e?style=flat-square)](#requirements)
+[![Packages](https://img.shields.io/badge/Packages-deb_%7C_AppImage_%7C_Flatpak-cyan?style=flat-square)](../../releases/latest)
 
-> **Hiter, suveren in energetsko varčen Linux brskalnik, ki se odpre v trenutku, spoštuje zasebnost, blokira sledilce in oglase ter ima lokalni ščit pred zlonamernimi domenami.**
+Slovenian: [README.sl.md](README.sl.md) · Website: [safeer.si](https://safeer.si)
+
+> **Safeer is a security layer, not a guarantee.** It reduces exposure and blocks known
+> threats. It cannot protect against every new or unknown attack.
 
 ---
 
-## ⚡ Zakaj izbrati Safeer na Linux Mintu?
+## What it does
 
-- **Hiter zagon & lahkotnost**: Nativna integracija z GTK3 in WebKit2GTK za gladek odziv brez odvečne navlake.
-- **Predvajanje v ozadju**: Poslušanje glasbe in podcastov na YouTubu brez prekinitev ob menjavi zavihkov.
-- **Lokalni kibernetski ščit**: Vgrajen $O(k)$ filter za samodejno blokado botnetov, lažnega predstavljanja (phishing) in izsiljevalske programske opreme (abuse.ch viri).
-- **Zasebnost po privzetem**: Privzeti iskalnik DuckDuckGo, blokada piškotkov tretjih oseb (3rd-party cookies), brez telemetrije.
-- **1-Klik uvoz zaznamkov**: Hitra migracija priljubljenih strani neposredno iz obstoječih profilov Firefoxa ali Chroma.
-- **Vrstica in meni priljubljenih (v1.0.7)**: Hiter dostop, dodajanje, urejanje in brisanje priljubljenih spletnih mest z orodnimi bližnjicami (`Ctrl + B`, `Ctrl + Shift + B`).
+**Starts fast and stays light.** Native GTK3 with WebKit2GTK — no Electron, no second browser
+engine, no background updater.
 
-## 📦 Namestitev
+**Local threat shield.** Botnet C2, malware distribution and phishing hosts from abuse.ch
+(Feodo Tracker, URLhaus, ThreatFox) and Phishing Army, matched locally in O(k) against a
+reverse-domain trie. Nothing about your browsing is sent anywhere to make that decision.
 
-### Nativni Debian paket (`.deb`):
-Najnovejšo različico prenesite s strani [GitHub Releases v1.0.35](https://github.com/memelandfaner/linux-mint-safeer-browser/releases/tag/v1.0.35) ali namestite:
+**Ads and trackers blocked**, third-party cookies blocked, tracking parameters stripped from
+links, no telemetry. DuckDuckGo is the default search engine.
+
+**Encrypted DNS** over HTTPS with working HTTP/2, and no silent fallback to plaintext DNS when
+it fails.
+
+**Background playback.** Music and podcasts keep playing when you switch tabs, at a CPU cost
+low enough that a laptop stays quiet.
+
+**One-click bookmark import.** Reads Firefox profiles (`places.sqlite`) and Chrome, Brave or
+Chromium (`Bookmarks`) directly, merges without duplicates, and also imports Netscape HTML
+exports from anything else.
+
+**Keyboard shortcuts you already know.** `Ctrl+T`, `Ctrl+W`, `Ctrl+Shift+T`, `Ctrl+Tab`,
+`Ctrl+1`…`Ctrl+9`, `Alt+Home`, and `Ctrl+B` / `Ctrl+Shift+B` for the bookmarks bar and menu.
+
+**A good citizen on the desktop.** Ships AppStream metainfo so it appears properly in the
+Software Manager, installs a launcher under Internet, registers as an alternative web browser,
+and never grabs the default-browser role behind your back — `safeer --set-default` is there if
+you want it.
+
+## Install
+
+Download from [Releases](../../releases/latest). Three formats are built for every release:
 
 ```bash
-# Namestitev z apt:
-sudo apt install ./safeer-browser_1.0.35_all.deb
+# Debian / Ubuntu / Linux Mint
+sudo apt install ./safeer-browser_<version>_all.deb
+
+# AppImage — no installation, just make it executable
+chmod +x Safeer-Browser-<version>-x86_64.AppImage && ./Safeer-Browser-<version>-x86_64.AppImage
+
+# Flatpak
+flatpak install ./Safeer-Browser-<version>-x86_64.flatpak
 ```
-*Ali pa datoteko `.deb` preprosto dvokliknite v upravitelju datotek (Gdebi / Upravitelj programov).*
 
-Paket avtomatsko:
-- Vsebuje **AppStream metainfo** (`/usr/share/metainfo/`) za prepoznavo v **Upravitelju programov (mintinstall)**.
-- Namesti zaganjalnik `/usr/bin/safeer` in sistemsko bližnjico v meni programov (Internet -> Safeer Browser).
-- Se registrira kot varna alternativa med spletnimi brskalniki (brez agresivnega prevzemanja privzetega brskalnika).
-- Omogoča enostaven preklop na privzeti brskalnik preko `safeer --set-default` ali v nastavitvah.
+Or double-click the `.deb` in your file manager.
 
-### Kontrolne vsote (SHA-256)
-Prenesite `SHA256SUMS` iz iste izdaje kot paket in zaženite `sha256sum -c --ignore-missing SHA256SUMS`.
-
-## Popravki v1.0.14
-
-- Prijavne strani Groka/xAI so izvzete iz posegov kozmetičnih in ozadnih skript.
-- Brskalnik uporablja izvirno identiteto nameščenega WebKita.
-- YouTube filter ohrani konfiguracijo predvajanja, heartbeat in podpisane medijske povezave.
-- `safeer --version` jasno pokaže zagnano izdajo. Posodobite tudi sistemsko namestitev: stara 1.0.6 še napačno označuje oglasne povezave kot botnet.
-- Cloudflare lahko dostop še vedno zavrne; med javnim preizkusom xAI je blokada ostala. YouTubov začetni odlog še ni odpravljen.
-- [Obseg preverjanja](RELEASE_NOTES_1.0.14.md).
-
-## Popravki v1.0.12
-
-- Oglasni podatki YouTuba se odstranijo pred zagonom predvajalnika tudi pri neposredni dodelitvi in odgovorih Fetch/XHR.
-- Prekinjena povezava pri iskanju dobi omejen varen ponovni poskus; napake povezave in certifikata so jasno prikazane.
-
-- Gumb za privzeti brskalnik uporablja neposredno sistemsko nastavitev in preveri vse povezave HTTP/HTTPS ter datoteke HTML/XHTML.
-
-- Prijavna okna ohranijo povezavo z izvirno stranjo, piškotke in podatke obrazca.
-- Prijavne povezave, preusmeritve in preverjanja niso več poškodovani zaradi odstranjevanja sledenja oziroma prekrivnih elementov.
-
-- Odpravljen padec ob zagonu pri vključenih bližnjicah v stranski vrstici.
-
-- Šifrirani DNS z delujočim HTTP/2 in brez tihega preklopa na navadni DNS ob neuspehu.
-- Ohranjeni začetni podatki povezav in stabilnejše sočasno nalaganje strani.
-- Oglasne domene se blokirajo tiho; opozorila o grožnjah so ločena od oglasov.
-- Odstranjeni posegi v predvajanje, ki so med preizkusom sprožali zrušitve GStreamerja.
-- Podrobnosti in obseg preverjanja: [opombe izdaje](RELEASE_NOTES_1.0.12.md).
-
----
-
-## 📥 1-Klik Uvoz Zaznamkov (Zero-Friction Migration)
-
-Pozabite na nerodno ročno pretvarjanje datotek. Safeer ob kliku na **📥 Uvozi zaznamke** na domači strani samodejno pregleda vaš sistem in ponudi:
-- 🦊 **1-Klik uvoz iz Firefoxa**: Neposredno branje iz profila `~/.mozilla/firefox/*/places.sqlite`.
-- 🌐 **1-Klik uvoz iz Chroma / Brave / Chromium**: Branje iz `~/.config/*/Bookmarks`.
-- ⚡ **Samodejno združevanje brez duplikatov**: Zaznamki se samodejno opremijo z ikonami in razporedijo med priljubljene portale.
-- 📂 **Netscape HTML izvoz**: Za vse ostale brskalnike (Opera, Vivaldi, Safari).
-
----
-
-## 🛡️ Ključne funkcije za vsakdanjo rabo
-
-1. **YouTube v ozadju z minimalno porabo procesorja**:
-   - Poslušajte glasbo in podcaste med delom. Ventilatorji prenosnika ostanejo tihi.
-2. **Kibernetski ščit $O(k)$ Reverse Domain Trie (abuse.ch)**:
-   - Lokalno blokiranje nevarnih C2 botnetov (Feodo, CobaltStrike, Dridex), izsiljevalske programske opreme (URLhaus) in lažnega predstavljanja (Phishing Army).
-3. **Vrstica in plavajoči meni priljubljenih (`Ctrl + B` / `Ctrl + Shift + B`)**:
-   - Takojšen dostop do priljubljenih spletnih mest z možnostjo hitrega dodajanja, urejanja ali odstranjevanja neposredno v orodni vrstici.
-4. **Mišični spomin in bližnjice**:
-   - `Ctrl + T` (nov zavihek), `Ctrl + W` (zapri zavihek), `Ctrl + Shift + T` (obnovi zaprti zavihek), `Ctrl + Tab` (naslednji zavihek), `Ctrl + 1..9` (skok na zavihek), `Alt + Home` (domača stran).
-5. **Iskanje po strani (`Ctrl + F`)**:
-   - Hitro iskanje besedila z nativnim WebKit FindControllerjem, realno-časovnim števcem zadetkov in bližnjicami.
-6. **Tiskanje in shranjevanje v PDF (`Ctrl + P`)**:
-   - Nativni GTK tiskalniški dialog z avtomatskim predlogom imena datoteke v `~/Prenosi/<naslov>.pdf`.
-7. **Obnova seje (Session Restore)**:
-   - Samodejno shranjevanje odprtih zavihkov ob zaprtju in možnost obnove ob ponovnem zagonu.
-8. **Nastavitev za privzeti brskalnik (Default Web Browser)**:
-   - Izbira je v celoti v vaših rokah: preko obvestilne vrstice ob zagonu, dialoga z nastavitvami ali ukaza `safeer --set-default`.
-
----
-
-## 🛠️ Gradnja iz kode in razvoj (Developers)
+Verify what you downloaded against `SHA256SUMS` from the same release:
 
 ```bash
-# Zagon neposredno iz izvorne kode:
-./safeer-mint.sh
-
-# Izdelava .deb paketa z dpkg-deb:
-./build_deb.sh
-
-# Namestitev v domačo mapo uporabnika (~/.local):
-./install.sh
+sha256sum -c --ignore-missing SHA256SUMS
 ```
 
----
+**Safeer Control** — the companion desktop app that pairs this computer with a Safeer phone or
+television over your own network — ships as `safeer-control_<version>_all.deb` in the same
+release and does not require the browser.
 
-## 🌟 Odprta koda & Vabilo k prilagajanju (Fork & Freedom)
+## Requirements
 
-> **Kdor obvladuje brskalnik, določa svoja pravila spleta.**  
-> Safeer je 100 % odprtokoden pod licenco [Apache License 2.0](LICENSE). Spodbujamo vas, da kodo klonirate (Fork), jo prilagodite svojim specifičnim potrebam, preizkusite nove zamisli ter soustvarjate svoboden, suveren internet.
+A current Linux Mint, Ubuntu or Debian with GTK3 and WebKit2GTK. Release AppImages are built
+against glibc 2.35 (Ubuntu 22.04) so they keep running on older systems.
 
----
+## Build from source
 
-## ⚖️ Pravno obvestilo & Namen uporabe (Disclaimer)
-- **Varnostni sloj**: **Safeer is a security layer, not a guarantee against all online threats.** Noben filter ne more zagotoviti 100 % zaščite pred neznanimi grožnjami (Zero-Day). Safeer deluje kot lokalni varnostni sloj, ki bistveno zmanjšuje tveganje in blokira znana škodljiva vozlišča ter sledilce.
-- **Priporočilo za vsakdanjo rabo**: Safeer je optimiziran za hitro, lahko in varno vsakodnevno spletno brskanje brez oglasov. Za bančne storitve s specifičnimi certifikati ali ponudnike z restriktivnim DRM predvajanjem po potrebi uporabite Firefox.
-- **Uradni repozitorij**: [https://github.com/memelandfaner/linux-mint-safeer-browser](https://github.com/memelandfaner/linux-mint-safeer-browser)
-- **Prenosi in izdaje**: [GitHub Releases v1.0.35](https://github.com/memelandfaner/linux-mint-safeer-browser/releases/tag/v1.0.35)
+```bash
+bash build_deb.sh                  # Debian package
+bash packaging/build_appimage.sh   # AppImage
+bash packaging/build_flatpak.sh    # Flatpak
+```
 
-## Additional Linux packages
+Tests:
 
-The Linux packaging work now shares one application payload across **.deb, Flatpak and AppImage**. See [PACKAGING.md](PACKAGING.md) for build/install commands, permissions, release checks and the validation limitations. New formats must complete desktop acceptance testing before being advertised as production downloads.
+```bash
+python3 -m unittest discover -s tests
+```
+
+## No per-site recipes
+
+Safeer contains no adaptation written for one named website. What it does, it does by what a
+page *is*, not by who publishes it.
+
+## Fork it
+
+Whoever controls the browser sets the rules of the web. This project is Apache-2.0 so that you
+can take it, change the block lists, change the look, add what you need, and ship your own.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Security issues go through [SECURITY.md](SECURITY.md),
+privately, not in a public issue.
+
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE).
