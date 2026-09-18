@@ -1,7 +1,7 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: safeer-browser
 Upstream-Contact: Safeer <memelandfaner@users.noreply.github.com>
-Source: https://github.com/memelandfaner/safeer-browser-linux
+Source: https://github.com/memelandfaner/linux-mint-safeer-browser
 
 Files: *
 Copyright: 2026 Safeer Open Source Project
