@@ -46,6 +46,16 @@ you want it.
 
 ## Install
 
+[![Release](https://img.shields.io/badge/Release-v1.0.35-2dd4bf?style=flat-square)](../../releases/tag/v1.0.35)
+
+Latest release: **v1.0.35** — [release notes and downloads](../../releases/tag/v1.0.35)
+
+```bash
+# Debian, Ubuntu, Linux Mint
+sudo apt install ./safeer-browser_1.0.35_all.deb
+```
+
+
 Download from [Releases](../../releases/latest). Three formats are built for every release:
 
 ```bash

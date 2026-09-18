@@ -46,6 +46,16 @@ imeti za privzetega, je tu `safeer --set-default`.
 
 ## Namestitev
 
+[![Izdaja](https://img.shields.io/badge/Release-v1.0.35-2dd4bf?style=flat-square)](../../releases/tag/v1.0.35)
+
+Zadnja izdaja: **v1.0.35** — [opombe izdaje in prenosi](../../releases/tag/v1.0.35)
+
+```bash
+# Debian, Ubuntu, Linux Mint
+sudo apt install ./safeer-browser_1.0.35_all.deb
+```
+
+
 Prenesi iz [Izdaj](../../releases/latest). Za vsako izdajo nastanejo trije paketi:
 
 ```bash
