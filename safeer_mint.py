@@ -2389,7 +2389,7 @@ class SafeerMintBrowser(Gtk.Window):
         self.drawer_header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         self.drawer_header.get_style_context().add_class("drawer-header-bar")
         
-        self.drawer_title = Gtk.Label(label="Stranska integracija")
+        self.drawer_title = Gtk.Label(label=t("sidebar_integration"))
         self.drawer_title.set_halign(Gtk.Align.START)
         self.drawer_header.pack_start(self.drawer_title, True, True, 6)
 
@@ -2790,21 +2790,21 @@ class SafeerMintBrowser(Gtk.Window):
         box.set_margin_start(16)
         box.set_margin_end(16)
 
-        lbl_name = Gtk.Label(label="Ime spletne strani (npr. Discord, WhatsApp, ChatGPT):")
+        lbl_name = Gtk.Label(label=t("portal_name_lbl"))
         lbl_name.set_halign(Gtk.Align.START)
         entry_name = Gtk.Entry()
-        entry_name.set_placeholder_text("Vnesite ime...")
+        entry_name.set_placeholder_text(t("portal_name_ph"))
         box.pack_start(lbl_name, False, False, 0)
         box.pack_start(entry_name, False, False, 0)
 
-        lbl_url = Gtk.Label(label="Spletni naslov (URL):")
+        lbl_url = Gtk.Label(label=t("portal_url_lbl"))
         lbl_url.set_halign(Gtk.Align.START)
         entry_url = Gtk.Entry()
         entry_url.set_placeholder_text("https://...")
         box.pack_start(lbl_url, False, False, 0)
         box.pack_start(entry_url, False, False, 0)
 
-        lbl_icon = Gtk.Label(label="Ikona ali emoji (npr. 💬, 🤖, 🎧, ✉️, 🌐):")
+        lbl_icon = Gtk.Label(label=t("portal_icon_lbl"))
         lbl_icon.set_halign(Gtk.Align.START)
         entry_icon = Gtk.Entry()
         entry_icon.set_text("🌐")
@@ -2894,7 +2894,7 @@ class SafeerMintBrowser(Gtk.Window):
         card_default = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         card_default.get_style_context().add_class("theme-card-box")
 
-        lbl_c_def = Gtk.Label(label="<b><span size='11500'>🖥️ Privzeti spletni brskalnik</span></b>")
+        lbl_c_def = Gtk.Label(label=f"<b><span size='11500'>🖥️ {GLib.markup_escape_text(t('default_browser_card'))}</span></b>")
         lbl_c_def.set_use_markup(True)
         lbl_c_def.set_xalign(0.0)
         card_default.pack_start(lbl_c_def, False, False, 0)
@@ -2910,7 +2910,7 @@ class SafeerMintBrowser(Gtk.Window):
             lbl_def_status.set_markup("<span color='#94a3b8'>%s</span>" % t("default_not_set"))
         row_def.pack_start(lbl_def_status, True, True, 0)
 
-        btn_make_def = Gtk.Button(label="Nastavi kot privzetega")
+        btn_make_def = Gtk.Button(label=t("default_make_btn"))
         btn_make_def.get_style_context().add_class("customizer-save-btn")
         if is_def:
             btn_make_def.set_sensitive(False)
@@ -3281,11 +3281,11 @@ class SafeerMintBrowser(Gtk.Window):
         theme_row.pack_start(lbl_th_choice, False, False, 0)
 
         combo_theme = Gtk.ComboBoxText()
-        combo_theme.append("safeer", "🛡️ Safeer (Privzeto)")
+        combo_theme.append("safeer", f"🛡️ {t('theme_safeer')}")
         combo_theme.append("mint", "🍃 Linux Mint Emerald")
-        combo_theme.append("midnight", "🌙 Firefox Midnight (Temna)")
-        combo_theme.append("neon", "⚡ Cyberpunk Neon (Visok kontrast)")
-        combo_theme.append("amoled", "🖤 Pure AMOLED Black (Črna)")
+        combo_theme.append("midnight", f"🌙 {t('theme_midnight')}")
+        combo_theme.append("neon", f"⚡ {t('theme_neon')}")
+        combo_theme.append("amoled", f"🖤 {t('theme_amoled')}")
         cur_th = self.config.get("theme", "safeer")
         combo_theme.set_active_id(cur_th)
 
@@ -3303,7 +3303,7 @@ class SafeerMintBrowser(Gtk.Window):
         dark_check.connect("toggled", lambda b: self.toggle_dark_mode())
         card_theme.pack_start(dark_check, False, False, 4)
 
-        lbl_dark_sub = Gtk.Label(label="<span color='#94a3b8' size='9500'>    Avtomatsko prilagodi svetle spletne strani v temni način za manjše naprezanje oči.</span>")
+        lbl_dark_sub = Gtk.Label(label=f"<span color='#94a3b8' size='9500'>    {GLib.markup_escape_text(t('dark_mode_desc'))}</span>")
         lbl_dark_sub.set_use_markup(True)
         lbl_dark_sub.set_xalign(0.0)
         card_theme.pack_start(lbl_dark_sub, False, False, 0)
@@ -3314,7 +3314,7 @@ class SafeerMintBrowser(Gtk.Window):
         card_font_zoom = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         card_font_zoom.get_style_context().add_class("theme-card-box")
 
-        lbl_c_font_zoom = Gtk.Label(label=f"<b><span size='11500'>🔤 {GLib.markup_escape_text('Pisava & Povečava strani')}</span></b>")
+        lbl_c_font_zoom = Gtk.Label(label=f"<b><span size='11500'>🔤 {GLib.markup_escape_text(t('font_zoom_card'))}</span></b>")
         lbl_c_font_zoom.set_use_markup(True)
         lbl_c_font_zoom.set_xalign(0.0)
         card_font_zoom.pack_start(lbl_c_font_zoom, False, False, 0)
@@ -3344,16 +3344,16 @@ class SafeerMintBrowser(Gtk.Window):
 
         # Vrstica: Povečava strani
         zoom_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        lbl_zm_choice = Gtk.Label(label="Privzeta povečava:")
+        lbl_zm_choice = Gtk.Label(label=t("default_zoom_lbl"))
         lbl_zm_choice.set_xalign(0.0)
         zoom_row.pack_start(lbl_zm_choice, False, False, 0)
 
         combo_zoom = Gtk.ComboBoxText()
-        combo_zoom.append("0.85", "85% (Kompaktno)")
-        combo_zoom.append("1.0", "100% (Običajno)")
-        combo_zoom.append("1.15", "115% (Udobno)")
-        combo_zoom.append("1.25", "125% (Večje)")
-        combo_zoom.append("1.5", "150% (Veliko)")
+        combo_zoom.append("0.85", t("zoom_85"))
+        combo_zoom.append("1.0", t("zoom_100"))
+        combo_zoom.append("1.15", t("zoom_115"))
+        combo_zoom.append("1.25", t("zoom_125"))
+        combo_zoom.append("1.5", t("zoom_150"))
         cur_zoom = str(self.config.get("default_zoom", 1.0))
         if cur_zoom not in ("0.85", "1.0", "1.15", "1.25", "1.5"):
             cur_zoom = "1.0"
@@ -3739,12 +3739,12 @@ class SafeerMintBrowser(Gtk.Window):
         if new_state:
             self.keyboard_box.show_all()
             if hasattr(self, "btn_keyboard"):
-                self.btn_keyboard.set_label("⌨️ Tipkovnica (Vklopljena)")
+                self.btn_keyboard.set_label(f"⌨️ {t('keyboard_on')}")
                 self.btn_keyboard.get_style_context().add_class("active")
         else:
             self.keyboard_box.hide()
             if hasattr(self, "btn_keyboard"):
-                self.btn_keyboard.set_label("⌨️ Tipkovnica")
+                self.btn_keyboard.set_label(f"⌨️ {t('keyboard_off')}")
                 self.btn_keyboard.get_style_context().remove_class("active")
 
     def on_keyboard_message(self, content_mgr, js_result):
@@ -3792,11 +3792,11 @@ class SafeerMintBrowser(Gtk.Window):
 
         if show_dialog:
             msg_type = Gtk.MessageType.INFO if success else Gtk.MessageType.WARNING
-            title = "🌐 Privzeti spletni brskalnik"
+            title = f"🌐 {t('default_browser_card')}"
             if success:
-                msg = "Safeer Browser je bil uspešno nastavljen kot vaš privzeti spletni brskalnik v sistemu Linux!"
+                msg = t("default_browser_ok")
             else:
-                msg = "Safeerja ni bilo mogoče samodejno nastaviti kot privzetega. Preverite sistemske nastavitve (Priljubljene aplikacije)."
+                msg = t("default_browser_fail")
             dlg = Gtk.MessageDialog(
                 transient_for=self,
                 flags=0,
@@ -4665,7 +4665,7 @@ class SafeerMintBrowser(Gtk.Window):
         tab_icon.get_style_context().add_class("tab-icon")
         tab_box.pack_start(tab_icon, False, False, 2)
 
-        tab_title = Gtk.Label(label="Nova stran")
+        tab_title = Gtk.Label(label=t("new_tab_title"))
         tab_title.get_style_context().add_class("tab-title")
         tab_title.set_ellipsize(Pango.EllipsizeMode.END)
         tab_title.set_xalign(0.0)
@@ -6226,11 +6226,11 @@ class SafeerMintBrowser(Gtk.Window):
             adg_row.pack_start(adg_sw, False, False, 4)
 
             adg_info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-            adg_title = Gtk.Label(label="<b>🛡️ AdGuard Advanced Protection (Vgrajena razširitev)</b>")
+            adg_title = Gtk.Label(label=f"<b>🛡️ {GLib.markup_escape_text(t('adguard_title'))}</b>")
             adg_title.set_use_markup(True)
             adg_title.set_xalign(0.0)
             adg_info.pack_start(adg_title, False, False, 0)
-            adg_meta = Gtk.Label(label="Sprotno defusanje anti-adblock zidov, stubs za oglasne API-je in kozmetično čiščenje.")
+            adg_meta = Gtk.Label(label=t("adguard_desc"))
             adg_meta.set_xalign(0.0)
             adg_meta.get_style_context().add_class("text-muted")
             adg_info.pack_start(adg_meta, False, False, 0)
@@ -6307,7 +6307,7 @@ class SafeerMintBrowser(Gtk.Window):
     def open_script_editor_dialog(self, script=None):
         """Urejevalnik uporabniške JavaScript skripte."""
         is_edit = script is not None
-        title = "Uredi skripto" if is_edit else "Nova uporabniška skripta"
+        title = t("script_edit_title") if is_edit else t("script_new_title")
         dialog = Gtk.Dialog(title=title, transient_for=self, flags=0)
         dialog.set_default_size(680, 520)
         dialog.get_style_context().add_class("customizer-dialog")
@@ -6324,15 +6324,15 @@ class SafeerMintBrowser(Gtk.Window):
         content.set_margin_right(16)
 
         # Name Entry
-        lbl_name = Gtk.Label(label="Ime skripte:")
+        lbl_name = Gtk.Label(label=t("script_name_lbl"))
         lbl_name.set_xalign(0.0)
         content.pack_start(lbl_name, False, False, 0)
         entry_name = Gtk.Entry()
-        entry_name.set_text(script.get("name", "") if is_edit else "Moja nova skripta")
+        entry_name.set_text(script.get("name", "") if is_edit else t("script_name_default"))
         content.pack_start(entry_name, False, False, 0)
 
         # Match Pattern
-        lbl_pat = Gtk.Label(label="Domena ali vzorec URL-ja (* za vse strani, npr. *youtube.com*):")
+        lbl_pat = Gtk.Label(label=t("script_pattern_lbl"))
         lbl_pat.set_xalign(0.0)
         content.pack_start(lbl_pat, False, False, 0)
         entry_pat = Gtk.Entry()
@@ -6340,12 +6340,12 @@ class SafeerMintBrowser(Gtk.Window):
         content.pack_start(entry_pat, False, False, 0)
 
         # Run at
-        lbl_run = Gtk.Label(label="Čas zagona skripte:")
+        lbl_run = Gtk.Label(label=t("script_runat_lbl"))
         lbl_run.set_xalign(0.0)
         content.pack_start(lbl_run, False, False, 0)
         combo_run = Gtk.ComboBoxText()
-        combo_run.append("end", "Ko je stran v celoti naložena (END)")
-        combo_run.append("start", "Pred začetkom nalaganja DOM-a (START)")
+        combo_run.append("end", t("script_runat_end"))
+        combo_run.append("start", t("script_runat_start"))
         combo_run.set_active_id(script.get("run_at", "end") if is_edit else "end")
         content.pack_start(combo_run, False, False, 0)
 
