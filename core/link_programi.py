@@ -28,6 +28,44 @@ PREDPONA = "app:"
 
 # Kategorije, ki na televizorju nimajo smisla (nastavitve sistema, konzolna orodja).
 IZPUSTI_KATEGORIJE = {"Settings", "System", "ConsoleOnly", "Screensaver"}
+
+# Skupine, po katerih televizor razvrsti programe (na sto programih je abecedni seznam prevec).
+# Kljuc je nasa oznaka, vrednost so kategorije XDG, ki vanjo sodijo - isto delitev pozna uporabnik
+# ze iz menija svojega namizja. Vrstni red steje: prva skupina, ki se ujame, obvelja, zato je
+# Igra pred vsem drugim (igra z glasbo je se vedno igra).
+SKUPINE = (
+    ("igre", {"Game", "ActionGame", "AdventureGame", "ArcadeGame", "BoardGame", "BlocksGame",
+              "CardGame", "KidsGame", "LogicGame", "RolePlaying", "Shooter", "Simulation",
+              "SportsGame", "StrategyGame", "Emulator"}),
+    ("programiranje", {"Development", "IDE", "Building", "Debugger", "GUIDesigner", "Profiling",
+                       "RevisionControl", "Translation", "WebDevelopment"}),
+    ("pisarna", {"Office", "WordProcessor", "Spreadsheet", "Presentation", "Calendar", "Finance",
+                 "ContactManagement", "Database", "Dictionary", "Publishing",
+                 "ProjectManagement", "TextEditor"}),
+    ("predstavnost", {"AudioVideo", "Audio", "Video", "Graphics", "Photography", "Music",
+                      "Player", "Recorder", "TV", "Midi", "Mixer", "Sequencer", "Tuner",
+                      "RasterGraphics", "VectorGraphics", "3DGraphics", "Scanning", "OCR"}),
+    ("splet", {"Network", "WebBrowser", "Email", "InstantMessaging", "Chat", "IRCClient",
+               "FileTransfer", "News", "P2P", "RemoteAccess", "Telephony", "VideoConference",
+               "WebSearch", "Feed"}),
+    ("ucenje", {"Education", "Science", "Math", "NumericalAnalysis", "Astronomy", "Biology",
+                "Chemistry", "ComputerScience", "Geography", "Geology", "History", "Languages",
+                "Literature", "Music Education", "Physics", "Sports"}),
+    ("orodja", {"Utility", "Accessibility", "Archiving", "Compression", "FileTools",
+                "FileManager", "TerminalEmulator", "Monitor", "Security", "Printing",
+                "PackageManager", "Calculator", "Clock", "Documentation"}),
+)
+#: Program brez uporabne kategorije: raje posteno "drugo" kot napacna skupina.
+PRIVZETA_SKUPINA = "drugo"
+
+
+def skupina(kategorije) -> str:
+    """Nasa skupina za kategorije XDG enega namiznega vnosa."""
+    nabor = set(kategorije or ())
+    for oznaka, kategorije_skupine in SKUPINE:
+        if nabor & kategorije_skupine:
+            return oznaka
+    return PRIVZETA_SKUPINA
 # Vnosi, ki jih ne ponujamo, ker so del Safeerja samega ali brez okna.
 IZPUSTI_OZNAKE = {"safeer-control.desktop"}
 
@@ -138,7 +176,7 @@ class Programi:
         if not ime:
             return None
         return {"pot": pot, "ime": ime, "opis": _vrednost(vnos, "Comment").strip(),
-                "ikona": (vnos.get("Icon", "") or "").strip()}
+                "ikona": (vnos.get("Icon", "") or "").strip(), "skupina": skupina(kategorije)}
 
     # ------------------------------------------------------------------ za Safeer Link
     def seznam(self, z_ikonami: bool = True, od: int = 0, koliko: int = 0) -> dict:
@@ -158,7 +196,8 @@ class Programi:
         kos = urejeni[od:od + koliko] if koliko else urejeni[od:]
         vnosi = []
         for oznaka, v in kos:
-            element = {"id": PREDPONA + oznaka, "name": v["ime"], "comment": v["opis"]}
+            element = {"id": PREDPONA + oznaka, "name": v["ime"], "comment": v["opis"],
+                       "group": v.get("skupina", PRIVZETA_SKUPINA)}
             if z_ikonami:
                 ikona = self._ikona(v["ikona"])
                 if ikona:
@@ -242,7 +281,9 @@ class Programi:
         doma = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
         korenine = [os.path.join(doma, "icons"), os.path.expanduser("~/.icons"),
                     "/usr/share/icons", "/usr/local/share/icons",
-                    "/var/lib/flatpak/exports/share/icons"]
+                    # Flatpak: sistemski in tisti, ki jih je uporabnik namestil zase (--user).
+                    "/var/lib/flatpak/exports/share/icons",
+                    os.path.join(doma, "flatpak/exports/share/icons")]
         velikosti = ["128x128", "96x96", "64x64", "256x256", "48x48", "scalable"]
         teme = ["hicolor", "Papirus", "Adwaita", "breeze"]
         for koren in korenine:

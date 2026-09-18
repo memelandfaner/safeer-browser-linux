@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-from typing import Dict, Optional
+import threading
+import time
+from typing import Dict, List, Optional
 
 #: Kaj televizor sme poslati kot tipko in v kaj to prevedemo za X.
 TIPKE: Dict[str, str] = {
@@ -44,6 +46,11 @@ KOLESCE = {"gor": "4", "dol": "5"}
 NAJVEC_PREMIK = 400
 NAJVEC_BESEDILA = 200
 
+#: Kako dolgo sme tipka ostati pritisnjena, ne da bi televizor javil karkoli novega. Ce povezava
+#: pade sredi drzanja (igra, drsenje), se tipka po tem casu sama spusti - pritisnjena tipka na
+#: tujem racunalniku je huja tezava od izgubljenega pritiska.
+NAJVEC_DRZANJA_S = 5.0
+
 
 class Vnos:
     """Odigra dogodke televizorja na namizju. Brez xdotool ne naredi nicesar in to tudi pove."""
@@ -52,6 +59,10 @@ class Vnos:
         self.display = display
         self.xdotool = xdotool if xdotool is not None else (shutil.which("xdotool") or "")
         self.stevec = 0
+        # Tipke, ki jih ta trenutek drzimo: ime za X -> kdaj smo nazadnje slisali zanjo.
+        self._drzane: Dict[str, float] = {}
+        self._straza: Optional[threading.Thread] = None
+        self._konec = threading.Event()
 
     @property
     def mozno(self) -> bool:
@@ -64,6 +75,10 @@ class Vnos:
         vrsta = str(dogodek.get("vrsta", "") or "")
         if vrsta == "tipka":
             return self._tipka(str(dogodek.get("tipka", "") or ""))
+        if vrsta == "tipka_dol":
+            return self._tipka_dol(str(dogodek.get("tipka", "") or ""))
+        if vrsta == "tipka_gor":
+            return self._tipka_gor(str(dogodek.get("tipka", "") or ""))
         if vrsta == "besedilo":
             return self._besedilo(str(dogodek.get("besedilo", "") or ""))
         if vrsta == "premik":
@@ -81,6 +96,73 @@ class Vnos:
         if tipka is None:
             return False
         return self._pozeni(["key", "--clearmodifiers", tipka])
+
+    # -------------------------------------------------------------- drzanje tipke
+
+    @staticmethod
+    def _drzljiva(oznaka: str) -> Optional[str]:
+        """Ime tipke za X, kadar jo je smiselno drzati.
+
+        Bliznjice s krmilkami (ctrl+s) niso tipke, ki bi jih kdo drzal, in bi ob prekinjeni
+        povezavi pustile pritisnjeno krmilko - te gredo samo kot kratek pritisk.
+        """
+        tipka = TIPKE.get(oznaka.strip().lower())
+        if tipka is None or "+" in tipka:
+            return None
+        return tipka
+
+    def _tipka_dol(self, oznaka: str) -> bool:
+        tipka = self._drzljiva(oznaka)
+        if tipka is None:
+            return False
+        self.sprosti_pozabljene()
+        if tipka in self._drzane:
+            self._drzane[tipka] = time.monotonic()   # televizor ponavlja, da se ve, da se drzi
+            return True
+        if not self._pozeni(["keydown", "--clearmodifiers", tipka]):
+            return False
+        self._drzane[tipka] = time.monotonic()
+        self._zbudi_strazo()
+        return True
+
+    def _tipka_gor(self, oznaka: str) -> bool:
+        tipka = self._drzljiva(oznaka)
+        if tipka is None:
+            return False
+        self._drzane.pop(tipka, None)
+        return self._pozeni(["keyup", "--clearmodifiers", tipka])
+
+    def drzane(self) -> List[str]:
+        """Katere tipke ta trenutek drzimo (za teste in dnevnik)."""
+        return sorted(self._drzane)
+
+    def sprosti_vse(self) -> None:
+        """Spusti vse drzane tipke. Klicemo ob koncu seje in ko povezava pade."""
+        for tipka in list(self._drzane):
+            self._drzane.pop(tipka, None)
+            self._pozeni(["keyup", "--clearmodifiers", tipka])
+        self._konec.set()
+
+    def sprosti_pozabljene(self, zdaj: Optional[float] = None) -> None:
+        """Spusti tipke, o katerih televizor predolgo ni nicesar rekel."""
+        sedaj = time.monotonic() if zdaj is None else zdaj
+        for tipka, ko in list(self._drzane.items()):
+            if sedaj - ko > NAJVEC_DRZANJA_S:
+                self._drzane.pop(tipka, None)
+                self._pozeni(["keyup", "--clearmodifiers", tipka])
+
+    def _zbudi_strazo(self) -> None:
+        """Straza sama spusti pozabljene tipke tudi, kadar od televizorja ne pride nic vec."""
+        if self._straza is not None and self._straza.is_alive():
+            return
+        self._konec.clear()
+
+        def tece() -> None:
+            while self._drzane and not self._konec.wait(1.0):
+                self.sprosti_pozabljene()
+
+        self._straza = threading.Thread(target=tece, name="safeer-vnos-straza", daemon=True)
+        self._straza.start()
 
     def _besedilo(self, besedilo: str) -> bool:
         besedilo = besedilo[:NAJVEC_BESEDILA]
