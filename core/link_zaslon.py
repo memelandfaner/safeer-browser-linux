@@ -364,6 +364,9 @@ class Zaslon:
                     ostanek = b""
         except (OSError, ssl.SSLError, ValueError):
             pass
+        finally:
+            # Povezava je padla ali se koncala: kar je televizor drzal, mora zdaj gor.
+            self._vnos.sprosti_vse()
 
     @staticmethod
     def _preberi_vrstico(s: socket.socket, najvec: int = 256) -> str:
@@ -377,6 +380,7 @@ class Zaslon:
 
     def ustavi(self) -> None:
         """Konca zajem in zapre vrata; zeton takoj ne velja vec."""
+        self._vnos.sprosti_vse()
         with self._kljucavnica:
             proces, zvocni, posluh = self._proces, self._zvocni, self._posluh
             self._proces = None

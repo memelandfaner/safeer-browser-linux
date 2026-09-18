@@ -95,5 +95,54 @@ class Dovoljeno(unittest.TestCase):
         self.assertFalse(v.izvedi({"vrsta": "tipka", "tipka": "gor"}))
 
 
+class Drzanje(unittest.TestCase):
+    """Igra in dolgo drsenje potrebujeta pritisk in spust, ne kratkega piska."""
+
+    def setUp(self):
+        self.v = Lazni()
+
+    def test_pritisk_in_spust(self):
+        self.assertTrue(self.v.izvedi({"vrsta": "tipka_dol", "tipka": "gor"}))
+        self.assertEqual(self.v.ukazi[-1], ["keydown", "--clearmodifiers", "Up"])
+        self.assertEqual(self.v.drzane(), ["Up"])
+        self.assertTrue(self.v.izvedi({"vrsta": "tipka_gor", "tipka": "gor"}))
+        self.assertEqual(self.v.ukazi[-1], ["keyup", "--clearmodifiers", "Up"])
+        self.assertEqual(self.v.drzane(), [])
+
+    def test_ponovljeno_javljanje_ne_pritisne_dvakrat(self):
+        """Televizor drzanje ponavlja, da se ve, da je zivo; tipka se sme pritisniti le enkrat."""
+        for _ in range(4):
+            self.assertTrue(self.v.izvedi({"vrsta": "tipka_dol", "tipka": "levo"}))
+        self.assertEqual([u for u in self.v.ukazi if u[0] == "keydown"],
+                         [["keydown", "--clearmodifiers", "Left"]])
+
+    def test_bliznjica_se_ne_drzi(self):
+        """ctrl+s ni tipka, ki bi jo kdo drzal - drzana krmilka bi ob prekinitvi ostala pritisnjena."""
+        self.assertFalse(self.v.izvedi({"vrsta": "tipka_dol", "tipka": "shrani"}))
+        self.assertEqual(self.v.drzane(), [])
+        self.assertEqual(self.v.ukazi, [])
+
+    def test_neznana_tipka_se_ne_drzi(self):
+        self.assertFalse(self.v.izvedi({"vrsta": "tipka_dol", "tipka": "rm -rf"}))
+        self.assertEqual(self.v.ukazi, [])
+
+    def test_pozabljena_tipka_se_spusti_sama(self):
+        """Ce povezava pade sredi drzanja, tipka ne sme ostati pritisnjena."""
+        import time
+
+        self.assertTrue(self.v.izvedi({"vrsta": "tipka_dol", "tipka": "desno"}))
+        self.v.sprosti_pozabljene(time.monotonic() + link_vnos.NAJVEC_DRZANJA_S + 1)
+        self.assertEqual(self.v.ukazi[-1], ["keyup", "--clearmodifiers", "Right"])
+        self.assertEqual(self.v.drzane(), [])
+
+    def test_konec_seje_spusti_vse(self):
+        for tipka in ("gor", "levo", "presledek"):
+            self.assertTrue(self.v.izvedi({"vrsta": "tipka_dol", "tipka": tipka}))
+        self.assertEqual(len(self.v.drzane()), 3)
+        self.v.sprosti_vse()
+        self.assertEqual(self.v.drzane(), [])
+        self.assertEqual(len([u for u in self.v.ukazi if u[0] == "keyup"]), 3)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
