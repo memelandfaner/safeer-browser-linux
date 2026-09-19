@@ -161,5 +161,20 @@ class Brskalniki(unittest.TestCase):
             self.assertFalse(_ime_brskalnika(ime), ime)
 
 
+class Zvok(unittest.TestCase):
+    IZPIS = ("0\tmodule-always-sink\t\t\n"
+             "536870913\tmodule-null-sink\tsink_name=safeer_tv sink_properties=device.description=Safeer-TV\t\n"
+             "536870914\tmodule-null-sink\tsink_name=\"safeer_tv\" sink_properties=device.description=Safeer-TV\t\n"
+             "536870915\tmodule-null-sink\tsink_name=safeer_tv_drug\t\n"
+             "536870916\tmodule-null-sink\tsink_name=obs\t\n"
+             "536870917\tmodule-loopback\tsink_name=safeer_tv\t\n")
+
+    def test_najde_samo_nase(self):
+        self.assertEqual(link_sway.nasi_zvocni_moduli(self.IZPIS), ["536870913", "536870914"])
+
+    def test_prazen_izpis(self):
+        self.assertEqual(link_sway.nasi_zvocni_moduli(""), [])
+
+
 if __name__ == "__main__":
     unittest.main()
