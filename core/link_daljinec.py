@@ -141,6 +141,11 @@ def izvedi_control(dejanje: str, parametri: dict, odpri_naslov: Callable[[str], 
                 koncaj(izid(True, "Stanje zaslona", {**zaslon.na_voljo(), **zaslon.stanje()}))
                 return
             if d == "screen.stop":
+                # Uporabnik je na televizorju koncal program: zapremo ga tudi na racunalniku
+                # (samo okna na locenem zaslonu - kar je odprto na namizju, ostane).
+                drugi = getattr(zaslon, "drugi", None)
+                if parametri.get("close_apps") and drugi is not None and hasattr(drugi, "zapri_okna"):
+                    drugi.zapri_okna()
                 zaslon.ustavi()
                 koncaj(izid(True, "Deljenje zaslona je koncano"))
                 return
