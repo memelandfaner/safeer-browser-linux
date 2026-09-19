@@ -30,6 +30,8 @@ TIPKE: Dict[str, str] = {
     "celozaslonsko": "F11", "osvezi": "F5", "isci": "ctrl+f",
     "kopiraj": "ctrl+c", "prilepi": "ctrl+v", "izrezi": "ctrl+x", "razveljavi": "ctrl+z",
     "zapri_okno": "ctrl+w", "preklopi_okno": "alt+Tab",
+    # Barvne tipke daljinca v brskalniku (samo locen zaslon, glej link_sway.BARVE_BRSKALNIK).
+    "brskalnik_nazaj": "alt+Left", "brskalnik_naprej": "alt+Right", "nov_zavihek": "ctrl+t",
     # Delo z dokumentom: brez shranjevanja televizor ne bi bil uporaben za pisanje.
     "shrani": "ctrl+s", "shrani_kot": "ctrl+shift+s", "izberi_vse": "ctrl+a",
     "ponovi": "ctrl+y", "krepko": "ctrl+b", "lezece": "ctrl+i", "podcrtano": "ctrl+u",
@@ -87,6 +89,22 @@ class Vnos:
             return self._klik(str(dogodek.get("gumb", "levi") or "levi"), bool(dogodek.get("dvojni")))
         if vrsta == "kolesce":
             return self._kolesce(str(dogodek.get("smer", "") or ""), dogodek.get("koliko"))
+        if vrsta == "tocka":
+            # Dotik na tablici: kazalec natanko tja, kamor je prst pokazal (tocke zaslona).
+            try:
+                x, y = int(dogodek.get("x")), int(dogodek.get("y"))
+            except (TypeError, ValueError):
+                return False
+            if x < 0 or y < 0 or x > 20000 or y > 20000:
+                return False
+            return self._pozeni(["mousemove", "--", str(x), str(y)])
+        if vrsta == "gumb":
+            st = GUMBI.get(str(dogodek.get("gumb", "levi") or "levi").strip().lower())
+            if st is None:
+                return False
+            dol = bool(dogodek.get("dol"))
+            self._gumb_drzan = st if dol else None
+            return self._pozeni(["mousedown" if dol else "mouseup", st])
         return False
 
     # ------------------------------------------------------------------ posamezni dogodki
@@ -136,8 +154,13 @@ class Vnos:
         """Katere tipke ta trenutek drzimo (za teste in dnevnik)."""
         return sorted(self._drzane)
 
+    _gumb_drzan: Optional[str] = None
+
     def sprosti_vse(self) -> None:
         """Spusti vse drzane tipke. Klicemo ob koncu seje in ko povezava pade."""
+        if self._gumb_drzan is not None:
+            gumb, self._gumb_drzan = self._gumb_drzan, None
+            self._pozeni(["mouseup", gumb])
         for tipka in list(self._drzane):
             self._drzane.pop(tipka, None)
             self._pozeni(["keyup", "--clearmodifiers", tipka])
