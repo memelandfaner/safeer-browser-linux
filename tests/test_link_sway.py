@@ -52,7 +52,35 @@ class Tipke(unittest.TestCase):
         self.assertEqual(link_sway._fiksno(1.5), 384)
 
 
+VSE = {"muxer": True, "no_damage": True, "codec_param": True, "framerate": True}
+
+
 class Zajem(unittest.TestCase):
+    def setUp(self):
+        link_sway._WF = dict(VSE)
+
+    def tearDown(self):
+        link_sway._WF = None
+
+    def test_starejsi_wf_recorder_brez_neznanih_zastavic(self):
+        """Starejsi wf-recorder ne pozna -D, -r in -p: teh ne posljemo, sicer bi zajem takoj padel."""
+        link_sway._WF = {"muxer": True, "no_damage": False, "codec_param": False, "framerate": False}
+        d = link_sway.DrugiZaslon(mapa=tempfile.mkdtemp())
+        d.graficna = lambda: "/dev/dri/renderD128"
+        u = d.ukaz_zajema(60, 16, "24M")
+        for z in ("-D", "-r", "-p"):
+            self.assertNotIn(z, u)
+        self.assertIn("-m", u)
+
+    def test_namestitev_samo_nasi_paketi(self):
+        s = {"manjka": ["wtype", "rm -rf /"], "posodobitev": True, "orodja": True}
+        self.assertEqual(link_sway.paketi_za_namestitev(s), ["wtype", "wf-recorder"])
+        u = link_sway.ukaz_namestitve(s)
+        self.assertEqual(u[0], "pkexec")
+        self.assertTrue(u[-1].endswith("apt-get install -y wtype wf-recorder"))
+        self.assertIsNone(link_sway.ukaz_namestitve({"manjka": [], "posodobitev": False, "orodja": True}))
+        self.assertIsNone(link_sway.ukaz_namestitve({"manjka": ["sway"], "orodja": False}))
+
     def test_strojno_gol_h264_na_stdout(self):
         d = link_sway.DrugiZaslon(mapa=tempfile.mkdtemp())
         d.graficna = lambda: "/dev/dri/renderD128"
