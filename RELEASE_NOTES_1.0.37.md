@@ -1,0 +1,11 @@
+# Safeer Linux 1.0.37
+
+**Programs you start from the TV get their own screen, and your desktop stays yours.**
+
+- **Separate screen for the TV (Safeer Control 2.0.3).** A program you start from Safeer OS now opens on a second, invisible screen on the computer instead of on your desktop. The TV shows and controls only that screen: your monitor, mouse, keyboard and taskbar keep working as usual, and the program's sound plays on the TV only. The picture is encoded by the graphics card; on our test laptop (Intel Iris Xe) it reaches the TV at 1920×1080 and 60 frames per second. This needs the packages `sway` and `wf-recorder` (on Debian, Ubuntu and Linux Mint: `sudo apt install sway wf-recorder`). Without them, programs open on your desktop as before.
+- **Several programs on the TV screen.** "Next program" in the session menu on the TV switches between them, also out of a full-screen game.
+- **Close programs from the TV.** A program started from the TV can be closed from the Continue row in Safeer OS, one by one or all at once.
+- **No more dark screen.** When the last program on the TV screen closes (for example a game that quits on Escape), the TV returns to Safeer OS and says so.
+- Safeer Browser has no functional changes in this release; filtering, Safeer Link and the interface work as in 1.0.36.
+
+Slovensko: **programi, ki jih zaženeš s televizorja, dobijo svoj zaslon.** Safeer Control 2.0.3 jih odpre na drugem, nevidnem zaslonu računalnika namesto na tvojem namizju; televizor vidi in upravlja samo tega, tvoj monitor, miška, tipkovnica in opravilna vrstica pa delajo kot vedno, zvok programa pa se predvaja samo na televizorju. Sliko kodira grafična kartica; na našem preizkusnem prenosniku (Intel Iris Xe) pride na televizor v 1920×1080 pri 60 sličicah na sekundo. Potrebna sta paketa `sway` in `wf-recorder` (`sudo apt install sway wf-recorder`); brez njiju se programi odprejo na namizju kot doslej. Med več programi preklopiš z »Naslednji program« v meniju seje, programe zapreš iz vrstice Nadaljuj v Safeer OS (posamično ali vse), in ko se zadnji program zapre, se televizor vrne v Safeer OS namesto na temen zaslon. Brskalnik Safeer v tej izdaji nima funkcionalnih sprememb.
