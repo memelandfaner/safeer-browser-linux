@@ -96,7 +96,7 @@ def izvedi(app, dejanje: str, parametri: dict, odpri_naslov: Callable[[str], Non
 
 DEJANJA_CONTROL = ["open_url", "volume", "status"]
 DEJANJA_DATOTEKE = ["files.list", "files.open"]
-DEJANJA_PROGRAMI = ["apps.list", "apps.launch", "apps.close"]
+DEJANJA_PROGRAMI = ["apps.list", "apps.launch", "apps.close", "apps.running"]
 DEJANJA_HOST = ["host.info"]
 DEJANJA_ZASLON = ["screen.start", "screen.stop", "screen.status"]
 
@@ -160,7 +160,8 @@ def izvedi_control(dejanje: str, parametri: dict, odpri_naslov: Callable[[str], 
                 seja = zaslon.zacni(posiljatelj, str(parametri.get("quality", "") or "srednja"),
                                     str(parametri.get("screen", "") or "").strip().lower())
             except RuntimeError as e:
-                koncaj(izid(False, str(e), koda="ni_zajema"))
+                # ProgramaNi: televizor je hotel program, ki ga ni vec - pove to in gre domov.
+                koncaj(izid(False, str(e), koda="ni_programa" if type(e).__name__ == "ProgramaNi" else "ni_zajema"))
                 return
             koncaj(izid(True, "Zaslon se deli", seja))
         elif d == "host.info":
@@ -192,6 +193,15 @@ def izvedi_control(dejanje: str, parametri: dict, odpri_naslov: Callable[[str], 
                 koncaj(izid(True, "Program se zaganja"))
             else:
                 koncaj(izid(False, "Tega programa ni na seznamu", koda="ni_programa"))
+        elif d == "apps.running":
+            # Kateri od teh programov res tece: televizor krizec v vrstici Nadaljuj pokaze samo pri
+            # odprtih (prej je bil tudi pri programih, ki jih je konec seje ze zaprl).
+            if programi is None:
+                koncaj(izid(False, "Programi tu niso na voljo", koda="ni_na_racunalniku"))
+                return
+            oznake = parametri.get("apps") if isinstance(parametri.get("apps"), list) else []
+            tecejo = [str(o) for o in oznake[:50] if isinstance(o, str) and programi.tece(o)]
+            koncaj(izid(True, "Odprti programi", {"running": tecejo}))
         elif d == "apps.close":
             # Program, zagnan s televizorja, je doslej ostal odprt in jemal pomnilnik;
             # zdaj ga je mogoce zapreti z istega mesta, kjer si ga zagnal.

@@ -38,6 +38,10 @@ OKVIR_SLIKA, OKVIR_ZVOK = 1, 2
 #: Obvestilo racunalnika (JSON), npr. {"konec": "zaprto"}: na drugem zaslonu ni vec nobenega
 #: programa. Starejsi televizorji okvir te vrste preskocijo.
 OKVIR_OBVESTILO = 3
+
+
+class ProgramaNi(RuntimeError):
+    """Televizor je zahteval locen zaslon s programi, a tam ni nicesar vec."""
 #: Koliko casa sme biti drugi zaslon prazen, preden sejo koncamo: po zaprtju zadnjega programa
 #: in (ce se program sploh ni odprl) od zacetka seje. Temen prazen zaslon je slepa ulica.
 PRAZNO_PO_ZAPRTJU_S, PRAZNO_OD_ZACETKA_S = 1.5, 30.0
@@ -260,6 +264,11 @@ class Zaslon:
         if not display:
             raise RuntimeError("Zaslona ni mogoce zajeti (seja ni na voljo)")
         k = KAKOVOSTI.get(kakovost) or KAKOVOSTI[PRIVZETA_KAKOVOST]
+        if cilj == "apps" and self.drugi is not None and not self.drugi.tece():
+            # Televizor hoce program, locenega zaslona pa ni vec (Control je bil znova zagnan,
+            # programi so zaprti). Prej je dobil namizje racunalnika - tega ni zahteval in tam
+            # je lahko karkoli zasebnega. Zdaj pove, da programa ni vec.
+            raise ProgramaNi("Program na racunalniku ni vec odprt")
         self.ustavi()
         na_drugem = self._na_drugem(cilj)
         if na_drugem:
@@ -419,6 +428,55 @@ class Zaslon:
         except (OSError, ssl.SSLError, ValueError, AttributeError):
             pass
 
+    def _obvesti(self, odjemalec, podatki: dict) -> None:
+        """Obvestilo televizorju po isti povezavi kot slika (okvir izbire, kazalec za povecavo ...)."""
+        vsebina = json.dumps(podatki).encode("utf-8")
+        try:
+            with self._pisalo:
+                odjemalec.sendall(bytes([OKVIR_OBVESTILO]) + len(vsebina).to_bytes(4, "big") + vsebina)
+        except (OSError, ssl.SSLError, ValueError):
+            pass
+
+    def _fokus(self):
+        drugi = getattr(self._vnos, "drugi", None)
+        return getattr(drugi, "fokus", None) if self._cilj == "apps" else None
+
+    def _odpre_tipkovnico(self, dogodek) -> bool:
+        """OK (klik) na polju za besedilo, izbranem s skokom: televizor naj odpre tipkovnico."""
+        f = self._fokus()
+        if f is None or not isinstance(dogodek, dict) or dogodek.get("vrsta") != "klik":
+            return False
+        if str(dogodek.get("gumb", "levi") or "levi") != "levi" or dogodek.get("dvojni"):
+            return False
+        e, t = f.izbira, f.tocka
+        return bool(e is not None and len(e) > 7 and e[7] and t is not None
+                    and abs(t[0] - e[0]) < 1 and abs(t[1] - e[1]) < 1)
+
+    def _po_vnosu(self, odjemalec, dogodek, tipkovnica: bool, imel_izbiro: bool = False) -> None:
+        f = self._fokus()
+        if f is None or not isinstance(dogodek, dict):
+            return
+        vrsta = dogodek.get("vrsta")
+        if vrsta == "klik" and imel_izbiro:
+            def potrdi() -> None:
+                time.sleep(0.35)
+                if f.izbira is None:          # uporabnik je medtem ze premaknil kazalec
+                    return
+                e = f.osvezi_izbiro()
+                self._obvesti(odjemalec, {"izbira": [int(e[2]), int(e[3]), int(e[4]), int(e[5])]
+                                          if e is not None else None})
+            threading.Thread(target=potrdi, name="safeer-izbira", daemon=True).start()
+        if vrsta == "fokus":
+            e = f.izbira
+            self._obvesti(odjemalec, {
+                "izbira": [int(e[2]), int(e[3]), int(e[4]), int(e[5])] if e is not None else None,
+                "brez_gumbov": bool(f.brez_gumbov), "profil": f.profil()})
+        if tipkovnica:
+            self._obvesti(odjemalec, {"tipkovnica": True})
+        if getattr(self._vnos, "porocaj_kazalec", False) and vrsta in ("premik", "fokus", "povecava") \
+                and f.tocka is not None:
+            self._obvesti(odjemalec, {"kazalec": [int(f.tocka[0]), int(f.tocka[1])]})
+
     def _beri_vnos(self, odjemalec) -> None:
         """Dogodki televizorja (ena vrstica JSON na dogodek). Kar ni na seznamu dovoljenega, pade."""
         ostanek = b""
@@ -436,7 +494,11 @@ class Zaslon:
                         dogodek = json.loads(vrstica.decode("utf-8", "replace"))
                     except ValueError:
                         continue
+                    tipkovnica = self._odpre_tipkovnico(dogodek)
+                    f = self._fokus()
+                    imel_izbiro = f is not None and f.izbira is not None
                     if self._plosek_dogodek(dogodek) or self._vnos.izvedi(dogodek):
+                        self._po_vnosu(odjemalec, dogodek, tipkovnica, imel_izbiro)
                         self._vnosov += 1
                         # Redko, a dovolj, da se v dnevniku vidi, da vnos res prihaja skozi.
                         if self._vnosov in (1, 10, 100) or self._vnosov % 500 == 0:
