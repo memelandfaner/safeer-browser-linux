@@ -40,6 +40,8 @@ OKVIR_SLIKA, OKVIR_ZVOK = 1, 2
 OKVIR_OBVESTILO = 3
 #: Koliko casa program na locenem zaslonu caka na televizor, ki je izginil, preden ga zapremo.
 OSIROTELO_S = 90
+#: Kako pogosto po koncu seje preverimo, ali je drugi zaslon prazen in lahko pospravimo zvok.
+ZVOK_POSPRAVI_S = 5.0
 
 
 class ProgramaNi(RuntimeError):
@@ -390,6 +392,7 @@ class Zaslon:
                 pass
             if self._cilj == "apps" and self.drugi is not None:
                 self._strazi_osirotele(self._seja_st)
+                self._pospravi_zvok_po_seji(self._seja_st)
             self.ustavi()
 
     def _strazi_osirotele(self, seja: int) -> None:
@@ -405,6 +408,23 @@ class Zaslon:
                 print("[zaslon] televizorja ni vec, programi na locenem zaslonu se zapirajo", flush=True)
                 drugi.zapri_okna()
         threading.Thread(target=straza, name="safeer-zaslon-osiroteli", daemon=True).start()
+
+    def _pospravi_zvok_po_seji(self, seja: int) -> None:
+        """Po koncu seje odstrani navidezni izhod Safeer-TV, ko na drugem zaslonu ni vec programov
+        (zaprl jih je uporabnik ali straza osirotelih). Ce program ostane odprt, ostane tudi izhod."""
+        drugi = self.drugi
+        if drugi is None or not hasattr(drugi, "pospravi_zvok"):
+            return
+
+        def straza() -> None:
+            konec = time.monotonic() + OSIROTELO_S + 30
+            while time.monotonic() < konec:
+                time.sleep(ZVOK_POSPRAVI_S)
+                if self._seja_st != seja or self._povezan:
+                    return
+                if drugi.okna() == 0 and drugi.pospravi_zvok():
+                    return
+        threading.Thread(target=straza, name="safeer-zaslon-zvok-pospravi", daemon=True).start()
 
     def _strazi_prazno(self, odjemalec, slika: subprocess.Popen) -> None:
         """Ko se zadnji program na drugem zaslonu zapre (igra ob Esc, uporabnik jo zapre), televizor
