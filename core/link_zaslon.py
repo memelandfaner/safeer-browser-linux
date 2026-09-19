@@ -38,6 +38,8 @@ OKVIR_SLIKA, OKVIR_ZVOK = 1, 2
 #: Obvestilo racunalnika (JSON), npr. {"konec": "zaprto"}: na drugem zaslonu ni vec nobenega
 #: programa. Starejsi televizorji okvir te vrste preskocijo.
 OKVIR_OBVESTILO = 3
+#: Koliko casa program na locenem zaslonu caka na televizor, ki je izginil, preden ga zapremo.
+OSIROTELO_S = 90
 
 
 class ProgramaNi(RuntimeError):
@@ -181,6 +183,8 @@ class Zaslon:
         self._naprava = ""
         self._kakovost = PRIVZETA_KAKOVOST
         self._slika: Dict[str, int] = {}
+        #: Stevec sej: straza osirotelih programov ve, ali se je medtem zacela nova seja.
+        self._seja_st = 0
         self._izvor = (1920, 1080)
         self._zvok_vir: Optional[str] = None
         self._posluh: Optional[socket.socket] = None
@@ -265,6 +269,7 @@ class Zaslon:
         if not display:
             raise RuntimeError("Zaslona ni mogoce zajeti (seja ni na voljo)")
         k = KAKOVOSTI.get(kakovost) or KAKOVOSTI[PRIVZETA_KAKOVOST]
+        self._seja_st += 1
         if cilj == "apps" and self.drugi is not None and not self.drugi.tece():
             # Televizor hoce program, locenega zaslona pa ni vec (Control je bil znova zagnan,
             # programi so zaprti). Prej je dobil namizje racunalnika - tega ni zahteval in tam
@@ -383,7 +388,23 @@ class Zaslon:
                     odjemalec.close()
             except Exception:
                 pass
+            if self._cilj == "apps" and self.drugi is not None:
+                self._strazi_osirotele(self._seja_st)
             self.ustavi()
+
+    def _strazi_osirotele(self, seja: int) -> None:
+        """Televizor je izginil sredi seje (ugasnjen, aplikacija zaprta ali posodobljena) in se ne
+        vrne: program na locenem zaslonu bi tekel naprej nevidno, dokler ga kdo ne zapre na
+        racunalniku. Ce v OSIROTELO_S ni nove seje, ga zapremo - kot bi uporabnik koncal sejo."""
+        def straza() -> None:
+            time.sleep(OSIROTELO_S)
+            if self._seja_st != seja or self._povezan:
+                return
+            drugi = self.drugi
+            if drugi is not None and hasattr(drugi, "zapri_okna") and drugi.okna() > 0:
+                print("[zaslon] televizorja ni vec, programi na locenem zaslonu se zapirajo", flush=True)
+                drugi.zapri_okna()
+        threading.Thread(target=straza, name="safeer-zaslon-osiroteli", daemon=True).start()
 
     def _strazi_prazno(self, odjemalec, slika: subprocess.Popen) -> None:
         """Ko se zadnji program na drugem zaslonu zapre (igra ob Esc, uporabnik jo zapre), televizor
