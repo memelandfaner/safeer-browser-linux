@@ -366,6 +366,16 @@ class SwayVnos:
                     and self._poslji("m", 4)
                 self._gumb_drzan = gumb if dol else None
                 self.drugi.fokus.pozabi()
+        elif vrsta == "tocka":
+            # Dotik na tablici: kazalec natanko tja, kamor je prst pokazal.
+            try:
+                x, y = int(dogodek.get("x")), int(dogodek.get("y"))
+            except (TypeError, ValueError):
+                return False
+            ok = self.absolutno(x, y)
+            self.drugi.fokus.tocka = (float(min(max(x, 0), self.drugi.sirina - 1)),
+                                      float(min(max(y, 0), self.drugi.visina - 1)))
+            self.drugi.fokus.izbira = None
         elif vrsta == "barva":
             # Barvne tipke daljinca: v brskalniku nazaj, naprej, osvezi, nov zavihek. Drugod nic -
             # tipka brez dogovorjenega pomena ne sme narediti nicesar nepricakovanega.

@@ -181,6 +181,7 @@ class Zaslon:
         self._naprava = ""
         self._kakovost = PRIVZETA_KAKOVOST
         self._slika: Dict[str, int] = {}
+        self._izvor = (1920, 1080)
         self._zvok_vir: Optional[str] = None
         self._posluh: Optional[socket.socket] = None
         self._proces: Optional[subprocess.Popen] = None
@@ -283,6 +284,7 @@ class Zaslon:
             self._naprava = id_naprave
             self._zeton = secrets.token_urlsafe(24)
             self._slika = {"width": sirina, "height": visina, "fps": int(k["fps"])}
+            self._izvor = (int(izvor[0]), int(izvor[1]))
             kljuc, potrdilo, self.odtis = zagotovi_potrdilo(self.tls_mapa)
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             ctx.minimum_version = ssl.TLSVersion.TLSv1_2
@@ -428,6 +430,17 @@ class Zaslon:
         except (OSError, ssl.SSLError, ValueError, AttributeError):
             pass
 
+    def _v_zaslon(self, dogodek: dict) -> dict:
+        """Tocka iz slike (kot jo vidi tablica) v tocko zaslona: slika je lahko pomanjsana."""
+        try:
+            x, y = float(dogodek.get("x")), float(dogodek.get("y"))
+        except (TypeError, ValueError):
+            return dogodek
+        sw, sv = max(1, self._slika.get("width", 1)), max(1, self._slika.get("height", 1))
+        iw, iv = self._izvor
+        return {"vrsta": "tocka", "x": int(min(max(x, 0), sw - 1) * iw / sw),
+                "y": int(min(max(y, 0), sv - 1) * iv / sv)}
+
     def _obvesti(self, odjemalec, podatki: dict) -> None:
         """Obvestilo televizorju po isti povezavi kot slika (okvir izbire, kazalec za povecavo ...)."""
         vsebina = json.dumps(podatki).encode("utf-8")
@@ -494,6 +507,8 @@ class Zaslon:
                         dogodek = json.loads(vrstica.decode("utf-8", "replace"))
                     except ValueError:
                         continue
+                    if isinstance(dogodek, dict) and dogodek.get("vrsta") == "tocka":
+                        dogodek = self._v_zaslon(dogodek)
                     tipkovnica = self._odpre_tipkovnico(dogodek)
                     f = self._fokus()
                     imel_izbiro = f is not None and f.izbira is not None
