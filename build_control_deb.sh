@@ -29,7 +29,7 @@ Version: ${VERSION}
 Section: utils
 Priority: optional
 Architecture: ${ARCH}
-Depends: python3, python3-gi, python3-gi-cairo, gir1.2-gtk-3.0, gir1.2-webkit2-4.1, gir1.2-soup-3.0, gir1.2-glib-2.0, sway, wf-recorder, wtype
+Depends: python3, python3-gi, python3-gi-cairo, gir1.2-gtk-3.0, gir1.2-webkit2-4.1, gir1.2-soup-3.0, gir1.2-glib-2.0, gir1.2-atspi-2.0, sway, wf-recorder, wtype
 Recommends: pulseaudio-utils
 Maintainer: Safeer <memelandfaner@users.noreply.github.com>
 Homepage: https://safeer.si/control/
