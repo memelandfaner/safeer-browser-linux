@@ -416,11 +416,26 @@ class DrugiZaslon:
                 return pot
         return None
 
+    _wf_zna: Optional[bool] = None
+
+    @classmethod
+    def wf_recorder_zna(cls) -> bool:
+        """Starejsi wf-recorder (npr. v starejsih distribucijah) nima --no-damage in --muxer; brez njiju
+        zajem ne dela, zato takrat drugega zaslona ne ponudimo in program gre na namizje kot prej."""
+        if cls._wf_zna is None:
+            try:
+                r = subprocess.run(["wf-recorder", "--help"], capture_output=True, text=True, timeout=5)
+                pomoc = r.stdout + r.stderr
+                cls._wf_zna = "--no-damage" in pomoc and "--muxer" in pomoc and "--codec-param" in pomoc
+            except Exception:
+                cls._wf_zna = False
+        return cls._wf_zna
+
     @classmethod
     def mozno(cls) -> bool:
-        """Ali ta racunalnik zna drugi zaslon: sway, wf-recorder in grafična kartica."""
+        """Ali ta racunalnik zna drugi zaslon: sway, dovolj nov wf-recorder in grafična kartica."""
         return bool(shutil.which("sway") and shutil.which("swaymsg") and shutil.which("wf-recorder")
-                    and cls.graficna())
+                    and cls.graficna() and cls.wf_recorder_zna())
 
     def tece(self) -> bool:
         return self._sway is not None and self._sway.poll() is None
