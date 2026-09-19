@@ -54,6 +54,9 @@ def _konfiguracija(sirina: int, visina: int) -> str:
         "workspace_layout tabbed",
         "seat seat0 xcursor_theme Adwaita 32",
         "font pango:Sans 13",
+        # Edina bliznjica: preklop med programi (daljinec: meni seje -> Naslednji program).
+        # Celozaslonski program (igra) bi sicer zakril ostale, zato ga ob preklopu pomanjsamo v zavihek.
+        "bindsym Mod1+Tab fullscreen disable, focus right",
         "",
     ])
 
