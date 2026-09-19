@@ -27,8 +27,8 @@
   </description>
   <launchable type="desktop-id">safeer-browser.desktop</launchable>
   <url type="homepage">https://safeer.si/browser/linux/</url>
-  <url type="bugtracker">https://github.com/memelandfaner/safeer-browser-linux/issues</url>
-  <url type="vcs-browser">https://github.com/memelandfaner/safeer-browser-linux</url>
+  <url type="bugtracker">https://github.com/safeerOS/Safeer-linux/issues</url>
+  <url type="vcs-browser">https://github.com/safeerOS/Safeer-linux</url>
   <categories>
     <category>Network</category>
     <category>WebBrowser</category>
@@ -40,11 +40,11 @@
   <screenshots>
     <screenshot type="default">
       <caption>Safeer Browser with Bookmarks Toolbar and DuckDuckGo on Linux Mint</caption>
-      <image type="source">https://raw.githubusercontent.com/memelandfaner/safeer-browser-linux/main/assets/desktop_mint_showcase.png</image>
+      <image type="source">https://raw.githubusercontent.com/safeerOS/Safeer-linux/main/assets/desktop_mint_showcase.png</image>
     </screenshot>
     <screenshot>
       <caption>Onboarding Setup Wizard and Privacy Settings</caption>
-      <image type="source">https://raw.githubusercontent.com/memelandfaner/safeer-browser-linux/main/assets/desktop_mint_wizard.png</image>
+      <image type="source">https://raw.githubusercontent.com/safeerOS/Safeer-linux/main/assets/desktop_mint_wizard.png</image>
     </screenshot>
   </screenshots>
   <releases>

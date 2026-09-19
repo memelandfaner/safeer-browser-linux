@@ -2,7 +2,7 @@
 """
 Trditve do uporabnika morajo drzati.
 
-Dve pravili, ki ju je postavil Matej (15. 9. 2026):
+Dve pravili (od 15. 9. 2026):
 1. Zmoznost, da na YouTubu ni oglasov, obdrzimo -- ne oglasujemo je.
 2. Ne obljubljamo Tampermonkeyjevega API-ja, ker ga nimamo; imamo svoj
    mehanizem za uporabniske skripte in tako ga tudi imenujemo.

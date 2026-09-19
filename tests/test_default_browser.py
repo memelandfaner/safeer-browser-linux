@@ -70,7 +70,7 @@ print('Native defaults verified; unrelated PDF preference preserved')
 
 
 class StaleEntryTests(unittest.TestCase):
-    """Matej, 2026-09-13: the per-user safeer-browser.desktop still pointed at the removed
+    """Report 2026-09-13: the per-user safeer-browser.desktop still pointed at the removed
     ~/.local/bin/safeer-browser; GLib refused to load it, the click raised TypeError and the
     question bar never went away."""
 

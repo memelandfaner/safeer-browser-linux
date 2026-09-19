@@ -12,7 +12,7 @@ import re
 import unittest
 
 KOREN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STIK = "memelandfaner@users.noreply.github.com"
+STIK = "info@safeer.si"
 NASE_DOMENE = ("safeer.si", "users.noreply.github.com", "github.com")
 
 PRESKOCI_MAPE = {".git", "build", "dist", "__pycache__", ".flatpak-builder",

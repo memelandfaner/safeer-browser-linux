@@ -1,6 +1,6 @@
 """Kopiranje povezav iz naslovne vrstice.
 
-Matej, 13. 9. 2026: »težave s kopiranjem linkov v orodni vrstici«. Vzroki so bili trije:
+Prijava 13. 9. 2026: »težave s kopiranjem linkov v orodni vrstici«. Vzroki so bili trije:
 prikazani naslov je brez »https://«, polni naslov se je vstavil šele po kliku (kazalec je
 zato pristal osem znakov stran), označevanje z vlečenjem pa je prekinil select_region,
 sprožen prek GLib.idle_add. Poleg tega ukaza »Kopiraj povezavo« ni bilo nikjer.

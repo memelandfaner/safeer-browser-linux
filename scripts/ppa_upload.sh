@@ -19,8 +19,8 @@ if [ -z "$PPA_TARGET" ]; then
     echo "  $0 <ppa:uporabnik/ppa-ime> [GPG_KEY_ID]"
     echo ""
     echo "Primer:"
-    echo "  $0 ppa:memelandfaner/safeer"
-    echo "  $0 ppa:memelandfaner/safeer 1A2B3C4D"
+    echo "  $0 ppa:UPORABNIK/safeer"
+    echo "  $0 ppa:UPORABNIK/safeer 1A2B3C4D"
     exit 1
 fi
 

@@ -7202,7 +7202,7 @@ console.log("Safeer skripta teče na:", window.location.href);
 def web_process_memory_limit_mb(total_mb=None):
     """Per-tab memory limit: half of RAM, at least 1 GB.
 
-    12 GB -> 6144 MB, 8 GB -> 4096 MB, 4 GB -> 2048 MB. High on purpose (Matej, 2026-09-13): no
+    12 GB -> 6144 MB, 8 GB -> 4096 MB, 4 GB -> 2048 MB. High on purpose (decision 2026-09-13): no
     normal page must ever be stopped by it; it only keeps one runaway tab from taking the whole
     computer with it. Caches are released at half of it and everything recreatable at three quarters.
     """
