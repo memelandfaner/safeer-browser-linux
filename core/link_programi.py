@@ -18,7 +18,9 @@ from __future__ import annotations
 import base64
 import configparser
 import os
+import shlex
 import shutil
+import signal
 import subprocess
 from typing import Dict, List, Optional
 
@@ -116,6 +118,9 @@ class Programi:
         self._mape = list(mape) if mape is not None else None   # None = poisci sam (testi jih podajo)
         self.ob_spremembi = None          # klicatelj shrani nastavitev
         self._vnosi: Dict[str, dict] = {}  # oznaka -> {"pot", "ime", "opis", "ikona"}
+        #: Locen zaslon za televizor (core.link_sway.DrugiZaslon) ali None: potem se program odpre
+        #: na uporabnikovem namizju, kot doslej.
+        self.drugi = None
 
     # ------------------------------------------------------------------ nastavitev
     def nastavi(self, vklopljeno: bool) -> None:
@@ -230,6 +235,15 @@ class Programi:
         if vnos is None:
             return False
         pot = vnos["pot"]
+        if self.drugi is not None:
+            # Na drugi zaslon ukaz iz vnosa pozenemo neposredno: `gio launch` bi program z D-Bus
+            # zagonom odprl na uporabnikovem zaslonu, mimo drugega.
+            # Ce program na drugem zaslonu ze tece, ga samo pokazemo - drugo okno bi bilo odvec.
+            if self.drugi.pokazi(self._procesi(self._iskani_vzorci(ime))):
+                return True
+            ukaz = self._ukaz_vnosa(ime)
+            if ukaz and self.drugi.zazeni_program(ukaz):
+                return True
         for ukaz in (["gio", "launch", pot], ["gtk-launch", ime]):
             if shutil.which(ukaz[0]) is None:
                 continue
@@ -240,6 +254,116 @@ class Programi:
             except Exception:
                 continue
         return False
+
+    # ------------------------------------------------------------------ zapiranje
+    # Program, ki ga uporabnik zazene s televizorja, ostane odprt, dokler ga kdo ne zapre -
+    # in tega z daljincem doslej ni bilo mogoce narediti, zato so se programi kopicili in
+    # jemali pomnilnik. Zapremo ga tako, kot bi uporabnik kliknil X: SIGTERM, nikoli KILL,
+    # in samo procese tega uporabnika, ki se ujemajo z ukazom iz njegovega namiznega vnosa.
+    _LUPINE = {"sh", "bash", "zsh", "env", "sudo", "pkexec", "gio", "gtk-launch",
+               "dbus-run-session", "python", "python2", "python3", "perl", "ruby", "node",
+               "wine", "xdg-open"}
+
+    def _ime_iz_oznake(self, oznaka: str) -> Optional[str]:
+        """Iz oznake `app:<ime>.desktop` dobimo ime vnosa; karkoli drugega zavrnemo."""
+        ime = str(oznaka or "")
+        if not ime.startswith(PREDPONA):
+            return None
+        ime = ime[len(PREDPONA):]
+        if "/" in ime or not ime.endswith(".desktop"):
+            return None
+        if ime not in self._vnosi:
+            self._vnosi = self._preberi()
+        return ime if ime in self._vnosi else None
+
+    def _ukaz_vnosa(self, ime: str) -> List[str]:
+        """Ukaz iz .desktop brez oznak %f, %U ...; prazen seznam, ce ga ne znamo prebrati."""
+        vnos = self._vnosi.get(ime)
+        if vnos is None:
+            return []
+        try:
+            b = configparser.RawConfigParser(interpolation=None, strict=False)
+            b.read(vnos["pot"], encoding="utf-8")
+            ukaz = _vrednost(b["Desktop Entry"], "Exec")
+        except Exception:
+            return []
+        try:
+            deli = shlex.split(str(ukaz))
+        except ValueError:
+            deli = str(ukaz).split()
+        return [d for d in deli if not (d.startswith("%") and len(d) == 2)]
+
+    def _iskani_vzorci(self, ime: str) -> List[str]:
+        """Po cem prepoznamo proces tega programa: izvrsljiva datoteka ali id Flatpaka."""
+        deli = self._ukaz_vnosa(ime)
+        vzorci: List[str] = []
+        prek_vsebnika = any(os.path.basename(d) in ("flatpak", "snap") for d in deli)
+        if not prek_vsebnika:
+            for del_ in deli:
+                osnova = os.path.basename(del_)
+                if osnova.startswith("-") or osnova in self._LUPINE:
+                    continue
+                vzorci.append(osnova)
+                break
+        for i, del_ in enumerate(deli):
+            if os.path.basename(del_) == "flatpak":
+                for kandidat in deli[i + 1:]:
+                    if not kandidat.startswith("-") and "." in kandidat:
+                        vzorci.append(kandidat)
+                        break
+        return vzorci
+
+    def _procesi(self, vzorci: List[str]) -> List[int]:
+        """PID-i procesov tega uporabnika, ki se ujemajo z vzorci (nas samih ne)."""
+        if not vzorci:
+            return []
+        jaz = os.getpid()
+        moj_uid = os.getuid()
+        najdeni: List[int] = []
+        for vnos in os.listdir("/proc"):
+            if not vnos.isdigit():
+                continue
+            pid = int(vnos)
+            if pid in (jaz, 1):
+                continue
+            try:
+                if os.stat("/proc/%d" % pid).st_uid != moj_uid:
+                    continue
+                with open("/proc/%d/cmdline" % pid, "rb") as f:
+                    surovo = f.read().decode("utf-8", "replace")
+            except Exception:
+                continue
+            argumenti = [a for a in surovo.split("\0") if a]
+            if not argumenti:
+                continue
+            prvi = os.path.basename(argumenti[0])
+            cel = " ".join(argumenti)
+            for v in vzorci:
+                if prvi == v or ("." in v and v in cel):
+                    najdeni.append(pid)
+                    break
+        return najdeni
+
+    def tece(self, oznaka: str) -> bool:
+        """Ali ta program na racunalniku res tece."""
+        ime = self._ime_iz_oznake(oznaka)
+        return bool(self._procesi(self._iskani_vzorci(ime))) if ime else False
+
+    def zapri(self, oznaka: str) -> int:
+        """Vljudno zapre program (SIGTERM). Vrne, koliko procesov smo prosili, naj koncajo."""
+        if not self.vklopljeno:
+            return 0
+        ime = self._ime_iz_oznake(oznaka)
+        if ime is None:
+            return 0
+        koliko = 0
+        for pid in self._procesi(self._iskani_vzorci(ime)):
+            try:
+                os.kill(pid, signal.SIGTERM)
+                koliko += 1
+            except Exception:
+                continue
+        return koliko
 
     # ------------------------------------------------------------------ ikone
     def _ikona(self, ime: str) -> str:

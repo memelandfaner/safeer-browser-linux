@@ -96,7 +96,7 @@ def izvedi(app, dejanje: str, parametri: dict, odpri_naslov: Callable[[str], Non
 
 DEJANJA_CONTROL = ["open_url", "volume", "status"]
 DEJANJA_DATOTEKE = ["files.list", "files.open"]
-DEJANJA_PROGRAMI = ["apps.list", "apps.launch"]
+DEJANJA_PROGRAMI = ["apps.list", "apps.launch", "apps.close"]
 DEJANJA_HOST = ["host.info"]
 DEJANJA_ZASLON = ["screen.start", "screen.stop", "screen.status"]
 
@@ -152,7 +152,8 @@ def izvedi_control(dejanje: str, parametri: dict, odpri_naslov: Callable[[str], 
                 koncaj(izid(False, "Tega zaslona ni mogoce zajeti", koda="ni_zajema"))
                 return
             try:
-                seja = zaslon.zacni(posiljatelj, str(parametri.get("quality", "") or "srednja"))
+                seja = zaslon.zacni(posiljatelj, str(parametri.get("quality", "") or "srednja"),
+                                    str(parametri.get("screen", "") or "").strip().lower())
             except RuntimeError as e:
                 koncaj(izid(False, str(e), koda="ni_zajema"))
                 return
@@ -186,6 +187,17 @@ def izvedi_control(dejanje: str, parametri: dict, odpri_naslov: Callable[[str], 
                 koncaj(izid(True, "Program se zaganja"))
             else:
                 koncaj(izid(False, "Tega programa ni na seznamu", koda="ni_programa"))
+        elif d == "apps.close":
+            # Program, zagnan s televizorja, je doslej ostal odprt in jemal pomnilnik;
+            # zdaj ga je mogoce zapreti z istega mesta, kjer si ga zagnal.
+            if programi is None:
+                koncaj(izid(False, "Programi tu niso na voljo", koda="ni_na_racunalniku"))
+                return
+            koliko = programi.zapri(str(parametri.get("app", "") or ""))
+            if koliko > 0:
+                koncaj(izid(True, "Program se zapira", {"closed": koliko}))
+            else:
+                koncaj(izid(False, "Ta program ne teče", koda="ne_tece"))
         elif d == "open_url":
             url = str(parametri.get("url", "")).strip()
             if not (url.startswith("http://") or url.startswith("https://")):
