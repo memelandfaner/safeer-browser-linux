@@ -175,6 +175,96 @@ class Zvok(unittest.TestCase):
     def test_prazen_izpis(self):
         self.assertEqual(link_sway.nasi_zvocni_moduli(""), [])
 
+class ZvokSamoMedSejo(unittest.TestCase):
+    """Izhod Safeer-TV obstaja samo, dokler ga program na drugem zaslonu lahko potrebuje."""
+
+    def setUp(self):
+        self.pocisceno = 0
+        self._staro = link_sway.pocisti_zvok
+
+        def lazno():
+            self.pocisceno += 1
+            return 1
+        link_sway.pocisti_zvok = lazno
+        self.d = link_sway.DrugiZaslon(mapa=tempfile.mkdtemp())
+        self.d._zvocni_modul = "536870913"
+        self.okna = 0
+        self.d.okna = lambda: self.okna
+
+    def tearDown(self):
+        link_sway.pocisti_zvok = self._staro
+
+    def test_prazen_zaslon_pospravi(self):
+        self.assertTrue(self.d.pospravi_zvok())
+        self.assertEqual((self.d._zvocni_modul, self.pocisceno), ("", 1))
+        self.assertFalse(self.d.pospravi_zvok())
+
+    def test_odprt_program_obdrzi_izhod(self):
+        self.okna = 1
+        self.assertFalse(self.d.pospravi_zvok())
+        self.assertEqual((self.d._zvocni_modul, self.pocisceno), ("536870913", 0))
+
+    def test_program_se_odpira(self):
+        self.d._zadnji_zagon = link_sway.time.monotonic()
+        self.assertFalse(self.d.pospravi_zvok())
+        self.assertEqual(self.pocisceno, 0)
+
+
+class ZvokPoSeji(unittest.TestCase):
+    def test_straza_pospravi_ko_je_prazno(self):
+        import threading
+        import time
+
+        class Drugi:
+            def __init__(self):
+                self.okn = 1
+                self.pospravljeno = threading.Event()
+
+            def okna(self):
+                return self.okn
+
+            def pospravi_zvok(self):
+                self.pospravljeno.set()
+                return True
+
+        staro = link_zaslon.ZVOK_POSPRAVI_S
+        link_zaslon.ZVOK_POSPRAVI_S = 0.02
+        try:
+            z = link_zaslon.Zaslon.__new__(link_zaslon.Zaslon)
+            z.drugi, z._seja_st, z._povezan = Drugi(), 1, False
+            z._pospravi_zvok_po_seji(1)
+            time.sleep(0.1)
+            self.assertFalse(z.drugi.pospravljeno.is_set())   # program je se odprt
+            z.drugi.okn = 0
+            self.assertTrue(z.drugi.pospravljeno.wait(1))
+        finally:
+            link_zaslon.ZVOK_POSPRAVI_S = staro
+
+    def test_nova_seja_ustavi_strazo(self):
+        import threading
+
+        class Drugi:
+            def __init__(self):
+                self.pospravljeno = threading.Event()
+
+            def okna(self):
+                return 0
+
+            def pospravi_zvok(self):
+                self.pospravljeno.set()
+                return True
+
+        staro = link_zaslon.ZVOK_POSPRAVI_S
+        link_zaslon.ZVOK_POSPRAVI_S = 0.05
+        try:
+            z = link_zaslon.Zaslon.__new__(link_zaslon.Zaslon)
+            z.drugi, z._seja_st, z._povezan = Drugi(), 2, False
+            z._pospravi_zvok_po_seji(1)
+            self.assertFalse(z.drugi.pospravljeno.wait(0.3))
+        finally:
+            link_zaslon.ZVOK_POSPRAVI_S = staro
+
+
 
 if __name__ == "__main__":
     unittest.main()
