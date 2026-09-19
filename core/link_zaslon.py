@@ -306,7 +306,9 @@ class Zaslon:
         return {"port": self.vrata, "fp": self.odtis, "token": self._zeton, "v": 2,
                 "codec": "h264", **self._slika, "quality": self._kakovost,
                 "audio": {"hz": ZVOK_HZ, "channels": ZVOK_KANALI, "format": "s16le"} if self._zvok_vir else None,
-                "input": self._vnos.mozno, "gamepad": self._plosek.mozno(), "screen": self._cilj}
+                "input": self._vnos.mozno, "gamepad": self._plosek.mozno(), "screen": self._cilj,
+                # Igra: puscice daljinca morajo biti puscice, ne miska.
+                "game": self._cilj == "apps" and getattr(self.drugi, "zadnja_skupina", "") == "igre"}
 
     @staticmethod
     def _prilagodi(izvor, najvec_sirina, najvec_visina) -> tuple:
