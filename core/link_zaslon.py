@@ -35,6 +35,12 @@ from core.link_vnos import Vnos
 
 #: Vrste okvirjev v pretoku.
 OKVIR_SLIKA, OKVIR_ZVOK = 1, 2
+#: Obvestilo racunalnika (JSON), npr. {"konec": "zaprto"}: na drugem zaslonu ni vec nobenega
+#: programa. Starejsi televizorji okvir te vrste preskocijo.
+OKVIR_OBVESTILO = 3
+#: Koliko casa sme biti drugi zaslon prazen, preden sejo koncamo: po zaprtju zadnjega programa
+#: in (ce se program sploh ni odprl) od zacetka seje. Temen prazen zaslon je slepa ulica.
+PRAZNO_PO_ZAPRTJU_S, PRAZNO_OD_ZACETKA_S = 1.5, 30.0
 #: Zvok: surov PCM, ker je najpreprostejsi in brez zakasnitve (1,5 Mb/s je v domacem omrezju nic).
 ZVOK_HZ, ZVOK_KANALI = 48000, 2
 #: Kolikor casa cakamo, da se televizor javi, preden sejo zavrzemo.
@@ -180,6 +186,11 @@ class Zaslon:
         self._vnos = Vnos()
         # Navidezni igralni plosek racunalnika: nastane sele, ko televizor res poslje plosek.
         self._plosek = Plosek()
+        #: Locen zaslon za televizor (core.link_sway.DrugiZaslon) ali None.
+        self.drugi = None
+        self._cilj = "desktop"
+        #: Okolje za zajem slike (drugi zaslon potrebuje svoj WAYLAND_DISPLAY); None = nase.
+        self._okolje_zajema: Optional[dict] = None
         self._vnosov = 0
         self._tece_od = 0.0
         self._povezan = False
@@ -201,11 +212,13 @@ class Zaslon:
             "vnos": self._vnos.mozno,
             "plosek": self._plosek.mozno(),
             "kakovosti": sorted(KAKOVOSTI),
+            "locen_zaslon": self.drugi is not None,
         }
 
     def stanje(self) -> dict:
         s = {"tece": self._proces is not None or self._posluh is not None,
-             "povezan": self._povezan, "naprava": self._naprava, "kakovost": self._kakovost}
+             "povezan": self._povezan, "naprava": self._naprava, "kakovost": self._kakovost,
+             "screen": self._cilj}
         if self._slika:
             s.update(self._slika)
         if self._tece_od:
@@ -226,7 +239,18 @@ class Zaslon:
             except Exception:
                 pass
 
-    def zacni(self, id_naprave: str, kakovost: str = PRIVZETA_KAKOVOST) -> dict:
+    def _na_drugem(self, cilj: str) -> bool:
+        """Ali ta seja kaze drugi zaslon (programe s televizorja) namesto uporabnikovega namizja.
+
+        `apps` = da, ce drugi zaslon tece; `desktop` = nikoli; brez navedbe (starejsi televizor) =
+        da, kadar so na drugem zaslonu odprta okna - sicer bi jih televizor sploh ne videl."""
+        if self.drugi is None or not self.drugi.tece():
+            return False
+        if cilj == "desktop":
+            return False
+        return cilj == "apps" or self.drugi.okna() > 0
+
+    def zacni(self, id_naprave: str, kakovost: str = PRIVZETA_KAKOVOST, cilj: str = "") -> dict:
         """Pripravi sejo: odpre TLS vrata in caka televizor. Zajem se zacne sele, ko se ta javi."""
         if not self.vklopljeno:
             raise RuntimeError("Deljenje zaslona ni vklopljeno")
@@ -237,7 +261,13 @@ class Zaslon:
             raise RuntimeError("Zaslona ni mogoce zajeti (seja ni na voljo)")
         k = KAKOVOSTI.get(kakovost) or KAKOVOSTI[PRIVZETA_KAKOVOST]
         self.ustavi()
-        izvor = _zaslon_geometrija(display) or (NAJVEC_SIRINA, NAJVEC_VISINA)
+        na_drugem = self._na_drugem(cilj)
+        if na_drugem:
+            # Drugi zaslon je natanko tako velik, kot ga televizor dobi: brez prevzorcenja.
+            izvor = (k["sirina"], k["visina"])
+            self.drugi.velikost(*izvor)
+        else:
+            izvor = _zaslon_geometrija(display) or (NAJVEC_SIRINA, NAJVEC_VISINA)
         sirina, visina = self._prilagodi(izvor, k["sirina"], k["visina"])
         with self._kljucavnica:
             self._kakovost = kakovost if kakovost in KAKOVOSTI else PRIVZETA_KAKOVOST
@@ -257,17 +287,26 @@ class Zaslon:
             self._posluh = posluh
             self._tece_od = time.time()
             self._povezan = False
-            self._zvok_vir = privzeti_monitor()
-            self._vnos = Vnos(display=display)
-            ukaz = ukaz_ffmpeg(display, sirina, visina, izvor[0], izvor[1], int(k["fps"]),
-                               str(k["bitrate"]), vaapi_naprava(), self.ffmpeg, int(k["qp"]))
+            if na_drugem:
+                self._cilj = "apps"
+                self._zvok_vir = self.drugi.zvok_vir()
+                self._vnos = self.drugi.vnos
+                self._okolje_zajema = self.drugi.okolje()
+                ukaz = self.drugi.ukaz_zajema(int(k["fps"]), int(k["qp"]), str(k["bitrate"]))
+            else:
+                self._cilj = "desktop"
+                self._okolje_zajema = None
+                self._zvok_vir = privzeti_monitor()
+                self._vnos = Vnos(display=display)
+                ukaz = ukaz_ffmpeg(display, sirina, visina, izvor[0], izvor[1], int(k["fps"]),
+                                   str(k["bitrate"]), vaapi_naprava(), self.ffmpeg, int(k["qp"]))
             self._nit = threading.Thread(target=self._streci, args=(posluh, ctx, ukaz),
                                          name="safeer-zaslon", daemon=True)
             self._nit.start()
         return {"port": self.vrata, "fp": self.odtis, "token": self._zeton, "v": 2,
                 "codec": "h264", **self._slika, "quality": self._kakovost,
                 "audio": {"hz": ZVOK_HZ, "channels": ZVOK_KANALI, "format": "s16le"} if self._zvok_vir else None,
-                "input": self._vnos.mozno, "gamepad": self._plosek.mozno()}
+                "input": self._vnos.mozno, "gamepad": self._plosek.mozno(), "screen": self._cilj}
 
     @staticmethod
     def _prilagodi(izvor, najvec_sirina, najvec_visina) -> tuple:
@@ -297,7 +336,7 @@ class Zaslon:
             self._povezan = True
 
             slika = subprocess.Popen(ukaz, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                     stdin=subprocess.DEVNULL, bufsize=0)
+                                     stdin=subprocess.DEVNULL, bufsize=0, env=self._okolje_zajema)
             self._proces = slika
             niti = [threading.Thread(target=self._crpaj, args=(slika, OKVIR_SLIKA, odjemalec, 32 * 1024),
                                      name="safeer-zaslon-slika", daemon=True)]
@@ -314,6 +353,9 @@ class Zaslon:
             # Vnos tece nazaj po isti povezavi; brati ga moramo sproti, sicer se vticnica zamasi.
             niti.append(threading.Thread(target=self._beri_vnos, args=(odjemalec,),
                                          name="safeer-zaslon-vnos", daemon=True))
+            if self._cilj == "apps" and self.drugi is not None:
+                niti.append(threading.Thread(target=self._strazi_prazno, args=(odjemalec, slika),
+                                             name="safeer-zaslon-prazno", daemon=True))
             for n in niti:
                 n.start()
             niti[0].join()          # dokler tece slika, tece seja
@@ -327,6 +369,37 @@ class Zaslon:
             except Exception:
                 pass
             self.ustavi()
+
+    def _strazi_prazno(self, odjemalec, slika: subprocess.Popen) -> None:
+        """Ko se zadnji program na drugem zaslonu zapre (igra ob Esc, uporabnik jo zapre), televizor
+        sicer gleda temen prazen zaslon. Zato mu to povemo in sejo koncamo - vrne se v Safeer OS."""
+        videl = False
+        zacetek = time.monotonic()
+        prazno_od: Optional[float] = None
+        while self._proces is slika and slika.poll() is None:
+            time.sleep(0.5)
+            zdaj = time.monotonic()
+            if self.drugi.okna() > 0:
+                videl, prazno_od = True, None
+                continue
+            prazno_od = zdaj if prazno_od is None else prazno_od
+            if videl and zdaj - prazno_od >= PRAZNO_PO_ZAPRTJU_S:
+                razlog = "zaprto"
+            elif not videl and zdaj - zacetek >= PRAZNO_OD_ZACETKA_S:
+                razlog = "ni_okna"
+            else:
+                continue
+            if self._proces is not slika:
+                return
+            vsebina = json.dumps({"konec": razlog}).encode("utf-8")
+            try:
+                with self._pisalo:
+                    odjemalec.sendall(bytes([OKVIR_OBVESTILO]) + len(vsebina).to_bytes(4, "big") + vsebina)
+            except (OSError, ssl.SSLError, ValueError):
+                pass
+            print("[zaslon] drugi zaslon je prazen (%s), seja koncana" % razlog, flush=True)
+            self.ustavi()
+            return
 
     def _crpaj(self, proces: subprocess.Popen, vrsta: int, odjemalec, kos: int) -> None:
         """Bere en vir (slika ali zvok) in ga v okvirjih poslje televizorju. Pisanje je pod kljucem,

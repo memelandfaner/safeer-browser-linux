@@ -41,7 +41,7 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("WebKit2", "4.1")
 from gi.repository import Gio, GLib, Gtk, WebKit2  # noqa: E402
 
-from core import link_datoteke, link_hub, link_programi, link_tls, link_zaslon  # noqa: E402
+from core import link_datoteke, link_hub, link_programi, link_sway, link_tls, link_zaslon  # noqa: E402
 from core.safeer_link import SafeerLink  # noqa: E402
 
 APP_ID = "io.github.memelandfaner.SafeerControl"
@@ -325,6 +325,13 @@ class SafeerControl(Gtk.Application):
         # Zaslon racunalnika na televizorju; privzeto izklopljeno ("zaslon_za_tv" v control.json).
         self.zaslon = link_zaslon.Zaslon(vklopljeno=bool(self.nastavitve.get("zaslon_za_tv", False)))
         self.zaslon.ob_spremembi = lambda vklopljeno: self.nastavitve.set("zaslon_za_tv", bool(vklopljeno))
+        # Locen zaslon za televizor: programi s televizorja tecejo na drugem, nevidnem zaslonu in ne
+        # posegajo v uporabnikovega ("locen_zaslon_za_tv" v control.json, privzeto vklopljeno, kjer je mogoce).
+        self.drugi_zaslon = (link_sway.DrugiZaslon()
+                             if self.nastavitve.get("locen_zaslon_za_tv", True) and link_sway.DrugiZaslon.mozno()
+                             else None)
+        self.programi.drugi = self.drugi_zaslon
+        self.zaslon.drugi = self.drugi_zaslon
 
     def do_startup(self) -> None:
         Gtk.Application.do_startup(self)
@@ -416,6 +423,12 @@ class SafeerControl(Gtk.Application):
             pass
         try:
             self.datoteke.ustavi()
+        except Exception:
+            pass
+        try:
+            self.zaslon.ustavi()
+            if self.drugi_zaslon is not None:
+                self.drugi_zaslon.ustavi()
         except Exception:
             pass
         self.quit()
