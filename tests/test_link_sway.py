@@ -103,6 +103,7 @@ class Izbira(unittest.TestCase):
         p.drugi = LazniDrugi()
         self.assertTrue(p.zazeni("app:urejevalnik.desktop"))
         self.assertEqual(p.drugi.zagnani, [["/usr/bin/urejevalnik", "--novo", "Moja mapa"]])
+        self.assertEqual(p.drugi.zadnja_skupina, p._vnosi["urejevalnik.desktop"]["skupina"])
         # neznan program ne gre nikamor
         self.assertFalse(p.zazeni("app:ni.desktop"))
         self.assertEqual(len(p.drugi.zagnani), 1)
