@@ -35,6 +35,12 @@ from core.link_vnos import Vnos
 
 #: Vrste okvirjev v pretoku.
 OKVIR_SLIKA, OKVIR_ZVOK = 1, 2
+#: Obvestilo racunalnika (JSON), npr. {"konec": "zaprto"}: na drugem zaslonu ni vec nobenega
+#: programa. Starejsi televizorji okvir te vrste preskocijo.
+OKVIR_OBVESTILO = 3
+#: Koliko casa sme biti drugi zaslon prazen, preden sejo koncamo: po zaprtju zadnjega programa
+#: in (ce se program sploh ni odprl) od zacetka seje. Temen prazen zaslon je slepa ulica.
+PRAZNO_PO_ZAPRTJU_S, PRAZNO_OD_ZACETKA_S = 1.5, 30.0
 #: Zvok: surov PCM, ker je najpreprostejsi in brez zakasnitve (1,5 Mb/s je v domacem omrezju nic).
 ZVOK_HZ, ZVOK_KANALI = 48000, 2
 #: Kolikor casa cakamo, da se televizor javi, preden sejo zavrzemo.
@@ -347,6 +353,9 @@ class Zaslon:
             # Vnos tece nazaj po isti povezavi; brati ga moramo sproti, sicer se vticnica zamasi.
             niti.append(threading.Thread(target=self._beri_vnos, args=(odjemalec,),
                                          name="safeer-zaslon-vnos", daemon=True))
+            if self._cilj == "apps" and self.drugi is not None:
+                niti.append(threading.Thread(target=self._strazi_prazno, args=(odjemalec, slika),
+                                             name="safeer-zaslon-prazno", daemon=True))
             for n in niti:
                 n.start()
             niti[0].join()          # dokler tece slika, tece seja
@@ -360,6 +369,37 @@ class Zaslon:
             except Exception:
                 pass
             self.ustavi()
+
+    def _strazi_prazno(self, odjemalec, slika: subprocess.Popen) -> None:
+        """Ko se zadnji program na drugem zaslonu zapre (igra ob Esc, uporabnik jo zapre), televizor
+        sicer gleda temen prazen zaslon. Zato mu to povemo in sejo koncamo - vrne se v Safeer OS."""
+        videl = False
+        zacetek = time.monotonic()
+        prazno_od: Optional[float] = None
+        while self._proces is slika and slika.poll() is None:
+            time.sleep(0.5)
+            zdaj = time.monotonic()
+            if self.drugi.okna() > 0:
+                videl, prazno_od = True, None
+                continue
+            prazno_od = zdaj if prazno_od is None else prazno_od
+            if videl and zdaj - prazno_od >= PRAZNO_PO_ZAPRTJU_S:
+                razlog = "zaprto"
+            elif not videl and zdaj - zacetek >= PRAZNO_OD_ZACETKA_S:
+                razlog = "ni_okna"
+            else:
+                continue
+            if self._proces is not slika:
+                return
+            vsebina = json.dumps({"konec": razlog}).encode("utf-8")
+            try:
+                with self._pisalo:
+                    odjemalec.sendall(bytes([OKVIR_OBVESTILO]) + len(vsebina).to_bytes(4, "big") + vsebina)
+            except (OSError, ssl.SSLError, ValueError):
+                pass
+            print("[zaslon] drugi zaslon je prazen (%s), seja koncana" % razlog, flush=True)
+            self.ustavi()
+            return
 
     def _crpaj(self, proces: subprocess.Popen, vrsta: int, odjemalec, kos: int) -> None:
         """Bere en vir (slika ali zvok) in ga v okvirjih poslje televizorju. Pisanje je pod kljucem,
