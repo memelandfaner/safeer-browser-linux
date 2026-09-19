@@ -74,7 +74,9 @@ class Zajem(unittest.TestCase):
     def test_konfiguracija_brez_bliznjic(self):
         k = link_sway._konfiguracija(1280, 720)
         self.assertIn("resolution 1280x720", k)
-        self.assertNotIn("bindsym", k)
+        # Edina bliznjica je preklop med programi; nic, kar bi lahko zaprlo ali zagnalo karkoli.
+        self.assertEqual([v for v in k.splitlines() if v.startswith("bindsym")],
+                         ["bindsym Mod1+Tab fullscreen disable, focus right"])
         self.assertIn("xwayland enable", k)
 
 
