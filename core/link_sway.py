@@ -440,6 +440,9 @@ class DrugiZaslon:
                 return False
             os.makedirs(self.mapa, exist_ok=True)
             konf = os.path.join(self.mapa, "config")
+            # Ostanek prejsnjega Controla (ubit brez pospravljanja) bi tekel v prazno.
+            subprocess.run(["pkill", "-TERM", "-u", str(os.getuid()), "-f", "^sway -c " + konf],
+                           capture_output=True, timeout=5)
             with open(konf, "w", encoding="utf-8") as f:
                 f.write(_konfiguracija(sirina, visina))
             self.sirina, self.visina = sirina, visina
