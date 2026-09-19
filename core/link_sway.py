@@ -72,6 +72,9 @@ def pocisti_zvok() -> int:
             pass
     return n
 
+#: Koliko casa po zagonu programa izhoda Safeer-TV ne pospravimo: okno se se odpira, program pa
+#: ze isce izhod, na katerega naj igra.
+ZVOK_PO_ZAGONU_S = 15.0
 #: Ime izhoda v brezglavem swayu (prvi in edini).
 IZHOD = "HEADLESS-1"
 
@@ -659,6 +662,7 @@ class DrugiZaslon:
         self._wayland = ""
         self._ipc = ""
         self._zvocni_modul = ""
+        self._zadnji_zagon = 0.0
         self._kljuc = threading.RLock()
         #: Skupina zadnjega programa, ki ga je televizor zagnal ("igre" -> televizor zacne v nacinu tipk).
         self.zadnja_skupina = ""
@@ -703,6 +707,7 @@ class DrugiZaslon:
         with self._kljuc:
             if self.tece():
                 self.velikost(sirina, visina)
+                self._zvok_pripravi()   # med sejama je bil lahko pospravljen
                 return True
             if not self.mozno():
                 return False
@@ -764,6 +769,7 @@ class DrugiZaslon:
         """Zazene program na drugem zaslonu. argv pride iz nasega seznama programov, ne s televizorja."""
         if not argv or not self.zazeni(self.sirina, self.visina):
             return False
+        self._zadnji_zagon = time.monotonic()
         argv = list(argv)
         # Chromium (Brave, Chrome, Edge ...) polj brez tega dostopnosti ne pokaze, skok po poljih
         # z daljincem pa jo potrebuje. Velja samo za ta zagon.
@@ -857,7 +863,26 @@ class DrugiZaslon:
         return u
 
     def zvok_vir(self) -> Optional[str]:
-        return ZVOCNI_IZHOD + ".monitor" if self._zvocni_modul else None
+        """Vir zvoka za sejo. Ce je izhod Safeer-TV med sejama pospravljen, ga spet ustvarimo."""
+        with self._kljuc:
+            if self.tece():
+                self._zvok_pripravi()
+            return ZVOCNI_IZHOD + ".monitor" if self._zvocni_modul else None
+
+    def pospravi_zvok(self) -> bool:
+        """Odstrani izhod Safeer-TV, ko na drugem zaslonu ni nobenega programa vec: takrat nanj nihce
+        ne igra, med zvocnimi napravami uporabnika pa ne sme viseti. Dokler je kak program odprt
+        (ali se sele odpira), izhod ostane - sicer bi PipeWire njegov zvok preusmeril na zvocnike
+        racunalnika. Vrne, ali je izhod odstranil."""
+        with self._kljuc:
+            if not self._zvocni_modul or time.monotonic() - self._zadnji_zagon < ZVOK_PO_ZAGONU_S:
+                return False
+            if self.okna() > 0:
+                return False
+            pocisti_zvok()
+            self._zvocni_modul = ""
+            print("[drugi zaslon] izhod Safeer-TV pospravljen", flush=True)
+            return True
 
     def _zvok_pripravi(self) -> None:
         """Navidezni zvocni izhod: kar igrajo programi drugega zaslona, gre samo na televizor."""
