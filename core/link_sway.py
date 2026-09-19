@@ -54,8 +54,15 @@ def _konfiguracija(sirina: int, visina: int) -> str:
         "default_floating_border none",
         "focus_follows_mouse no",
         "workspace_layout tabbed",
+        # Vrstica zavihkov je na televizorju samo motnja (programe menjas z Naslednji program):
+        # najmanjsa pisava in barve ozadja - ostane le tanek temen rob.
+        "titlebar_padding 1",
+        "titlebar_border_thickness 0",
+        "client.focused #101418 #101418 #101418 #101418 #101418",
+        "client.focused_inactive #101418 #101418 #101418 #101418 #101418",
+        "client.unfocused #101418 #101418 #101418 #101418 #101418",
         "seat seat0 xcursor_theme Adwaita 32",
-        "font pango:Sans 13",
+        "font pango:Sans 1",
         # Edina bliznjica: preklop med programi (daljinec: meni seje -> Naslednji program).
         # Celozaslonski program (igra) bi sicer zakril ostale, zato ga ob preklopu pomanjsamo v zavihek.
         "bindsym Mod1+Tab fullscreen disable, focus right",
@@ -181,7 +188,7 @@ KODE: Dict[str, int] = {
     "F1": 59, "F2": 60, "F3": 61, "F4": 62, "F5": 63, "F6": 64, "F7": 65, "F8": 66, "F9": 67,
     "F10": 68, "F11": 87, "F12": 88,
     "ctrl": 29, "shift": 42, "alt": 56,
-    "a": 30, "b": 48, "c": 46, "f": 33, "i": 23, "p": 25, "s": 31, "u": 22, "v": 47, "w": 17,
+    "a": 30, "b": 48, "c": 46, "f": 33, "i": 23, "p": 25, "s": 31, "t": 20, "u": 22, "v": 47, "w": 17,
     "x": 45, "y": 21, "z": 44,
 }
 #: Maske krmilk v razporedu (Shift, Control, Mod1 = Alt, Mod4 = Super).
@@ -211,6 +218,10 @@ class SwayVnos:
         self._kljuc = threading.Lock()
         self._straza: Optional[threading.Thread] = None
         self._konec = threading.Event()
+        #: Levi gumb, drzan za vlecenje (meni seje na televizorju); ob koncu ga spustimo.
+        self._gumb_drzan: Optional[int] = None
+        #: Televizor ima vklopljeno povecavo in hoce vedeti, kje je kazalec.
+        self.porocaj_kazalec = False
 
     @property
     def mozno(self) -> bool:
@@ -319,12 +330,22 @@ class SwayVnos:
                 if t is not None:
                     self.drugi.fokus.tocka = (min(max(t[0] + x, 0), self.drugi.sirina - 1),
                                               min(max(t[1] + y, 0), self.drugi.visina - 1))
+                self.drugi.fokus.izbira = None
         elif vrsta == "fokus":
             # Krizec: na naslednji gumb/polje v smeri. Kjer program o sebi nic ne pove (igra),
             # gre kot navadna smerna tipka.
             smer = str(dogodek.get("smer", "") or "").strip().lower()
             if smer in ("gor", "dol", "levo", "desno"):
                 ok = self.drugi.fokus.premakni(smer)
+                e = self.drugi.fokus.izbira
+                if ok and self.drugi.fokus.na_robu and smer in ("gor", "dol") \
+                        and not (e is not None and len(e) > 8 and e[8]):
+                    # Spodaj (ali zgoraj) ni vec vidnega gumba: stran se premakne, kot na Androidu -
+                    # sicer bi bila vsebina pod robom (dolga spletna stran) nedosegljiva.
+                    self.izvedi({"vrsta": "kolesce", "smer": smer, "koliko": 3})
+                    self.drugi.fokus.pozabi()
+                    self.drugi.fokus.izbira = None
+                    return True
                 if not ok and str(dogodek.get("sicer", "") or "") == "kazalec":
                     # Daljinec: program o sebi nic ne pove, zato kratek pritisk kazalec le rahlo
                     # premakne - natancno, namesto da bi odletel mimo cilja.
@@ -336,7 +357,49 @@ class SwayVnos:
                     if kode:
                         self._tipko(kode[0], True)
                         ok = self._tipko(kode[0], False)
+        elif vrsta == "gumb":
+            # Vlecenje iz menija seje: levi gumb dol, premik, gumb gor.
+            gumb = GUMBI_EVDEV.get(str(dogodek.get("gumb", "levi") or "levi").strip().lower())
+            if gumb is not None:
+                dol = bool(dogodek.get("dol"))
+                ok = self._poslji("m", 2, struct.pack("=III", self._cas(), gumb, 1 if dol else 0)) \
+                    and self._poslji("m", 4)
+                self._gumb_drzan = gumb if dol else None
+                self.drugi.fokus.pozabi()
+        elif vrsta == "tocka":
+            # Dotik na tablici: kazalec natanko tja, kamor je prst pokazal.
+            try:
+                x, y = int(dogodek.get("x")), int(dogodek.get("y"))
+            except (TypeError, ValueError):
+                return False
+            ok = self.absolutno(x, y)
+            self.drugi.fokus.tocka = (float(min(max(x, 0), self.drugi.sirina - 1)),
+                                      float(min(max(y, 0), self.drugi.visina - 1)))
+            self.drugi.fokus.izbira = None
+        elif vrsta == "barva":
+            # Barvne tipke daljinca: v brskalniku nazaj, naprej, osvezi, nov zavihek. Drugod nic -
+            # tipka brez dogovorjenega pomena ne sme narediti nicesar nepricakovanega.
+            barva = str(dogodek.get("barva", "") or "").strip().lower()
+            oznaka = BARVE_BRSKALNIK.get(barva)
+            if oznaka and self.drugi.fokus.profil() == "brskalnik":
+                kode = self._kode(oznaka)
+                if kode:
+                    for k in kode:
+                        self._tipko(k, True)
+                    for k in reversed(kode):
+                        ok = self._tipko(k, False)
+                self.drugi.fokus.pozabi()
+                self.drugi.fokus.izbira = None
+        elif vrsta == "povecava":
+            self.porocaj_kazalec = bool(dogodek.get("vkljuceno"))
+            if self.porocaj_kazalec and self.drugi.fokus.tocka is None:
+                # Povecava mora vedeti, kje je kazalec: postavimo ga na sredino.
+                sredina = (self.drugi.sirina // 2, self.drugi.visina // 2)
+                self.absolutno(*sredina)
+                self.drugi.fokus.tocka = (float(sredina[0]), float(sredina[1]))
+            ok = True
         elif vrsta == "klik":
+            # Izbire tu ne pozabimo: link_zaslon po kliku preveri, ali je gumb se tam (okvir ostane).
             self.drugi.fokus.pozabi()
             gumb = GUMBI_EVDEV.get(str(dogodek.get("gumb", "levi") or "levi").strip().lower())
             if gumb is not None:
@@ -397,6 +460,11 @@ class SwayVnos:
         return sorted(self._drzane)
 
     def sprosti_vse(self) -> None:
+        if self._gumb_drzan is not None:
+            gumb, self._gumb_drzan = self._gumb_drzan, None
+            self._poslji("m", 2, struct.pack("=III", self._cas(), gumb, 0))
+            self._poslji("m", 4)
+        self.porocaj_kazalec = False
         for koda in list(self._drzane):
             self._drzane.pop(koda, None)
             self._tipko(koda, False)
@@ -425,6 +493,10 @@ class SwayVnos:
 # ---------------------------------------------------------------------------------- namestitev
 
 #: Kar drugi zaslon potrebuje: izvrsljiva datoteka -> paket (Debian, Ubuntu, Linux Mint).
+#: Barvne tipke daljinca v brskalniku (oznake iz link_vnos.TIPKE).
+BARVE_BRSKALNIK = {"rdeca": "brskalnik_nazaj", "zelena": "brskalnik_naprej",
+                   "rumena": "osvezi", "modra": "nov_zavihek"}
+
 #: Za koliko tock kratek pritisk smerne tipke premakne kazalec, kadar program polj ne pozna.
 KORAK_KAZALCA = 24
 
