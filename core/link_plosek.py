@@ -149,19 +149,26 @@ class Plosek:
 
     def zapri(self) -> None:
         """Spusti vse in odstrani navidezni plosek. Klicemo ob koncu seje."""
+        # Zapreta ga lahko hkrati dve niti (konec slike in konec vnosa); kdor prvi vzame
+        # opisnik, ga zapre, drugi nima vec cesa - prej je to padlo s TypeError.
         if self._fd is None:
             return
         try:
             self.sprosti_vse()
-            fcntl.ioctl(self._fd, UI_DEV_DESTROY)
+        except (OSError, TypeError):
+            pass
+        fd, self._fd = self._fd, None
+        self._drzani = {}
+        if fd is None:
+            return
+        try:
+            fcntl.ioctl(fd, UI_DEV_DESTROY)
         except OSError:
             pass
         try:
-            os.close(self._fd)
+            os.close(fd)
         except OSError:
             pass
-        self._fd = None
-        self._drzani = {}
 
     # ------------------------------------------------------------------ dogodki
 

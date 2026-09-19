@@ -392,6 +392,77 @@ class SwayVnos:
         self._straza.start()
 
 
+# ---------------------------------------------------------------------------------- namestitev
+
+#: Kar drugi zaslon potrebuje: izvrsljiva datoteka -> paket (Debian, Ubuntu, Linux Mint).
+PAKETI = {"sway": "sway", "swaymsg": "sway", "wf-recorder": "wf-recorder", "wtype": "wtype"}
+_WF: Optional[Dict[str, bool]] = None
+
+
+def wf_zmoznosti(osvezi: bool = False) -> Dict[str, bool]:
+    """Kaj zna namesceni wf-recorder (iz --help). Starejse razlicice nimajo vseh zastavic."""
+    global _WF
+    if _WF is None or osvezi:
+        pomoc = ""
+        if shutil.which("wf-recorder"):
+            try:
+                r = subprocess.run(["wf-recorder", "--help"], capture_output=True, text=True, timeout=5)
+                pomoc = r.stdout + r.stderr
+            except Exception:
+                pomoc = ""
+        _WF = {"muxer": "--muxer" in pomoc, "no_damage": "--no-damage" in pomoc,
+               "codec_param": "--codec-param" in pomoc, "framerate": "--framerate" in pomoc}
+    return _WF
+
+
+def apt_razlicici(paket: str) -> Tuple[str, str]:
+    """(namescena, na voljo) po apt-cache policy; prazno, kadar apt ne ve."""
+    try:
+        r = subprocess.run(["apt-cache", "policy", paket], capture_output=True, text=True, timeout=15,
+                           env=dict(os.environ, LANG="C", LC_ALL="C"))
+    except Exception:
+        return "", ""
+    namescena = kandidat = ""
+    for vrstica in r.stdout.splitlines():
+        v = vrstica.strip()
+        if v.startswith("Installed:"):
+            namescena = v.split(":", 1)[1].strip()
+        elif v.startswith("Candidate:"):
+            kandidat = v.split(":", 1)[1].strip()
+    return ("" if namescena == "(none)" else namescena), ("" if kandidat == "(none)" else kandidat)
+
+
+def stanje_namestitve() -> dict:
+    """Kaj manjka za drugi zaslon in ali se da to urediti s paketi distribucije."""
+    manjka = sorted({p for b, p in PAKETI.items() if not shutil.which(b)})
+    prestar = bool(shutil.which("wf-recorder")) and not wf_zmoznosti()["muxer"]
+    posodobitev = False
+    if prestar:
+        namescena, kandidat = apt_razlicici("wf-recorder")
+        posodobitev = bool(kandidat) and kandidat != namescena
+    return {"manjka": manjka, "prestar": prestar, "posodobitev": posodobitev,
+            "graficna": bool(DrugiZaslon.graficna()),
+            "orodja": bool(shutil.which("pkexec") and shutil.which("apt-get"))}
+
+
+def paketi_za_namestitev(stanje: dict) -> List[str]:
+    paketi = list(stanje.get("manjka") or [])
+    if stanje.get("posodobitev") and "wf-recorder" not in paketi:
+        paketi.append("wf-recorder")
+    # Samo nasi paketi s stalnega seznama - nic, kar bi prislo od drugod.
+    return [p for p in paketi if p in set(PAKETI.values())]
+
+
+def ukaz_namestitve(stanje: dict) -> Optional[List[str]]:
+    """Namestitev ali posodobitev s sistemskim vprasanjem za geslo (pkexec). Zazene se samo, kadar
+    uporabnik v Controlu to izrecno potrdi; geslo vpise sam v sistemsko okno."""
+    paketi = paketi_za_namestitev(stanje)
+    if not paketi or not stanje.get("orodja"):
+        return None
+    return ["pkexec", "sh", "-c", "apt-get update -q; DEBIAN_FRONTEND=noninteractive apt-get install -y "
+            + " ".join(paketi)]
+
+
 # ---------------------------------------------------------------------------------- sway
 
 class DrugiZaslon:
@@ -418,20 +489,11 @@ class DrugiZaslon:
                 return pot
         return None
 
-    _wf_zna: Optional[bool] = None
-
     @classmethod
     def wf_recorder_zna(cls) -> bool:
-        """Starejsi wf-recorder (npr. v starejsih distribucijah) nima --no-damage in --muxer; brez njiju
-        zajem ne dela, zato takrat drugega zaslona ne ponudimo in program gre na namizje kot prej."""
-        if cls._wf_zna is None:
-            try:
-                r = subprocess.run(["wf-recorder", "--help"], capture_output=True, text=True, timeout=5)
-                pomoc = r.stdout + r.stderr
-                cls._wf_zna = "--no-damage" in pomoc and "--muxer" in pomoc and "--codec-param" in pomoc
-            except Exception:
-                cls._wf_zna = False
-        return cls._wf_zna
+        """Brez --muxer (gol H.264 na stdout) zajema ni; --no-damage in --codec-param sta dobrodosla,
+        a ne nujna - starejsi wf-recorder brez njiju sliko se vedno poslje (samo ob spremembah)."""
+        return wf_zmoznosti()["muxer"]
 
     @classmethod
     def mozno(cls) -> bool:
@@ -533,14 +595,19 @@ class DrugiZaslon:
     # ----------------------------------------------------------------- slika in zvok
     def ukaz_zajema(self, fps: int, qp: int, bitrate: str) -> List[str]:
         """Gol H.264 (Annex-B) na stdout, kot ga pricakuje link_zaslon; vsak kader, tudi brez sprememb."""
-        u = ["wf-recorder", "-o", IZHOD, "-D", "-r", str(max(1, fps)), "-m", "h264", "-f", "/dev/stdout"]
+        z = wf_zmoznosti()
+        u = ["wf-recorder", "-o", IZHOD] + (["-D"] if z["no_damage"] else []) + \
+            (["-r", str(max(1, fps))] if z["framerate"] else []) + ["-m", "h264", "-f", "/dev/stdout"]
         gpu = self.graficna()
         if gpu:
-            u += ["-c", "h264_vaapi", "-d", gpu, "-p", "rc_mode=CQP", "-p", "qp=%d" % qp,
-                  "-p", "profile=high", "-p", "bf=0", "-p", "g=%d" % max(1, fps)]
+            parametri = ["rc_mode=CQP", "qp=%d" % qp, "profile=high", "bf=0", "g=%d" % max(1, fps)]
+            u += ["-c", "h264_vaapi", "-d", gpu]
         else:
-            u += ["-c", "libx264", "-x", "yuv420p", "-p", "preset=veryfast", "-p", "tune=zerolatency",
-                  "-p", "b=%s" % bitrate, "-p", "bf=0", "-p", "g=%d" % max(1, fps)]
+            parametri = ["preset=veryfast", "tune=zerolatency", "b=%s" % bitrate, "bf=0", "g=%d" % max(1, fps)]
+            u += ["-c", "libx264", "-x", "yuv420p"]
+        if z["codec_param"]:
+            for p in parametri:
+                u += ["-p", p]
         return u
 
     def zvok_vir(self) -> Optional[str]:
