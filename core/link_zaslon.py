@@ -308,7 +308,9 @@ class Zaslon:
                 "audio": {"hz": ZVOK_HZ, "channels": ZVOK_KANALI, "format": "s16le"} if self._zvok_vir else None,
                 "input": self._vnos.mozno, "gamepad": self._plosek.mozno(), "screen": self._cilj,
                 # Igra: puscice daljinca morajo biti puscice, ne miska.
-                "game": self._cilj == "apps" and getattr(self.drugi, "zadnja_skupina", "") == "igre"}
+                "game": self._cilj == "apps" and getattr(self.drugi, "zadnja_skupina", "") == "igre",
+                # Racunalnik zna skok po gumbih (dogodek "fokus"); starejsi Control tega ne zna.
+                "focus": self._cilj == "apps" and hasattr(self.drugi, "fokus")}
 
     @staticmethod
     def _prilagodi(izvor, najvec_sirina, najvec_visina) -> tuple:
