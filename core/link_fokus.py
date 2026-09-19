@@ -55,6 +55,11 @@ Element = Tuple[float, ...]
 def izberi(elementi: List[Element], tocka: Tuple[float, float], smer: str) -> Optional[Element]:
     """Najblizji element v smeri. Najprej v stozcu 45 stopinj, sicer kjerkoli na tisti strani."""
     x0, y0 = tocka
+    if smer in ("levo", "desno"):
+        # Levo in desno ostaneta v isti vrsti: element mora segati cez visino, na kateri smo.
+        # Prej je desno na koncu vrstice (zavihki v brskalniku) skocilo v vrsto spodaj -
+        # v naslednjo vrsto gre uporabnik s tipko dol, ne sam od sebe.
+        elementi = [e for e in elementi if len(e) < 6 or e[3] - 6 <= y0 <= e[3] + e[5] + 6]
     najboljsi, ocena_naj = None, None
     for stozec in (True, False):
         for e in elementi:
