@@ -30,6 +30,8 @@ TIPKE: Dict[str, str] = {
     "celozaslonsko": "F11", "osvezi": "F5", "isci": "ctrl+f",
     "kopiraj": "ctrl+c", "prilepi": "ctrl+v", "izrezi": "ctrl+x", "razveljavi": "ctrl+z",
     "zapri_okno": "ctrl+w", "preklopi_okno": "alt+Tab",
+    # Barvne tipke daljinca v brskalniku (samo locen zaslon, glej link_sway.BARVE_BRSKALNIK).
+    "brskalnik_nazaj": "alt+Left", "brskalnik_naprej": "alt+Right", "nov_zavihek": "ctrl+t",
     # Delo z dokumentom: brez shranjevanja televizor ne bi bil uporaben za pisanje.
     "shrani": "ctrl+s", "shrani_kot": "ctrl+shift+s", "izberi_vse": "ctrl+a",
     "ponovi": "ctrl+y", "krepko": "ctrl+b", "lezece": "ctrl+i", "podcrtano": "ctrl+u",

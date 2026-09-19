@@ -594,6 +594,14 @@ def main() -> int:
     GLib.set_prgname("safeer-control")
     GLib.set_application_name("Safeer Control")
     app = SafeerControl(ozadje=ozadje)
+    # Ob SIGTERM (odjava, posodobitev paketa) pospravimo kot ob Izhodu: sicer bi locen zaslon s
+    # programi ostal tece nevidno in brez lastnika - nihce ga ne bi vec videl ne zaprl.
+    try:
+        import signal as _signal
+        for _sig in (_signal.SIGTERM, _signal.SIGINT):
+            GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, _sig, lambda *_a: (app.koncaj(), False)[1])
+    except Exception:
+        pass
     return app.run(argv)
 
 
