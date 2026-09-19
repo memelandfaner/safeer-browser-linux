@@ -405,6 +405,8 @@ class DrugiZaslon:
         self._ipc = ""
         self._zvocni_modul = ""
         self._kljuc = threading.RLock()
+        #: Skupina zadnjega programa, ki ga je televizor zagnal ("igre" -> televizor zacne v nacinu tipk).
+        self.zadnja_skupina = ""
         self.vnos = SwayVnos(self)
 
     # ----------------------------------------------------------------- zmoznosti
