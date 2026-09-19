@@ -238,6 +238,7 @@ class Programi:
         if self.drugi is not None:
             # Na drugi zaslon ukaz iz vnosa pozenemo neposredno: `gio launch` bi program z D-Bus
             # zagonom odprl na uporabnikovem zaslonu, mimo drugega.
+            self.drugi.zadnja_skupina = vnos.get("skupina", "")
             # Ce program na drugem zaslonu ze tece, ga samo pokazemo - drugo okno bi bilo odvec.
             if self.drugi.pokazi(self._procesi(self._iskani_vzorci(ime))):
                 return True
