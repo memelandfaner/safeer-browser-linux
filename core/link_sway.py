@@ -35,6 +35,43 @@ from core.link_vnos import NAJVEC_BESEDILA, NAJVEC_DRZANJA_S, NAJVEC_PREMIK, TIP
 
 #: Ime navideznega zvocnega izhoda, na katerega igrajo programi drugega zaslona.
 ZVOCNI_IZHOD = "safeer_tv"
+
+
+def nasi_zvocni_moduli(izpis: str) -> List[str]:
+    """Stevilke nasih navideznih izhodov v izpisu `pactl list short modules`.
+
+    Vrstica je `<st>\t<modul>\t<argumenti>`; nas je module-null-sink z sink_name=safeer_tv
+    (PipeWire argumente lahko vrne v narekovajih)."""
+    ids: List[str] = []
+    for vrstica in izpis.splitlines():
+        deli = vrstica.split("\t")
+        if len(deli) < 3 or deli[1].strip() != "module-null-sink":
+            continue
+        if "sink_name=" + ZVOCNI_IZHOD in (t.replace('"', "").replace("'", "") for t in deli[2].split()):
+            ids.append(deli[0].strip())
+    return ids
+
+
+def pocisti_zvok() -> int:
+    """Odstrani VSE nase navidezne izhode, tudi tiste, ki jih je pustil prejsnji Control
+    (ubit, sesut, ponovno zagnan ob posodobitvi). Sicer se v zvocnih napravah kopicijo
+    izhodi Safeer-TV. Vrne, koliko jih je odstranil."""
+    if not shutil.which("pactl"):
+        return 0
+    try:
+        izpis = subprocess.run(["pactl", "list", "short", "modules"], capture_output=True, text=True,
+                               timeout=5).stdout
+    except Exception:
+        return 0
+    n = 0
+    for modul in nasi_zvocni_moduli(izpis):
+        try:
+            if subprocess.run(["pactl", "unload-module", modul], capture_output=True, timeout=5).returncode == 0:
+                n += 1
+        except Exception:
+            pass
+    return n
+
 #: Ime izhoda v brezglavem swayu (prvi in edini).
 IZHOD = "HEADLESS-1"
 
@@ -827,6 +864,7 @@ class DrugiZaslon:
         if self._zvocni_modul or not shutil.which("pactl"):
             return
         try:
+            pocisti_zvok()
             privzeti = subprocess.run(["pactl", "get-default-sink"], capture_output=True, text=True,
                                       timeout=3).stdout.strip()
             r = subprocess.run(["pactl", "load-module", "module-null-sink", "sink_name=" + ZVOCNI_IZHOD,
@@ -855,7 +893,7 @@ class DrugiZaslon:
                     sway.kill()
             self._wayland = self._ipc = ""
             if self._zvocni_modul:
-                subprocess.run(["pactl", "unload-module", self._zvocni_modul], capture_output=True, timeout=5)
+                pocisti_zvok()
                 self._zvocni_modul = ""
 
 
