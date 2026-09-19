@@ -1,12 +1,12 @@
 Source: safeer-browser
 Section: web
 Priority: optional
-Maintainer: Safeer <memelandfaner@users.noreply.github.com>
+Maintainer: Safeer <info@safeer.si>
 Build-Depends: debhelper-compat (= 13), python3, python3-pil
 Standards-Version: 4.6.2
-Homepage: https://github.com/memelandfaner/safeer-browser-linux
-Vcs-Git: https://github.com/memelandfaner/safeer-browser-linux.git
-Vcs-Browser: https://github.com/memelandfaner/safeer-browser-linux
+Homepage: https://github.com/safeerOS/Safeer-linux
+Vcs-Git: https://github.com/safeerOS/Safeer-linux.git
+Vcs-Browser: https://github.com/safeerOS/Safeer-linux
 
 Package: safeer-browser
 Architecture: all

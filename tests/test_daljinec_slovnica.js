@@ -67,7 +67,7 @@ function r(d, besedilo) { return d.razumi(besedilo); }
 }
 {
   const koda = fs.readFileSync(path.join(__dirname, "..", "assets", "link", "daljinec.js"), "utf8");
-  const shranjene = JSON.stringify([{ package: "org.droidtv.playtv", label: "TV" }, { package: "org.smarttube.stable", label: "SmartTube" }, { package: "com.example.safeerbrowser", label: "Safeer Browser" }, { package: "com.netflix.ninja", label: "Netflix" }, { package: "com.google.android.youtube.tv", label: "YouTube" }]);
+  const shranjene = JSON.stringify([{ package: "org.droidtv.playtv", label: "TV" }, { package: "com.google.android.youtube.tv", label: "YouTube" }, { package: "com.example.safeerbrowser", label: "Safeer Browser" }, { package: "com.netflix.ninja", label: "Netflix" }, { package: "com.google.android.youtube.tv", label: "YouTube" }]);
   const okno = {
     SafeerLink: { jezik: () => "sl", ukaz: () => {}, znaGovor: () => false },
     SafeerLinkStran: { jezik: "sl", prijaznoIme: (n) => n.ime },
@@ -81,14 +81,14 @@ function r(d, besedilo) { return d.razumi(besedilo); }
   vm.runInContext(koda, ctx);
   const d = ctx.window.SafeerDaljinec;
   d.odpri({ id: "tv1", ime: "Televizor", zmoznosti: ["remote"] });
-  let u = r(d, "odpri youtube"); preveri("odpri youtube -> SmartTube", u && u.dejanje === "launch_app" && u.parametri.package === "org.smarttube.stable");
+  let u = r(d, "odpri youtube"); preveri("odpri youtube -> YouTube", u && u.dejanje === "launch_app" && u.parametri.package === "com.google.android.youtube.tv");
   u = r(d, "zaženi netflix"); preveri("zaženi netflix -> launch_app", u && u.dejanje === "launch_app" && u.parametri.package === "com.netflix.ninja");
   u = r(d, "netflix"); preveri("samo ime -> launch_app", u && u.dejanje === "launch_app");
   u = r(d, "odpri brskalnik"); preveri("odpri brskalnik -> Safeer Browser", u && u.dejanje === "launch_app" && u.parametri.package === "com.example.safeerbrowser");
-  u = r(d, "predvajaj linkin park na youtubu"); preveri("predvajaj X na youtubu -> open_in_app SmartTube", u && u.dejanje === "open_in_app" && u.parametri.package === "org.smarttube.stable" && /search_query=linkin%20park/.test(u.parametri.url));
+  u = r(d, "predvajaj linkin park na youtubu"); preveri("predvajaj X na youtubu -> open_in_app YouTube", u && u.dejanje === "open_in_app" && u.parametri.package === "com.google.android.youtube.tv" && /search_query=linkin%20park/.test(u.parametri.url));
   u = r(d, "odpri spotify"); preveri("odpri neobstojece -> napaka, ne iskanje", u && u.dejanje === "napaka");
   u = r(d, "odpri tv"); preveri("odpri tv -> aplikacija TV (tocno ime)", u && u.dejanje === "launch_app" && u.parametri.package === "org.droidtv.playtv");
-  u = r(d, "yt"); preveri("yt ne najde playtv, ampak SmartTube", u && u.dejanje === "launch_app" && u.parametri.package === "org.smarttube.stable");
+  u = r(d, "yt"); preveri("yt ne najde playtv, ampak YouTube", u && u.dejanje === "launch_app" && u.parametri.package === "com.google.android.youtube.tv");
   u = r(d, "odpri televizijo"); preveri("televizija -> ne playtv po naključju (ni xplore) -> TV", u && u.dejanje === "launch_app" && u.parametri.package === "org.droidtv.playtv");
 }
 

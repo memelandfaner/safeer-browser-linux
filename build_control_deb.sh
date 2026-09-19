@@ -31,7 +31,7 @@ Priority: optional
 Architecture: ${ARCH}
 Depends: python3, python3-gi, python3-gi-cairo, gir1.2-gtk-3.0, gir1.2-webkit2-4.1, gir1.2-soup-3.0, gir1.2-glib-2.0, gir1.2-atspi-2.0, sway, wf-recorder, wtype, wmctrl
 Recommends: pulseaudio-utils
-Maintainer: Safeer <memelandfaner@users.noreply.github.com>
+Maintainer: Safeer <info@safeer.si>
 Homepage: https://safeer.si/control/
 Description: Control your TV and phone over Safeer Link, without the cloud
  Safeer Control is a small desktop app with Safeer Link built in. Pair it with
