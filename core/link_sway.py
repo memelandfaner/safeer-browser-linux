@@ -19,9 +19,11 @@ from __future__ import annotations
 
 import array
 import glob
+import json
 import os
 import shlex
 import shutil
+import signal
 import socket
 import struct
 import subprocess
@@ -323,6 +325,12 @@ class SwayVnos:
             smer = str(dogodek.get("smer", "") or "").strip().lower()
             if smer in ("gor", "dol", "levo", "desno"):
                 ok = self.drugi.fokus.premakni(smer)
+                if not ok and str(dogodek.get("sicer", "") or "") == "kazalec":
+                    # Daljinec: program o sebi nic ne pove, zato kratek pritisk kazalec le rahlo
+                    # premakne - natancno, namesto da bi odletel mimo cilja.
+                    k = KORAK_KAZALCA
+                    dx, dy = {"levo": (-k, 0), "desno": (k, 0), "gor": (0, -k), "dol": (0, k)}[smer]
+                    return self.izvedi({"vrsta": "premik", "dx": dx, "dy": dy})
                 if not ok:
                     kode = self._kode(smer)
                     if kode:
@@ -417,6 +425,51 @@ class SwayVnos:
 # ---------------------------------------------------------------------------------- namestitev
 
 #: Kar drugi zaslon potrebuje: izvrsljiva datoteka -> paket (Debian, Ubuntu, Linux Mint).
+#: Za koliko tock kratek pritisk smerne tipke premakne kazalec, kadar program polj ne pozna.
+KORAK_KAZALCA = 24
+
+BRSKALNIKI = ("brave", "chrome", "chromium", "msedge", "microsoft-edge", "vivaldi", "opera")
+
+
+def _ime_brskalnika(pot: str) -> bool:
+    ime = os.path.basename(str(pot or "")).lower()
+    return any(b in ime for b in BRSKALNIKI)
+
+
+def _je_brskalnik(pid: int) -> bool:
+    # Chromium si ukazno vrstico prepise v en niz s presledki, zato najprej pogledamo izvrsljivo
+    # datoteko, sele nato prvo besedo ukazne vrstice.
+    try:
+        if _ime_brskalnika(os.readlink("/proc/%d/exe" % pid)):
+            return True
+    except OSError:
+        pass
+    try:
+        with open("/proc/%d/cmdline" % pid, "rb") as f:
+            prvi = f.read().split(b"\0")[0].decode("utf-8", "replace").split(" ")[0]
+    except OSError:
+        return False
+    return _ime_brskalnika(prvi)
+
+
+def _pidi_na_namizju() -> Optional[set]:
+    """PID-i oken na namizju racunalnika (X); None, kadar tega ne moremo ugotoviti."""
+    if not os.environ.get("DISPLAY") or not shutil.which("wmctrl"):
+        return None
+    try:
+        r = subprocess.run(["wmctrl", "-lp"], capture_output=True, text=True, timeout=5)
+    except Exception:
+        return None
+    if r.returncode != 0:
+        return None
+    pidi = set()
+    for vrstica in r.stdout.splitlines():
+        deli = vrstica.split()
+        if len(deli) > 2 and deli[2].isdigit():
+            pidi.add(int(deli[2]))
+    return pidi
+
+
 PAKETI = {"sway": "sway", "swaymsg": "sway", "wf-recorder": "wf-recorder", "wtype": "wtype"}
 _WF: Optional[Dict[str, bool]] = None
 
@@ -561,7 +614,12 @@ class DrugiZaslon:
                            "WLR_LIBINPUT_NO_DEVICES": "1", "PULSE_SINK": ZVOCNI_IZHOD,
                            # programi na drugem zaslonu naj ne silijo na glavnega
                            "GDK_BACKEND": "wayland,x11", "QT_QPA_PLATFORM": "wayland;xcb",
-                           "SDL_VIDEODRIVER": "wayland,x11", "MOZ_ENABLE_WAYLAND": "1"})
+                           "SDL_VIDEODRIVER": "wayland,x11", "MOZ_ENABLE_WAYLAND": "1",
+                           # Skok po poljih (link_fokus) bere dostopnost. Brskalniki na osnovi
+                           # Chromiuma (Brave, Chrome, Electron) in Qt je brez tega ne ponudijo;
+                           # velja samo za programe na tem zaslonu, sistemske nastavitve ostanejo.
+                           "ACCESSIBILITY_ENABLED": "1", "GNOME_ACCESSIBILITY": "1",
+                           "QT_ACCESSIBILITY": "1", "QT_LINUX_ACCESSIBILITY_ALWAYS_ON": "1"})
             dnevnik = open(os.path.join(self.mapa, "sway.log"), "w")
             self._sway = subprocess.Popen(["sway", "-c", konf], env=okolje, stdout=dnevnik, stderr=dnevnik,
                                           stdin=subprocess.DEVNULL, start_new_session=True)
@@ -597,6 +655,11 @@ class DrugiZaslon:
         """Zazene program na drugem zaslonu. argv pride iz nasega seznama programov, ne s televizorja."""
         if not argv or not self.zazeni(self.sirina, self.visina):
             return False
+        argv = list(argv)
+        # Chromium (Brave, Chrome, Edge ...) polj brez tega dostopnosti ne pokaze, skok po poljih
+        # z daljincem pa jo potrebuje. Velja samo za ta zagon.
+        if _ime_brskalnika(argv[0]) and "--force-renderer-accessibility" not in argv:
+            argv.insert(1, "--force-renderer-accessibility")
         izid = self._msg(["exec", shlex.join(argv)])
         return '"success": true' in izid
 
@@ -608,6 +671,56 @@ class DrugiZaslon:
             if '"success": true' in self._msg(["[pid=%d]" % int(pid), "focus"]):
                 return True
         return False
+
+    def _okna_pidi(self) -> List[int]:
+        """PID-i programov, ki imajo okno na drugem zaslonu."""
+        if not self.tece():
+            return []
+        try:
+            drevo = json.loads(self._msg([], "get_tree") or "{}")
+        except ValueError:
+            return []
+        pidi: List[int] = []
+
+        def hodi(n):
+            if n.get("pid"):
+                pidi.append(int(n["pid"]))
+            for o in n.get("nodes", []) + n.get("floating_nodes", []):
+                hodi(o)
+        hodi(drevo)
+        return pidi
+
+    def zapri_okna(self) -> int:
+        """Zapre programe na drugem zaslonu, ko uporabnik na televizorju konca sejo.
+
+        Najprej vljudno, kot klik na X. Program z neshranjenim delom se lahko se vprasa - takrat
+        ostane odprt in ga uporabnik najde v vrstici Nadaljuj. Brskalniki na osnovi Chromiuma
+        (Brave, Chrome ...) prek XWaylanda X ne upostevajo; njih po treh sekundah zapremo s SIGTERM,
+        kar je pri njih obicajen konec (zavihki se ob naslednjem zagonu obnovijo). Nikoli, kadar
+        ima isti proces okno tudi na namizju racunalnika."""
+        pidi = self._okna_pidi()
+        if not pidi:
+            return 0
+        self._msg(["[all]", "kill"])
+        threading.Thread(target=self._dokoncaj_zapiranje, daemon=True).start()
+        return len(pidi)
+
+    def _dokoncaj_zapiranje(self) -> None:
+        time.sleep(3)
+        ostali = set(self._okna_pidi())
+        if not ostali:
+            return
+        namizje = _pidi_na_namizju()
+        if namizje is None:
+            return
+        for pid in ostali:
+            if pid in namizje or not _je_brskalnik(pid):
+                continue
+            try:
+                os.kill(pid, signal.SIGTERM)
+                print("[drugi zaslon] brskalnik %d zaprt" % pid, flush=True)
+            except OSError:
+                pass
 
     def okna(self) -> int:
         """Koliko oken je odprtih na drugem zaslonu."""

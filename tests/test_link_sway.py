@@ -152,5 +152,14 @@ class Izbira(unittest.TestCase):
         self.assertEqual(klici, ["apps", ""])
 
 
+class Brskalniki(unittest.TestCase):
+    def test_prepoznava(self):
+        from core.link_sway import _ime_brskalnika
+        for ime in ("/usr/bin/brave-browser-stable", "google-chrome", "/opt/brave.com/brave/brave", "chromium"):
+            self.assertTrue(_ime_brskalnika(ime), ime)
+        for ime in ("gimp-2.10", "gnome-calculator", "firefox", ""):
+            self.assertFalse(_ime_brskalnika(ime), ime)
+
+
 if __name__ == "__main__":
     unittest.main()
