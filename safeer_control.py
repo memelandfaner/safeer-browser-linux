@@ -346,6 +346,8 @@ class SafeerControl(Gtk.Application):
         self.zaslon.ob_spremembi = lambda vklopljeno: self.nastavitve.set("zaslon_za_tv", bool(vklopljeno))
         # Locen zaslon za televizor: programi s televizorja tecejo na drugem, nevidnem zaslonu in ne
         # posegajo v uporabnikovega ("locen_zaslon_za_tv" v control.json, privzeto vklopljeno, kjer je mogoce).
+        # Navidezni zvocni izhodi, ki jih je pustil prejsnji (ubit ali sesut) Control.
+        link_sway.pocisti_zvok()
         self.drugi_zaslon = (link_sway.DrugiZaslon()
                              if self.nastavitve.get("locen_zaslon_za_tv", True) and link_sway.DrugiZaslon.mozno()
                              else None)

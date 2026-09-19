@@ -35,6 +35,46 @@ from core.link_vnos import NAJVEC_BESEDILA, NAJVEC_DRZANJA_S, NAJVEC_PREMIK, TIP
 
 #: Ime navideznega zvocnega izhoda, na katerega igrajo programi drugega zaslona.
 ZVOCNI_IZHOD = "safeer_tv"
+
+
+def nasi_zvocni_moduli(izpis: str) -> List[str]:
+    """Stevilke nasih navideznih izhodov v izpisu `pactl list short modules`.
+
+    Vrstica je `<st>\t<modul>\t<argumenti>`; nas je module-null-sink z sink_name=safeer_tv
+    (PipeWire argumente lahko vrne v narekovajih)."""
+    ids: List[str] = []
+    for vrstica in izpis.splitlines():
+        deli = vrstica.split("\t")
+        if len(deli) < 3 or deli[1].strip() != "module-null-sink":
+            continue
+        if "sink_name=" + ZVOCNI_IZHOD in (t.replace('"', "").replace("'", "") for t in deli[2].split()):
+            ids.append(deli[0].strip())
+    return ids
+
+
+def pocisti_zvok() -> int:
+    """Odstrani VSE nase navidezne izhode, tudi tiste, ki jih je pustil prejsnji Control
+    (ubit, sesut, ponovno zagnan ob posodobitvi). Sicer se v zvocnih napravah kopicijo
+    izhodi Safeer-TV. Vrne, koliko jih je odstranil."""
+    if not shutil.which("pactl"):
+        return 0
+    try:
+        izpis = subprocess.run(["pactl", "list", "short", "modules"], capture_output=True, text=True,
+                               timeout=5).stdout
+    except Exception:
+        return 0
+    n = 0
+    for modul in nasi_zvocni_moduli(izpis):
+        try:
+            if subprocess.run(["pactl", "unload-module", modul], capture_output=True, timeout=5).returncode == 0:
+                n += 1
+        except Exception:
+            pass
+    return n
+
+#: Koliko casa po zagonu programa izhoda Safeer-TV ne pospravimo: okno se se odpira, program pa
+#: ze isce izhod, na katerega naj igra.
+ZVOK_PO_ZAGONU_S = 15.0
 #: Ime izhoda v brezglavem swayu (prvi in edini).
 IZHOD = "HEADLESS-1"
 
@@ -622,6 +662,7 @@ class DrugiZaslon:
         self._wayland = ""
         self._ipc = ""
         self._zvocni_modul = ""
+        self._zadnji_zagon = 0.0
         self._kljuc = threading.RLock()
         #: Skupina zadnjega programa, ki ga je televizor zagnal ("igre" -> televizor zacne v nacinu tipk).
         self.zadnja_skupina = ""
@@ -666,6 +707,7 @@ class DrugiZaslon:
         with self._kljuc:
             if self.tece():
                 self.velikost(sirina, visina)
+                self._zvok_pripravi()   # med sejama je bil lahko pospravljen
                 return True
             if not self.mozno():
                 return False
@@ -727,6 +769,7 @@ class DrugiZaslon:
         """Zazene program na drugem zaslonu. argv pride iz nasega seznama programov, ne s televizorja."""
         if not argv or not self.zazeni(self.sirina, self.visina):
             return False
+        self._zadnji_zagon = time.monotonic()
         argv = list(argv)
         # Chromium (Brave, Chrome, Edge ...) polj brez tega dostopnosti ne pokaze, skok po poljih
         # z daljincem pa jo potrebuje. Velja samo za ta zagon.
@@ -820,13 +863,33 @@ class DrugiZaslon:
         return u
 
     def zvok_vir(self) -> Optional[str]:
-        return ZVOCNI_IZHOD + ".monitor" if self._zvocni_modul else None
+        """Vir zvoka za sejo. Ce je izhod Safeer-TV med sejama pospravljen, ga spet ustvarimo."""
+        with self._kljuc:
+            if self.tece():
+                self._zvok_pripravi()
+            return ZVOCNI_IZHOD + ".monitor" if self._zvocni_modul else None
+
+    def pospravi_zvok(self) -> bool:
+        """Odstrani izhod Safeer-TV, ko na drugem zaslonu ni nobenega programa vec: takrat nanj nihce
+        ne igra, med zvocnimi napravami uporabnika pa ne sme viseti. Dokler je kak program odprt
+        (ali se sele odpira), izhod ostane - sicer bi PipeWire njegov zvok preusmeril na zvocnike
+        racunalnika. Vrne, ali je izhod odstranil."""
+        with self._kljuc:
+            if not self._zvocni_modul or time.monotonic() - self._zadnji_zagon < ZVOK_PO_ZAGONU_S:
+                return False
+            if self.okna() > 0:
+                return False
+            pocisti_zvok()
+            self._zvocni_modul = ""
+            print("[drugi zaslon] izhod Safeer-TV pospravljen", flush=True)
+            return True
 
     def _zvok_pripravi(self) -> None:
         """Navidezni zvocni izhod: kar igrajo programi drugega zaslona, gre samo na televizor."""
         if self._zvocni_modul or not shutil.which("pactl"):
             return
         try:
+            pocisti_zvok()
             privzeti = subprocess.run(["pactl", "get-default-sink"], capture_output=True, text=True,
                                       timeout=3).stdout.strip()
             r = subprocess.run(["pactl", "load-module", "module-null-sink", "sink_name=" + ZVOCNI_IZHOD,
@@ -855,7 +918,7 @@ class DrugiZaslon:
                     sway.kill()
             self._wayland = self._ipc = ""
             if self._zvocni_modul:
-                subprocess.run(["pactl", "unload-module", self._zvocni_modul], capture_output=True, timeout=5)
+                pocisti_zvok()
                 self._zvocni_modul = ""
 
 
