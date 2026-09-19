@@ -313,7 +313,23 @@ class SwayVnos:
             if x or y:
                 ok = self._poslji("m", 0, struct.pack("=Iii", self._cas(), _fiksno(x), _fiksno(y))) \
                     and self._poslji("m", 4)
+                t = self.drugi.fokus.tocka
+                if t is not None:
+                    self.drugi.fokus.tocka = (min(max(t[0] + x, 0), self.drugi.sirina - 1),
+                                              min(max(t[1] + y, 0), self.drugi.visina - 1))
+        elif vrsta == "fokus":
+            # Krizec: na naslednji gumb/polje v smeri. Kjer program o sebi nic ne pove (igra),
+            # gre kot navadna smerna tipka.
+            smer = str(dogodek.get("smer", "") or "").strip().lower()
+            if smer in ("gor", "dol", "levo", "desno"):
+                ok = self.drugi.fokus.premakni(smer)
+                if not ok:
+                    kode = self._kode(smer)
+                    if kode:
+                        self._tipko(kode[0], True)
+                        ok = self._tipko(kode[0], False)
         elif vrsta == "klik":
+            self.drugi.fokus.pozabi()
             gumb = GUMBI_EVDEV.get(str(dogodek.get("gumb", "levi") or "levi").strip().lower())
             if gumb is not None:
                 for _ in range(2 if dogodek.get("dvojni") else 1):
@@ -335,6 +351,12 @@ class SwayVnos:
         if ok:
             self.stevec += 1
         return ok
+
+    def absolutno(self, x: int, y: int) -> bool:
+        """Kazalec natanko na (x, y) drugega zaslona."""
+        s, v = max(1, self.drugi.sirina), max(1, self.drugi.visina)
+        x, y = min(max(0, x), s - 1), min(max(0, y), v - 1)
+        return self._poslji("m", 1, struct.pack("=IIIII", self._cas(), x, y, s, v)) and self._poslji("m", 4)
 
     def _besedilo(self, besedilo: str) -> bool:
         # Poljubni znaki (č, š, ž ...) niso v nasem razporedu; wtype si razpored sestavi sam.
@@ -479,6 +501,8 @@ class DrugiZaslon:
         #: Skupina zadnjega programa, ki ga je televizor zagnal ("igre" -> televizor zacne v nacinu tipk).
         self.zadnja_skupina = ""
         self.vnos = SwayVnos(self)
+        from core.link_fokus import Fokus
+        self.fokus = Fokus(self)
 
     # ----------------------------------------------------------------- zmoznosti
     @staticmethod
@@ -636,6 +660,7 @@ class DrugiZaslon:
         """Zapre drugi zaslon in vse programe na njem ter odstrani navidezni zvocni izhod."""
         with self._kljuc:
             self.vnos.zapri()
+            self.fokus.ustavi()
             sway, self._sway = self._sway, None
             if sway is not None and sway.poll() is None:
                 sway.terminate()
