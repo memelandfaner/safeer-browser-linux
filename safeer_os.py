@@ -108,27 +108,111 @@ def _iskalnik() -> str:
     return ISKALNIKI.get(ime, ISKALNIKI["duckduckgo"])
 
 
-def stanje_povezave() -> dict:
-    """Ali je racunalnik (Safeer Control) v Safeer Linku: povezan / brez (izbral) / nov."""
+def _podatki_controla() -> dict:
     try:
         with open(CONTROL_NASTAVITVE, encoding="utf-8") as f:
             p = json.load(f) or {}
+        return p if isinstance(p, dict) else {}
     except Exception:
-        p = {}
-    seznanjen = bool(p.get("control_token")) and bool(p.get("hub_fp"))
-    v_krogu = False
-    try:
-        from core import link_hub, link_krog
-        v_krogu = bool(link_krog.lahko_s_podpisom(link_hub.id_naprave() + "-control"))
-    except Exception:
-        pass
-    if seznanjen or v_krogu:
+        return {}
+
+
+def stanje_povezave() -> dict:
+    """Ali je racunalnik (Safeer Control) v Safeer Linku: povezan / brez (izbral) / nov.
+
+    Povezava nezaupanega racunalnika velja samo do konca prijave (core/link_seja.py): ob novi
+    prijavi je stanje spet »nov« in Safeer OS pokaze prijavno okno."""
+    from core import link_seja
+    p = _podatki_controla()
+    seja = link_seja.trenutna_seja()
+    povezan = link_seja.povezava_velja(p, seja)
+    if not povezan and link_seja.zaupana(p):
+        try:
+            from core import link_hub, link_krog
+            povezan = bool(link_krog.lahko_s_podpisom(link_hub.id_naprave() + "-control"))
+        except Exception:
+            pass
+    if povezan:
         stanje = "povezan"
-    elif p.get("brez_povezave"):
+    elif link_seja.brez_v_seji(p, seja):
         stanje = "brez"
     else:
         stanje = "nov"
-    return {"stanje": stanje, "control": bool(_ukaz_controla())}
+    return {"stanje": stanje, "control": bool(_ukaz_controla()), "zaupana": link_seja.zaupana(p)}
+
+
+CONTROL_ID = "io.github.memelandfaner.SafeerControl"
+CONTROL_POT = "/io/github/memelandfaner/SafeerControl"
+
+
+def nastavi_zaupanje(zaupaj: bool) -> bool:
+    """»Zaupaj temu racunalniku«: tekoci Safeer Control dobi odlocitev prek D-Bus (drzi nastavitve v
+    pomnilniku in bi jih sicer prepisal); ce ne tece, jo zapisemo v njegove nastavitve sami."""
+    try:
+        vodilo = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        ima = vodilo.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+                               "NameHasOwner", GLib.Variant("(s)", (CONTROL_ID,)), GLib.VariantType("(b)"),
+                               Gio.DBusCallFlags.NONE, 2000, None).unpack()[0]
+        if ima:
+            vodilo.call_sync(CONTROL_ID, CONTROL_POT, "org.gtk.Actions", "Activate",
+                             GLib.Variant("(sava{sv})", ("zaupanje", [GLib.Variant("b", bool(zaupaj))], {})),
+                             None, Gio.DBusCallFlags.NONE, 3000, None)
+            return True
+    except Exception as e:  # noqa: BLE001 - starejsi Control brez dejanja: zapisemo sami
+        print("[SafeerOS] zaupanje prek Controla:", e)
+    from core import link_seja
+    p = _podatki_controla()
+    p["zaupana"] = bool(zaupaj)
+    p["seja_prijave"] = link_seja.trenutna_seja()
+    try:
+        os.makedirs(os.path.dirname(CONTROL_NASTAVITVE), exist_ok=True)
+        zacasna = CONTROL_NASTAVITVE + ".tmp"
+        with open(zacasna, "w", encoding="utf-8") as f:
+            json.dump(p, f, ensure_ascii=False, indent=2)
+        os.chmod(zacasna, 0o600)
+        os.replace(zacasna, CONTROL_NASTAVITVE)
+        return True
+    except Exception:
+        return False
+
+
+SAMOZAGON = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
+                         "autostart", "safeer-os.desktop")
+
+
+def _ukaz_os() -> str:
+    from shutil import which
+    if which("safeer-os"):
+        return "safeer-os"
+    return '"%s" "%s"' % (sys.executable, os.path.join(KOREN, "safeer_os.py"))
+
+
+def je_samozagon() -> bool:
+    """Ali se Safeer OS zazene ob prijavi v racunalnik (~/.config/autostart, vidno tudi v Mintovih
+    »Zagonskih programih«, kjer ga uporabnik lahko izklopi)."""
+    try:
+        with open(SAMOZAGON, encoding="utf-8") as f:
+            vsebina = f.read()
+    except OSError:
+        return False
+    return "X-GNOME-Autostart-enabled=false" not in vsebina and "Hidden=true" not in vsebina
+
+
+def nastavi_samozagon(vklop: bool) -> bool:
+    """Vklop zapise vnos; izklop ga pusti z X-GNOME-Autostart-enabled=false (preglasi tudi sistemski
+    vnos iz paketa, ko bo Safeer OS namescen kot .deb)."""
+    vnos = ("[Desktop Entry]\nType=Application\nName=Safeer OS\n"
+            "Comment=Safeer OS ob prijavi v racunalnik\nComment[sl]=Safeer OS ob prijavi v računalnik\n"
+            "Exec=%s\nIcon=%s\nTerminal=false\nX-GNOME-Autostart-enabled=%s\nX-GNOME-Autostart-Delay=2\n"
+            % (_ukaz_os(), os.path.join(KOREN, "assets", "os", "znak.svg"), "true" if vklop else "false"))
+    try:
+        os.makedirs(os.path.dirname(SAMOZAGON), exist_ok=True)
+        with open(SAMOZAGON + ".tmp", "w", encoding="utf-8") as f:
+            f.write(vnos)
+        os.replace(SAMOZAGON + ".tmp", SAMOZAGON)
+        return True
+    except OSError:
+        return False
 
 
 def _ukaz_controla() -> Optional[list]:
@@ -166,6 +250,10 @@ class SafeerOS(Gtk.Application):
         self._ustvari_okno()
         if self._prvic and not self.posnetek:
             self._prvic = False
+            if self.shramba.get("samozagon") is None:
+                # Kdor odpre Safeer OS, ga dobi tudi ob naslednji prijavi; izklop je v Nastavitvah,
+                # v »Nazaj v Linux Mint« in v Mintovih Zagonskih programih.
+                self.shramba.set("samozagon", nastavi_samozagon(True))
             if stanje_povezave()["stanje"] == "nov":
                 # Prvi zagon brez Safeer Linka: prijavno okno (QR / koda / brez povezave naprav).
                 GLib.timeout_add(1200, lambda: (self._odpri_control(), False)[1])
@@ -335,6 +423,8 @@ class SafeerOS(Gtk.Application):
             "celozaslonsko": lambda: self._celozaslonsko(bool(a[0]) if a else True),
             "control": lambda: self._odpri_control(),
             "shraniSpletne": lambda: self._shrani_spletne(a[0] if a else []),
+            "samozagon": lambda: self._samozagon(bool(a[0])) if a else je_samozagon(),
+            "nazajVMint": lambda: self._nazaj_v_mint(bool(a[0]) if a else False),
         }
         # V ozadju (ukazi, ki lahko trajajo):
         ozadje = {
@@ -353,6 +443,7 @@ class SafeerOS(Gtk.Application):
             "splet": lambda: self._splet(str(a[0]) if a else ""),
             "iskanjeSplet": lambda: self._splet(_iskalnik() + GLib.uri_escape_string(str(a[0] if a else ""), None, False)),
             "povezava": stanje_povezave,
+            "zaupanje": lambda: nastavi_zaupanje(bool(a[0]) if a else False),
         }
         if metoda in glavna:
             try:
@@ -385,8 +476,23 @@ class SafeerOS(Gtk.Application):
             "spletne": self.shramba.get("spletne", None),
             "razlicica": RAZLICICA,
             "sistem": _ime_sistema(),
+            "samozagon": je_samozagon(),
             "povezava": stanje_povezave(),
         }
+
+    def _samozagon(self, vklop: bool) -> bool:
+        ok = nastavi_samozagon(vklop)
+        if ok:
+            self.shramba.set("samozagon", bool(vklop))
+        return je_samozagon()
+
+    def _nazaj_v_mint(self, za_stalno: bool) -> bool:
+        """Zapre Safeer OS; pod njim je obicajno namizje Linux Mint. »Za stalno« izklopi tudi zagon ob
+        prijavi. Nazaj se uporabnik vrne iz menija (Safeer OS)."""
+        if za_stalno:
+            self._samozagon(False)
+        GLib.timeout_add(250, lambda: (self.okno.destroy() if self.okno else self.quit(), False)[1])
+        return True
 
     def _shrani_spletne(self, seznam) -> list:
         """Spletne aplikacije na domacem zaslonu: samo ime in naslov http(s), najvec 24."""

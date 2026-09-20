@@ -1068,6 +1068,8 @@
       prijavaPreverjam: "Preverjam …",
       prijavaBrez: "Nadaljuj brez povezave naprav",
       prijavaOsSeNastaja: "Safeer OS za računalnik še nastaja. Ko bo nameščen, se odpre od tu.",
+      prijavaZaupaj: "Zaupaj temu računalniku",
+      prijavaZaupajOpis: "Povezava bo potrebna samo enkrat. Izberi le na svojem računalniku – sicer se ob naslednji prijavi v računalnik znova povežeš.",
       prijavaUspela: "Prijavljeno. Povezujem …",
       prijavaZnovaZazeni: "Safeer Control je treba znova zagnati, da naloži posodobitev: zapri ga v pladnju ali se odjavi in prijavi.",
       brezPovezaveNaslov: "Naprave niso povezane",
@@ -1096,6 +1098,8 @@
       prijavaPreverjam: "Checking …",
       prijavaBrez: "Continue without connecting devices",
       prijavaOsSeNastaja: "Safeer OS for computers is still being built. Once installed, it opens from here.",
+      prijavaZaupaj: "Trust this computer",
+      prijavaZaupajOpis: "You'll only need to connect once. Choose this only on your own computer – otherwise you'll connect again next time you sign in to the computer.",
       prijavaUspela: "Signed in. Connecting …",
       prijavaZnovaZazeni: "Restart Safeer Control to load the update: quit it from the tray, or log out and back in.",
       brezPovezaveNaslov: "No devices connected",
@@ -1124,6 +1128,8 @@
       prijavaPreverjam: "Wird geprüft …",
       prijavaBrez: "Ohne Geräteverbindung fortfahren",
       prijavaOsSeNastaja: "Safeer OS für Computer entsteht noch. Sobald es installiert ist, öffnet es sich von hier.",
+      prijavaZaupaj: "Diesem Computer vertrauen",
+      prijavaZaupajOpis: "Die Verbindung ist nur einmal nötig. Wähle das nur auf deinem eigenen Computer – sonst verbindest du dich bei der nächsten Anmeldung am Computer erneut.",
       prijavaUspela: "Angemeldet. Verbinde …",
       prijavaZnovaZazeni: "Starte Safeer Control neu, um das Update zu laden: im Infobereich beenden oder ab- und wieder anmelden.",
       brezPovezaveNaslov: "Keine Geräte verbunden",
@@ -1152,6 +1158,8 @@
       prijavaPreverjam: "Comprobando …",
       prijavaBrez: "Continuar sin conectar dispositivos",
       prijavaOsSeNastaja: "Safeer OS para ordenador aún está en desarrollo. Cuando esté instalado, se abrirá desde aquí.",
+      prijavaZaupaj: "Confiar en este ordenador",
+      prijavaZaupajOpis: "Solo tendrás que conectarte una vez. Elígelo solo en tu propio ordenador; si no, volverás a conectarte la próxima vez que inicies sesión en el ordenador.",
       prijavaUspela: "Sesión iniciada. Conectando …",
       prijavaZnovaZazeni: "Reinicia Safeer Control para cargar la actualización: ciérralo desde la bandeja o cierra y abre sesión.",
       brezPovezaveNaslov: "No hay dispositivos conectados",
@@ -1180,6 +1188,8 @@
       prijavaPreverjam: "Vérification …",
       prijavaBrez: "Continuer sans connecter d'appareils",
       prijavaOsSeNastaja: "Safeer OS pour ordinateur est encore en préparation. Une fois installé, il s'ouvrira d'ici.",
+      prijavaZaupaj: "Faire confiance à cet ordinateur",
+      prijavaZaupajOpis: "La connexion ne sera nécessaire qu'une fois. Choisis-le seulement sur ton propre ordinateur – sinon tu te reconnecteras à la prochaine ouverture de session.",
       prijavaUspela: "Connecté. Connexion en cours …",
       prijavaZnovaZazeni: "Redémarre Safeer Control pour charger la mise à jour : quitte-le depuis la zone de notification ou reconnecte-toi.",
       brezPovezaveNaslov: "Aucun appareil connecté",
@@ -1208,6 +1218,8 @@
       prijavaPreverjam: "Verifica …",
       prijavaBrez: "Continua senza collegare dispositivi",
       prijavaOsSeNastaja: "Safeer OS per computer è ancora in preparazione. Una volta installato, si aprirà da qui.",
+      prijavaZaupaj: "Considera attendibile questo computer",
+      prijavaZaupajOpis: "Dovrai collegarti una sola volta. Sceglilo solo sul tuo computer, altrimenti ti ricollegherai al prossimo accesso al computer.",
       prijavaUspela: "Accesso eseguito. Connessione …",
       prijavaZnovaZazeni: "Riavvia Safeer Control per caricare l'aggiornamento: chiudilo dall'area di notifica o esci e rientra.",
       brezPovezaveNaslov: "Nessun dispositivo collegato",
@@ -2100,6 +2112,10 @@
 
   function zacniPrijavo() {
     pokazi("gumbBrezPovezave", !!stanje.brezPovezave);
+    // »Zaupaj temu racunalniku« zna samo Safeer Control / Linux (most.nastaviZaupanje).
+    pokazi("prijavaZaupanje", !!(most && most.nastaviZaupanje));
+    var kljukica = el("prijavaZaupaj");
+    if (kljukica) kljukica.checked = !!stanje.zaupajOkno;
     if (most && !most.zacniQr) {
       // Stran je novejsa od programa, ki tece (posodobitev med tekom): povemo, kaj pomaga.
       besedilo("opombaQr", t("prijavaZnovaZazeni"));
@@ -2703,6 +2719,7 @@
     stanje.vKrogu = !!s.vKrogu;
     stanje.clanKroga = !!s.clanKroga;
     stanje.brezPovezaveIzbrano = !!s.brezPovezaveIzbrano;
+    stanje.zaupajOkno = !!s.zaupajOkno;
     stanje.brezPovezave = !!s.brezPovezave;
     stanje.deljeneMape = s.deljeneMape || [];
     stanje.standardneDeljene = !!s.standardneDeljene;
@@ -2763,6 +2780,12 @@
       besedilo("opombaBrezPovezave", "");
       if (most && most.nadaljujBrezPovezave) most.nadaljujBrezPovezave();
     });
+    var zaupaj = el("prijavaZaupaj");
+    if (zaupaj) {
+      zaupaj.addEventListener("change", function () {
+        if (most && most.nastaviZaupanje) most.nastaviZaupanje(!!zaupaj.checked);
+      });
+    }
     var vnosPrijava = el("prijavaVnosKode");
     if (vnosPrijava) {
       vnosPrijava.addEventListener("focus", zacniKodo);

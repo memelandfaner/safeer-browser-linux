@@ -357,6 +357,10 @@ class SafeerControl(Gtk.Application):
 
     def do_startup(self) -> None:
         Gtk.Application.do_startup(self)
+        # Safeer OS (stikalo »Zaupaj temu računalniku«) klice to dejanje prek D-Bus (org.gtk.Actions).
+        zaupanje = Gio.SimpleAction.new("zaupanje", GLib.VariantType.new("b"))
+        zaupanje.connect("activate", self._na_zaupanje)
+        self.add_action(zaupanje)
         if self.ozadje:
             self.hold()  # brez okna bi se GApplication koncal; ikona v pladnju ga drzi
 
@@ -364,7 +368,10 @@ class SafeerControl(Gtk.Application):
         nastavitve_linka = link_hub.Nastavitve(os.path.join(NASTAVITVE_MAPA, "link.json"))
         id_naprave, ime = identiteta()
         try:
-            if prevzemi_seznanitev_brskalnika(nastavitve_linka, id_naprave, ime):
+            # Racunalniku, ki mu uporabnik ni zaupal, seznanitve brskalnika ne prevzemamo: ob novi prijavi
+            # mora biti prijavno okno, ne tiha povezava (core/link_seja.py).
+            if nastavitve_linka.get("zaupana") is not False and \
+                    prevzemi_seznanitev_brskalnika(nastavitve_linka, id_naprave, ime):
                 print("[SafeerControl] Seznanitev prevzeta od Safeer Browserja (brez kode).")
         except Exception as e:  # noqa: BLE001
             print(f"[SafeerControl] Seznanitve brskalnika ni bilo mogoče prevzeti: {e}")
@@ -384,6 +391,11 @@ class SafeerControl(Gtk.Application):
         self.link.datoteke = self.datoteke
         self.link.programi = self.programi
         self.link.zaslon = self.zaslon
+
+    def _na_zaupanje(self, _dejanje, vrednost) -> None:
+        if self.link is None:
+            self._pripravi_link()
+        self.link.nastavi_zaupanje(bool(vrednost.get_boolean()))
 
     def nastavi_zaslon(self, vklopljeno: bool) -> None:
         """Televizor sme (ali ne sme vec) videti zaslon tega racunalnika. Izklop takoj konca sejo;
