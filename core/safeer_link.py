@@ -24,7 +24,7 @@ import gi
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("WebKit2", "4.1")
-from gi.repository import Gtk, WebKit2, GLib  # noqa: E402
+from gi.repository import Gdk, Gtk, WebKit2, GLib  # noqa: E402
 
 from core import link_deljenje, link_hub, link_krog, link_tls  # noqa: E402
 
@@ -199,10 +199,19 @@ class SafeerLink:
             "control": self.control,
             # V krogu zaupanja (prijava s podpisom, brez zetona): prijavnega okna ne potrebuje.
             "vKrogu": self._v_krogu(),
+            # Clan kroga, ki sredisce se isce: stran pokaze »Povezujem«, ne prijavnega okna.
+            "clanKroga": self._clan_kroga(),
             "brezPovezave": self.ob_brez_povezave is not None,
             "deljeneMape": self._deljene_mape(),
             "standardneDeljene": self._standardne_deljene(),
         }
+
+    def _clan_kroga(self) -> bool:
+        """Kljuc te naprave je v krogu zaupanja (ne glede na to, ali trenutno sredisce poznamo)."""
+        try:
+            return bool(link_krog.lahko_s_podpisom(self._id()))
+        except Exception:
+            return False
 
     def _v_krogu(self) -> bool:
         try:
@@ -332,7 +341,21 @@ class SafeerLink:
 
         okno = Gtk.Window(title="Safeer Control" if self.control else "Safeer Link")
         # Samostojna aplikacija (Control) ima levi meni z razdelki, zato sirse okno.
-        okno.set_default_size(560 if not self.control else 1000, 760 if not self.control else 720)
+        if self.control:
+            # Samostojna aplikacija: veliko okno (prijavno okno Safeer OS ima prostor za QR in kodo),
+            # a nikoli vecje od zaslona.
+            sirina, visina = 1440, 960
+            try:
+                zaslon = Gdk.Display.get_default().get_primary_monitor() or Gdk.Display.get_default().get_monitor(0)
+                obmocje = zaslon.get_workarea()
+                sirina = min(sirina, int(obmocje.width * 0.92))
+                visina = min(visina, int(obmocje.height * 0.92))
+            except Exception:
+                pass
+            okno.set_default_size(sirina, visina)
+            okno.set_position(Gtk.WindowPosition.CENTER)
+        else:
+            okno.set_default_size(560, 760)
         if self.control:
             okno.set_wmclass("safeer-control", "Safeer Control")
             okno.set_icon_name("safeer-control")
@@ -391,6 +414,8 @@ class SafeerLink:
         """Ob zagonu brskalnika: ce je racunalnik seznanjen, se poveze brez okna."""
         if self._hub() and self._zeton() and self._odtis():
             self._v_ozadju(self._povezi)
+        elif self._clan_kroga():
+            self._v_ozadju(self._poisci_hub)
 
     def _na_nalozeno(self, pogled, dogodek) -> None:
         if dogodek != WebKit2.LoadEvent.FINISHED:
@@ -401,8 +426,12 @@ class SafeerLink:
         # Ce Huba se ne poznamo, ga poiscemo sami -- uporabniku ni treba nicesar vedeti.
         if not self._hub():
             self._v_ozadju(self._poisci_hub)
-        elif self._zeton():
+        elif self._zeton() or self._v_krogu():
             self._v_ozadju(self._povezi)
+        elif self._clan_kroga():
+            # Clan kroga zaupanja s staro shranjenim srediscem (npr. tablica, ki zdaj ni vec sredisce):
+            # poiscemo pravo in se povezemo s podpisom - brez prijavnega okna.
+            self._v_ozadju(self._poisci_hub)
 
     # ------------------------------------------------------------------
     # Most
@@ -592,7 +621,8 @@ class SafeerLink:
             self.nastavitve.podatki.pop("hub_fp", None)
         self.nastavitve.shrani()
         self._odziv("hub", {"najden": True, "naslov": naslov})
-        if self._zeton():
+        # Z zetonom ali, v krogu zaupanja, s podpisom kljuca: ta naprava prijave ne potrebuje.
+        if self._zeton() or (najden.get("krog") and self._v_krogu()):
             self._povezi()
 
     def _seznani(self) -> None:
@@ -651,6 +681,13 @@ class SafeerLink:
     # ---------- prijava s QR kodo (prijavno okno) ----------
 
     def _zacni_qr(self) -> None:
+        try:
+            self._zacni_qr_notranje()
+        except Exception as e:  # noqa: BLE001 - stran mora vedno dobiti odgovor
+            print(f"[SafeerLink] QR kode ni bilo mogoče pripraviti: {e}")
+            self._odziv("qr", {"napaka": "ni_huba"})
+
+    def _zacni_qr_notranje(self) -> None:
         """QR koda za prijavo s telefonom ali tablico, ki sta ze v Safeer Linku. Koda se obnavlja
         sama, dokler je prijavno okno odprto; ko jo clan Linka dovoli, se ta naprava poveze."""
         self._qr_rod += 1

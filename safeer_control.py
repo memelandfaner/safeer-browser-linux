@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import time
 import sys
 from typing import Optional
 
@@ -492,6 +493,11 @@ class SafeerControl(Gtk.Application):
             self.quit()
 
     def koncaj(self) -> None:
+        self.koncaj_brez_izhoda()
+        self.quit()
+
+    def koncaj_brez_izhoda(self) -> None:
+        """Pospravi povezavo, deljene mape in zaslon (ob izhodu in pred zagonom nove razlicice)."""
         try:
             if self.link is not None and self.link.povezava is not None:
                 self.link.povezava.zapri()
@@ -507,7 +513,6 @@ class SafeerControl(Gtk.Application):
                 self.drugi_zaslon.ustavi()
         except Exception:
             pass
-        self.quit()
 
     def odpri_safeer_os(self) -> None:
         """»Nadaljuj brez povezave naprav« v prijavnem oknu: odpre Safeer OS na tem racunalniku, Control
@@ -555,9 +560,40 @@ class SafeerControl(Gtk.Application):
                 self._pripravi_link()
             self.pladenj = Pladenj(self)
             self.link.povezi_v_ozadju()
+            if os.environ.pop("SAFEER_CONTROL_ODPRI", "") == "1":
+                self.pokazi_okno()
             return
         self._prva_aktivacija = False
+        # Program je tekel v ozadju, medtem pa je bil posodobljen: namesto starega okna odpremo novo
+        # razlicico (uporabniku ni treba vedeti, da je bilo treba kaj znova zagnati).
+        if self._koda_posodobljena() and (self.link is None or self.link.okno is None):
+            self._znova_zazeni()
+            return
         self.pokazi_okno()
+
+    _ZAGNAN_OB = time.time()
+    _DATOTEKE_KODE = ("safeer_control.py", "core/safeer_link.py", "core/link_hub.py",
+                      "assets/link/link.js", "assets/link/index.html", "assets/link/daljinec.js")
+
+    def _koda_posodobljena(self) -> bool:
+        for ime in self._DATOTEKE_KODE:
+            try:
+                if os.path.getmtime(os.path.join(KOREN, ime)) > self._ZAGNAN_OB + 1:
+                    return True
+            except OSError:
+                continue
+        return False
+
+    def _znova_zazeni(self) -> None:
+        print("[SafeerControl] Koda je posodobljena; zaganjam novo razlicico.")
+        try:
+            self.koncaj_brez_izhoda()
+        except Exception:
+            pass
+        # Pladenj ostane (--ozadje), okno pa se odpre takoj, ker ga je uporabnik pravkar zahteval.
+        argv = [a for a in sys.argv if a != "--ozadje"] + ["--ozadje"]
+        os.environ["SAFEER_CONTROL_ODPRI"] = "1"
+        os.execv(sys.executable, [sys.executable] + argv)
 
     # ------------------------------------------------------------------
     # Odpiranje naslovov: gledalec zaslona s Huba v svojem oknu, vse drugo v sistemskem brskalniku
