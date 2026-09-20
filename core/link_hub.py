@@ -28,7 +28,7 @@ import urllib.request
 from typing import Callable, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
-from core import link_tls, spake2
+from core import link_krog, link_tls, spake2
 
 PRIVZETA_VRATA = 8990
 # Uporabnik naj vidi kratko domace ime, ne naslova IP. Staro ime ostane takoj za njim,
@@ -390,6 +390,56 @@ def vzemi_vstopnico(ws_naslov: str, zeton: str, odtis: Optional[str] = None) -> 
 
 
 # ----------------------------------------------------------------------
+# Krog zaupanja: prijava s podpisom kljuca naprave namesto zetona
+# ----------------------------------------------------------------------
+
+def vzemi_vstopnico_s_podpisom(ws_naslov: str, device_id: str, odtis: str) -> Tuple[Optional[str], int]:
+    """(vstopnica, koda HTTP) s podpisom kljuca naprave (core/link_krog.py).
+
+    Hub poslje enkratni izziv, naprava podpise izziv + odtis huba + svoj id; hub preveri podpis
+    s kljucem iz kroga zaupanja. Zeton pri tem ni potreben - tako prezivimo zamenjavo huba.
+    Koda 401 pomeni, da hub te naprave (s tem kljucem) v krogu nima.
+    """
+    osnova = _osnova(ws_naslov)
+    koda, izziv = _zahteva(osnova + "/cast/auth/challenge", {"device_id": device_id}, odtis=odtis)
+    if koda != 200:
+        return None, koda
+    nonce = str(izziv.get("nonce", "") or "")
+    odtis_huba = str(izziv.get("fp", "") or "") or odtis
+    if not nonce:
+        return None, koda
+    try:
+        podpis = link_krog.podpisi(link_krog.podatki_za_podpis(odtis_huba, nonce, device_id))
+    except Exception:
+        return None, 0
+    koda, odgovor = _zahteva(osnova + "/cast/auth/ticket",
+                             {"device_id": device_id, "nonce": nonce, "signature": podpis}, odtis=odtis)
+    if koda != 200:
+        return None, koda
+    krog = odgovor.get("ring")
+    if isinstance(krog, dict):
+        link_krog.sprejmi(krog)
+    vstopnica = odgovor.get("ticket")
+    return (vstopnica if isinstance(vstopnica, str) and vstopnica else None), koda
+
+
+def vpisi_v_krog(ws_naslov: str, zeton: str, odtis: str, ime: str) -> bool:
+    """Z veljavnim zetonom vpise kljuc te naprave v krog zaupanja huba (enkrat; potem gre s podpisom)."""
+    try:
+        kljuc = link_krog.javni_kljuc_b64()
+    except Exception:
+        return False
+    koda, odgovor = _zahteva(_osnova(ws_naslov) + "/cast/trust/enroll",
+                             {"pubkey": kljuc, "name": ime, "platform": "linux"}, zeton=zeton, odtis=odtis)
+    if koda != 200:
+        return False
+    krog = odgovor.get("ring")
+    if isinstance(krog, dict):
+        link_krog.sprejmi(krog)
+    return True
+
+
+# ----------------------------------------------------------------------
 # Majhen odjemalec WebSocket (RFC 6455, samo kar potrebujemo)
 # ----------------------------------------------------------------------
 
@@ -631,6 +681,10 @@ class Povezava:
         self.ime = ime
         # True, ko je Hub zeton zavrnil (401/403): naprava ni vec seznanjena.
         self.zavrnjena = False
+        # True, ko je zadnja prijava sla s podpisom kljuca naprave (krog zaupanja), ne z zetonom.
+        self.prijava_s_podpisom = False
+        # True, ko je ta povezava kljuc naprave ravnokar vpisala v krog huba.
+        self.vpisana_v_krog = False
         self.sinhronizira = sinhronizira
         self.odjemalec: Optional[WsOdjemalec] = None
         self.nit: Optional[threading.Thread] = None
@@ -649,9 +703,34 @@ class Povezava:
         # znova seznani.
         if not self.ws_naslov.startswith("wss://") or not self.odtis:
             return False
-        vstopnica, koda = vzemi_vstopnico_s_kodo(self.ws_naslov, self.zeton, self.odtis)
-        # Hub nas ne pozna vec: brez nove seznanitve ne bo slo, zato tega ne poskusamo v krogu.
-        self.zavrnjena = koda in (401, 403)
+        vstopnica: Optional[str] = None
+        # Najprej s podpisom kljuca naprave (krog zaupanja): zeton ni potreben, zato ta pot
+        # prezivi tudi zamenjavo huba. Ce hub kroga se ne pozna (starejsi hub: 404) ali nas v
+        # njem nima, gre po stari poti z zetonom.
+        s_podpisom = False
+        try:
+            s_podpisom = link_krog.je_vpisan(self.device_id)
+        except Exception:
+            s_podpisom = False
+        if s_podpisom:
+            vstopnica, koda = vzemi_vstopnico_s_podpisom(self.ws_naslov, self.device_id, self.odtis)
+            if vstopnica:
+                self.prijava_s_podpisom = True
+        if not vstopnica:
+            self.prijava_s_podpisom = False
+            vstopnica, koda = vzemi_vstopnico_s_kodo(self.ws_naslov, self.zeton, self.odtis)
+            # Hub nas ne pozna vec: brez nove seznanitve ne bo slo, zato tega ne poskusamo v krogu.
+            self.zavrnjena = koda in (401, 403)
+            if vstopnica and not s_podpisom:
+                # Zeton je veljaven: vpisemo kljuc naprave v krog, da gre naslednjic s podpisom.
+                # Starejsi hub brez kroga vrne 404 - nic hudega, ostanemo pri zetonu.
+                try:
+                    if vpisi_v_krog(self.ws_naslov, self.zeton, self.odtis, self.ime):
+                        self.vpisana_v_krog = True
+                except Exception:
+                    pass
+        else:
+            self.zavrnjena = False
         if not vstopnica:
             return False
         locilo = "&" if "?" in self.ws_naslov else "?"
@@ -754,6 +833,14 @@ class Povezava:
                 try:
                     sporocilo = json.loads(besedilo)
                 except json.JSONDecodeError:
+                    continue
+                if isinstance(sporocilo, dict) and sporocilo.get("type") == "trust.update":
+                    # Hub razposlje krog zaupanja ob prijavi in ob vsaki spremembi; shranimo ga,
+                    # da nas pozna tudi naslednji hub. Naprej ga ne dajemo.
+                    try:
+                        link_krog.sprejmi(sporocilo.get("payload"))
+                    except Exception:
+                        pass
                     continue
                 if self.ob_sporocilu:
                     self.ob_sporocilu(sporocilo)
