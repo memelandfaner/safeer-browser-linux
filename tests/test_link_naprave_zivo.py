@@ -36,7 +36,12 @@ class NapraveVZivo(unittest.TestCase):
         koda, naprave = naprave_na_hubu(hub, zeton, odtis)
         self.assertEqual(koda, 200, "hub mora vrniti seznam naprav")
         self.assertIsInstance(naprave, list)
-        print(f"\n  hub {hub}: {[(n.get('id'), n.get('role')) for n in naprave]}")
+        print(f"\n  hub {hub}:")
+        for n in naprave:
+            # Protocol v1: model naprave in katalog aplikacij (prazno pri odjemalcih 0.2).
+            print(f"    {n.get('id')}: role={n.get('role')} protocol={n.get('protocol')} platform={n.get('platform')} "
+                  f"kind={n.get('kind')} version={n.get('version')} priority={n.get('priority')} "
+                  f"apps={len(n.get('apps') or {})}")
         self.assertTrue(any(str(n.get("id", "")).startswith(("tv-", "phone-", "tablet-", "pc-")) for n in naprave),
                         "hub mora imeti vsaj eno prijavljeno napravo")
 
