@@ -1,0 +1,45 @@
+"""Kdo je povezan na hub (v zivo): /cast/devices z zetonom Controla tega racunalnika.
+
+Preskoci se, ce Control ni seznanjen ali se hub ne oglasa. Preveri, da hub vidi vsaj samega sebe
+(gostitelj je hkrati zaslon) - torej da se je njegov lastni sprejemnik prijavil z vezano vstopnico.
+"""
+import json
+import unittest
+from urllib.parse import urlparse
+
+from core import link_hub, link_tls
+from tests.test_link_krog_zivo import _seznanitve
+
+
+def naprave_na_hubu(hub: str, zeton: str, odtis: str):
+    """/cast/devices vrne gol seznam (ne objekta), zato ga beremo mimo link_tls.zahteva."""
+    u = urlparse(link_hub._osnova(hub))
+    p = link_tls._PripetaHttps(u.hostname, u.port or 443, odtis, 5.0)
+    try:
+        p.request("GET", "/cast/devices", headers={"X-Safeer-Token": zeton})
+        o = p.getresponse()
+        return o.status, json.loads(o.read().decode("utf-8", "replace") or "[]")
+    finally:
+        p.close()
+
+
+class NapraveVZivo(unittest.TestCase):
+    def test_povezane_naprave(self):
+        izbran = None
+        for hub, zeton, odtis in _seznanitve():
+            if link_hub.je_hub(link_hub._osnova(hub), odtis=odtis):
+                izbran = (hub, zeton, odtis)
+                break
+        if not izbran:
+            self.skipTest("noben seznanjeni hub se ne oglasa")
+        hub, zeton, odtis = izbran
+        koda, naprave = naprave_na_hubu(hub, zeton, odtis)
+        self.assertEqual(koda, 200, "hub mora vrniti seznam naprav")
+        self.assertIsInstance(naprave, list)
+        print(f"\n  hub {hub}: {[(n.get('id'), n.get('role')) for n in naprave]}")
+        self.assertTrue(any(str(n.get("id", "")).startswith(("tv-", "phone-", "tablet-", "pc-")) for n in naprave),
+                        "hub mora imeti vsaj eno prijavljeno napravo")
+
+
+if __name__ == "__main__":
+    unittest.main()
