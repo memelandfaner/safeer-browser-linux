@@ -591,7 +591,17 @@ def povabi(ws_naslov: str, zeton: str, odtis: str, preklici: str = "") -> dict:
     u = urlparse(ws_naslov)
     naslov = "%s:%d" % (u.hostname, u.port or 443)
     return {"qr_id": qr_id, "velja": int(odgovor.get("expires_in_seconds") or 300),
-            "povezava": "https://safeer.si/p#j=%s&s=%s&f=%s&a=%s" % (qr_id, skrivnost, fp, naslov)}
+            "povezava": povezava_vabila(u.hostname or "", int(odgovor.get("web_port") or 0), qr_id, skrivnost, fp, naslov)}
+
+
+def povezava_vabila(gostitelj: str, spletna_vrata: int, qr_id: str, skrivnost: str, fp: str, naslov: str) -> str:
+    """Koda za novo napravo: stran spletnega odjemalca na srediscu (http://<sredisce>:<vrata>/#...), da dela tudi
+    telefon brez Safeerja; telefon s Safeerjem jo odpre v aplikaciji. Brez spletnih vrat (staro sredisce)
+    ostane https://safeer.si/p#..., ki jo razume samo aplikacija. Skrivnost je za # - streznik je ne vidi."""
+    rep = "#j=%s&s=%s&f=%s&a=%s" % (qr_id, skrivnost, fp, naslov)
+    if spletna_vrata > 0 and gostitelj and ":" not in gostitelj:
+        return "http://%s:%d/%s" % (gostitelj, spletna_vrata, rep)
+    return "https://safeer.si/p" + rep
 
 
 def stanje_vabila(ws_naslov: str, zeton: str, odtis: str, qr_id: str) -> dict:
