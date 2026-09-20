@@ -42,7 +42,7 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("WebKit2", "4.1")
 from gi.repository import Gdk, Gio, GLib, Gtk, WebKit2  # noqa: E402
 
-from core import os_datoteke, os_jbl, os_omrezje, os_programi, os_sistem, os_zvok  # noqa: E402
+from core import os_datoteke, os_jbl, os_omrezje, os_programi, os_scit, os_sistem, os_zvok  # noqa: E402
 
 APP_ID = "io.github.memelandfaner.SafeerOS"
 RAZLICICA = "0.1.0"
@@ -448,6 +448,8 @@ class SafeerOS(Gtk.Application):
         self.posnetek = posnetek
         self.shramba = os_programi.Shramba()
         self.programi = os_programi.Programi(self.shramba)
+        #: Scit: filtriranje DNS za ves racunalnik; ce je bil vklopljen, tece od zagona naprej.
+        self.scit = os_scit.Scit(self.shramba)
         self.okno: Optional[Gtk.ApplicationWindow] = None
         self.pogled: Optional[WebKit2.WebView] = None
         self._ikone: dict = {}
@@ -477,6 +479,7 @@ class SafeerOS(Gtk.Application):
             GLib.unix_signal_add(GLib.PRIORITY_HIGH, signal, lambda *a: (self._koncaj(), False)[1])
         if self._prvic and not self.posnetek:
             self._prvic = False
+            self.scit.zacni_ce_vklopljen()
             if self.shramba.get("samozagon") is None:
                 # Kdor odpre Safeer OS, ga dobi tudi ob naslednji prijavi; izklop je v Nastavitvah,
                 # v »Nazaj v Linux Mint« in v Mintovih Zagonskih programih.
@@ -640,6 +643,11 @@ class SafeerOS(Gtk.Application):
         self._koncano = True
         if self.namizje:
             vrni_mintov_pult(self.shramba)
+        # Brez nasega razresevalnika bi racunalnik ostal brez DNS: nastavitev povrnemo.
+        try:
+            self.scit.koncaj()
+        except Exception as e:  # noqa: BLE001
+            print("[SafeerOS] scit:", e)
         self.quit()
 
     def _na_politiko(self, _pogled, odlocitev, vrsta) -> bool:
@@ -805,6 +813,8 @@ class SafeerOS(Gtk.Application):
             "zvokUstavi": zvok_ustavi,
             "jbl": lambda: os_jbl.stanje(True),
             "jblVklop": lambda: os_jbl.vklopi(bool(a[0]) if a else False),
+            "scit": self.scit.stanje,
+            "scitVklop": lambda: self.scit.nastavi(bool(a[0]) if a else False),
         }
         if metoda in glavna:
             try:
