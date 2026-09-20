@@ -7,6 +7,6 @@ Comment[sl]=Tvoj računalnik v rokah – programi, datoteke, naprave in nastavit
 Exec=safeer-os
 Icon=safeer-os
 Terminal=false
-Categories=System;Utility;
+Categories=System;
 Keywords=Safeer;OS;launcher;home;
 StartupWMClass=safeer-os
