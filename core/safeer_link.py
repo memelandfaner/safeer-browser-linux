@@ -653,6 +653,8 @@ class SafeerLink:
             dodatne_zmoznosti=(["files"] if self.datoteke is not None else [])
             + (["apps"] if self.programi is not None and self.programi.vklopljeno else [])
             + (["desktop"] if self.zaslon is not None and self.zaslon.na_voljo().get("dovoljeno") else []),
+            # Protocol v1: programi racunalnika kot katalog aplikacij (samo, ce jih je uporabnik dovolil).
+            katalog=(self.programi.katalog_v1 if self.programi is not None else None),
         )
         povezava.ob_sporocilu = self._na_sporocilo_huba
         povezava.ob_stanju = self._na_stanje_povezave
