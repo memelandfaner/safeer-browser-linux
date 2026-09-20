@@ -125,6 +125,10 @@ class SafeerLink:
         # (pem, gostitelj). Brez tega WebKit stran s Huba zavrne.
         self.dovoli_potrdilo = dovoli_potrdilo
         self.deljenje_zaslona: Optional[link_deljenje.DeljenjeZaslona] = None
+        # Naprava, katere zaslon trenutno gledamo (share.screen start): kam gredo dotik in tipke
+        # iz okna gledalca (Safeer Vnos na tablici). Prazno, ko ne gledamo nicesar.
+        self.gledani_zaslon: str = ""
+        self.ob_odzivu_vnosa: Optional[Callable[[dict], None]] = None
         # Safeer Control: deljene mape za televizor (core/link_datoteke.Datoteke); brskalnik jih nima.
         self.datoteke = None
         self.programi = None
@@ -817,6 +821,7 @@ class SafeerLink:
         elif vrsta == "share.screen":
             dejanje = str(telo.get("action", "") or "")
             if dejanje == "start":
+                self.gledani_zaslon = str(sporocilo.get("sender", "") or "")
                 pot = str(telo.get("path", "") or "")
                 url = (link_hub._osnova(self._hub()) + pot) if pot.startswith("/") else str(telo.get("url", "") or "")
                 if url:
@@ -1048,9 +1053,32 @@ class SafeerLink:
         if not poslano:
             self._odziv("ukaz", {"ref": ref, "ok": False, "message": "Ukaza ni bilo mogoče poslati."})
 
+    def poslji_vnos(self, dejanje: str, parametri: dict) -> bool:
+        """Dotik, poteg, tipka ali besedilo iz okna gledalca na napravo, katere zaslon gledamo
+        (ukazi input.* - Safeer Vnos na tablici). Odgovor pride v ob_odzivu_vnosa."""
+        cilj = self.gledani_zaslon
+        povezava = self.povezava
+        if not cilj or povezava is None or not povezava.tece or not dejanje.startswith("input."):
+            return False
+        return povezava.poslji({
+            "id": "vnos-" + str(int(time.time() * 1000)),
+            "type": "control.command",
+            "target": cilj,
+            "payload": {"action": dejanje, "params": parametri if isinstance(parametri, dict) else {}},
+        })
+
     def _ukaz_odziv(self, sporocilo: dict) -> None:
         """Odgovor naprave (control.result) ali zavrnitev sredisca (control.ack) -> stran."""
         telo = sporocilo.get("payload") or {}
+        if str(sporocilo.get("ref_id", "") or "").startswith("vnos-"):
+            # Odgovor na vnos iz okna gledalca: stran Linka ga ne potrebuje.
+            if self.ob_odzivu_vnosa is not None:
+                o = {"ok": bool(telo.get("ok")), "koda": str(telo.get("code") or sporocilo.get("error_code") or ""),
+                     "sporocilo": str(telo.get("message") or sporocilo.get("error") or "")}
+                if sporocilo.get("type") == "control.ack" and sporocilo.get("status") == "accepted":
+                    return
+                GLib.idle_add(lambda: (self.ob_odzivu_vnosa(o), False)[1])
+            return
         o = {"ref": str(sporocilo.get("ref_id", "") or ""), "naprava": str(sporocilo.get("sender", "") or "")}
         if sporocilo.get("type") == "control.ack":
             if sporocilo.get("status") == "accepted":
