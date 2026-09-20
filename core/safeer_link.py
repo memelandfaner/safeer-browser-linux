@@ -630,7 +630,7 @@ class SafeerLink:
         naslov = self._hub()
         zeton = self._zeton() or ""
         # Brez zetona gre samo, ce je ta naprava v krogu zaupanja (prijava s podpisom, izvoljeni hub).
-        if not naslov or not self._odtis() or (not zeton and not link_krog.je_vpisan(self._id())):
+        if not naslov or not self._odtis() or (not zeton and not link_krog.lahko_s_podpisom(self._id())):
             return True  # ni kaj povezati; to ni neuspeh, ki bi ga bilo treba iskati
         if self.povezava is not None:
             self.povezava.zapri()

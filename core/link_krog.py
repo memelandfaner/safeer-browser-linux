@@ -78,6 +78,19 @@ def id_iz_kljuca(kljuc_b64: str) -> str:
     return "n-" + hashlib.sha256(base64.b64decode(kljuc_b64)).hexdigest()[:16]
 
 
+DOLZINA_ID_IZ_KLJUCA = 18
+
+
+def je_id_iz_kljuca(device_id: str) -> bool:
+    """Ali je id izpeljan iz kljuca (`n-<16 hex>`, po zelji s pripono `-control` ...)."""
+    if len(device_id) < DOLZINA_ID_IZ_KLJUCA or not device_id.startswith("n-"):
+        return False
+    jedro = device_id[2:DOLZINA_ID_IZ_KLJUCA]
+    if any(z not in "0123456789abcdef" for z in jedro):
+        return False
+    return len(device_id) == DOLZINA_ID_IZ_KLJUCA or device_id[DOLZINA_ID_IZ_KLJUCA] == "-"
+
+
 # ------------------------------------------------------------------ krog
 
 def _veljaven_kljuc(b64: str) -> bool:
@@ -117,6 +130,21 @@ class Krog:
 
     def je_clan(self, device_id: str) -> bool:
         return self.clan(device_id) is not None
+
+    def clan_za_id(self, device_id: str) -> Optional[dict]:
+        """Clan za id, tudi ce je id iz kljuca (n-...) in je ta kljuc v krogu pod drugim (starim) id-jem.
+
+        Isto kot KrogZaupanja.clanZaId: id iz kljuca dokazuje isti kljuc, torej isto napravo.
+        """
+        c = self.clan(device_id)
+        if c or not je_id_iz_kljuca(device_id):
+            return c
+        jedro = device_id[:DOLZINA_ID_IZ_KLJUCA]
+        with self._zaklep:
+            for i, c in self.clani.items():
+                if self._veljaven(c) and id_iz_kljuca(c["kljuc"]) == jedro:
+                    return dict(c)
+        return None
 
     def stevilo(self) -> int:
         with self._zaklep:
@@ -238,3 +266,24 @@ def je_vpisan(device_id: str) -> bool:
         return c["kljuc"] == javni_kljuc_b64()
     except Exception:
         return False
+
+
+def znan_id_za_nas_kljuc(razen: str = "") -> Optional[str]:
+    """Kateri koli id (razen `razen`), pod katerim je nas kljuc ze v krogu (stari id, sorodnik), ali None."""
+    try:
+        kljuc = javni_kljuc_b64()
+    except Exception:
+        return None
+    k = krog()
+    with k._zaklep:
+        for i, c in k.clani.items():
+            if i != razen and k._veljaven(c) and c["kljuc"] == kljuc:
+                return i
+    return None
+
+
+def lahko_s_podpisom(device_id: str) -> bool:
+    """Ali se naprava lahko prijavi s podpisom: id je v krogu z nasim kljucem ali pa je nas kljuc v krogu
+    pod drugim id-jem (stari id pred prehodom na id iz kljuca) - hub tak podpis sprejme in nov id vpise
+    kot alias, seznanitev prezivi."""
+    return je_vpisan(device_id) or znan_id_za_nas_kljuc(razen=device_id) is not None
