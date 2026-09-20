@@ -278,9 +278,9 @@ class Zvok(unittest.TestCase):
 
 class Jbl(unittest.TestCase):
     AVAHI = ('+;enp1s0;IPv4;JBL\\032BAR\\032300;_jbl-product._tcp;local\n'
-             '=;enp1s0;IPv4;JBL\\032BAR\\032300;_jbl-product._tcp;local;audiocast_ba64.local;192.168.0.229;59152;'
-             '"bootid=x" "security=https 3.0" "MAC=4C:6B:B8:90:BA:64" "uuid=uuid:FF"\n'
-             '=;enp1s0;IPv6;JBL\\032BAR\\032300;_jbl-product._tcp;local;audiocast_ba64.local;fe80::1;59152;"MAC=4C:6B:B8:90:BA:64"\n')
+             '=;enp1s0;IPv4;JBL\\032BAR\\032300;_jbl-product._tcp;local;audiocast_3ab7.local;192.168.1.50;59152;'
+             '"bootid=x" "security=https 3.0" "MAC=00:1B:44:11:3A:B7" "uuid=uuid:FF"\n'
+             '=;enp1s0;IPv6;JBL\\032BAR\\032300;_jbl-product._tcp;local;audiocast_3ab7.local;fe80::1;59152;"MAC=00:1B:44:11:3A:B7"\n')
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -293,10 +293,10 @@ class Jbl(unittest.TestCase):
         r = mock.Mock(stdout=self.AVAHI)
         with mock.patch.object(os_jbl.shutil, "which", lambda x: "/usr/bin/" + x), \
                 mock.patch.object(os_jbl.subprocess, "run", lambda *a, **k: r):
-            self.assertEqual(os_jbl.najdi(), [{"ime": "JBL BAR 300", "naslov": "192.168.0.229", "mac": "4C:6B:B8:90:BA:64"}])
-        self.assertFalse(os_jbl.je_vrstica("bluez_output.4C_6B_B8_90_BA_65.1"))     # izklopljeno
-        os_jbl._shrani({"vklop": True, "bt": "4C:6B:B8:90:BA:65", "naslov": "192.168.0.229", "ime": "JBL BAR 300"})
-        self.assertTrue(os_jbl.je_vrstica("bluez_output.4C_6B_B8_90_BA_65.1"))
+            self.assertEqual(os_jbl.najdi(), [{"ime": "JBL BAR 300", "naslov": "192.168.1.50", "mac": "00:1B:44:11:3A:B7"}])
+        self.assertFalse(os_jbl.je_vrstica("bluez_output.00_1B_44_11_3A_B8.1"))     # izklopljeno
+        os_jbl._shrani({"vklop": True, "bt": "00:1B:44:11:3A:B8", "naslov": "192.168.1.50", "ime": "JBL BAR 300"})
+        self.assertTrue(os_jbl.je_vrstica("bluez_output.00_1B_44_11_3A_B8.1"))
         self.assertFalse(os_jbl.je_vrstica("bluez_output.00_11_22_33_44_55.1"))
         self.assertFalse(os_jbl.je_vrstica("alsa_output.speaker"))
 
@@ -310,7 +310,7 @@ class Jbl(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(os_jbl.mapa(), "Cert.pem")))
         self.assertFalse(os_jbl.ima_potrdilo())
         # brez potrdila ni ukazov, tudi ce je dodatek oznacen kot vklopljen
-        os_jbl._shrani({"vklop": True, "naslov": "192.168.0.229"})
+        os_jbl._shrani({"vklop": True, "naslov": "192.168.1.50"})
         with mock.patch.object(os_jbl, "_zahteva", side_effect=AssertionError("ne sme klicati")):
             self.assertFalse(os_jbl.preklopi("tv"))
         self.assertFalse(os_jbl.preklopi("reboot"))
