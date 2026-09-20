@@ -1069,7 +1069,11 @@
       prijavaBrez: "Nadaljuj brez povezave naprav",
       prijavaOsSeNastaja: "Safeer OS za računalnik še nastaja. Ko bo nameščen, se odpre od tu.",
       prijavaUspela: "Prijavljeno. Povezujem …",
-      prijavaZnovaZazeni: "Safeer Control je treba znova zagnati, da naloži posodobitev: zapri ga v pladnju ali se odjavi in prijavi."
+      prijavaZnovaZazeni: "Safeer Control je treba znova zagnati, da naloži posodobitev: zapri ga v pladnju ali se odjavi in prijavi.",
+      brezPovezaveNaslov: "Naprave niso povezane",
+      brezPovezaveOpis: "Safeer OS deluje na tem računalniku. Telefon, tablico ali televizor povežeš, kadar želiš.",
+      poveziNaprave: "Poveži naprave",
+      odpriSafeerOs: "Odpri Safeer OS"
     },
     en: {
       prijavaNaslov: "Sign in",
@@ -1093,7 +1097,11 @@
       prijavaBrez: "Continue without connecting devices",
       prijavaOsSeNastaja: "Safeer OS for computers is still being built. Once installed, it opens from here.",
       prijavaUspela: "Signed in. Connecting …",
-      prijavaZnovaZazeni: "Restart Safeer Control to load the update: quit it from the tray, or log out and back in."
+      prijavaZnovaZazeni: "Restart Safeer Control to load the update: quit it from the tray, or log out and back in.",
+      brezPovezaveNaslov: "No devices connected",
+      brezPovezaveOpis: "Safeer OS works on this computer. Connect your phone, tablet or TV whenever you like.",
+      poveziNaprave: "Connect devices",
+      odpriSafeerOs: "Open Safeer OS"
     },
     de: {
       prijavaNaslov: "Anmelden",
@@ -1117,7 +1125,11 @@
       prijavaBrez: "Ohne Geräteverbindung fortfahren",
       prijavaOsSeNastaja: "Safeer OS für Computer entsteht noch. Sobald es installiert ist, öffnet es sich von hier.",
       prijavaUspela: "Angemeldet. Verbinde …",
-      prijavaZnovaZazeni: "Starte Safeer Control neu, um das Update zu laden: im Infobereich beenden oder ab- und wieder anmelden."
+      prijavaZnovaZazeni: "Starte Safeer Control neu, um das Update zu laden: im Infobereich beenden oder ab- und wieder anmelden.",
+      brezPovezaveNaslov: "Keine Geräte verbunden",
+      brezPovezaveOpis: "Safeer OS läuft auf diesem Computer. Verbinde Handy, Tablet oder Fernseher, wann immer du willst.",
+      poveziNaprave: "Geräte verbinden",
+      odpriSafeerOs: "Safeer OS öffnen"
     },
     es: {
       prijavaNaslov: "Iniciar sesión",
@@ -1141,7 +1153,11 @@
       prijavaBrez: "Continuar sin conectar dispositivos",
       prijavaOsSeNastaja: "Safeer OS para ordenador aún está en desarrollo. Cuando esté instalado, se abrirá desde aquí.",
       prijavaUspela: "Sesión iniciada. Conectando …",
-      prijavaZnovaZazeni: "Reinicia Safeer Control para cargar la actualización: ciérralo desde la bandeja o cierra y abre sesión."
+      prijavaZnovaZazeni: "Reinicia Safeer Control para cargar la actualización: ciérralo desde la bandeja o cierra y abre sesión.",
+      brezPovezaveNaslov: "No hay dispositivos conectados",
+      brezPovezaveOpis: "Safeer OS funciona en este ordenador. Conecta el móvil, la tableta o el televisor cuando quieras.",
+      poveziNaprave: "Conectar dispositivos",
+      odpriSafeerOs: "Abrir Safeer OS"
     },
     fr: {
       prijavaNaslov: "Connexion",
@@ -1165,7 +1181,11 @@
       prijavaBrez: "Continuer sans connecter d'appareils",
       prijavaOsSeNastaja: "Safeer OS pour ordinateur est encore en préparation. Une fois installé, il s'ouvrira d'ici.",
       prijavaUspela: "Connecté. Connexion en cours …",
-      prijavaZnovaZazeni: "Redémarre Safeer Control pour charger la mise à jour : quitte-le depuis la zone de notification ou reconnecte-toi."
+      prijavaZnovaZazeni: "Redémarre Safeer Control pour charger la mise à jour : quitte-le depuis la zone de notification ou reconnecte-toi.",
+      brezPovezaveNaslov: "Aucun appareil connecté",
+      brezPovezaveOpis: "Safeer OS fonctionne sur cet ordinateur. Connecte ton téléphone, ta tablette ou ton téléviseur quand tu veux.",
+      poveziNaprave: "Connecter des appareils",
+      odpriSafeerOs: "Ouvrir Safeer OS"
     },
     it: {
       prijavaNaslov: "Accedi",
@@ -1189,7 +1209,11 @@
       prijavaBrez: "Continua senza collegare dispositivi",
       prijavaOsSeNastaja: "Safeer OS per computer è ancora in preparazione. Una volta installato, si aprirà da qui.",
       prijavaUspela: "Accesso eseguito. Connessione …",
-      prijavaZnovaZazeni: "Riavvia Safeer Control per caricare l'aggiornamento: chiudilo dall'area di notifica o esci e rientra."
+      prijavaZnovaZazeni: "Riavvia Safeer Control per caricare l'aggiornamento: chiudilo dall'area di notifica o esci e rientra.",
+      brezPovezaveNaslov: "Nessun dispositivo collegato",
+      brezPovezaveOpis: "Safeer OS funziona su questo computer. Collega telefono, tablet o televisore quando vuoi.",
+      poveziNaprave: "Collega dispositivi",
+      odpriSafeerOs: "Apri Safeer OS"
     }
   };
   for (var _jp in BESEDILA_PRIJAVA) {
@@ -1527,12 +1551,14 @@
     if (daljinecOdprt) return;
     // Safeer Control brez povezave: samo prijavno okno (QR, koda, nadaljuj brez). Nic drugega.
     var prijavno = jePrijavnoOkno();
-    document.body.classList.toggle("prijava", prijavno);
+    var brezPovezave = jeBrezPovezave();
+    document.body.classList.toggle("prijava", prijavno || brezPovezave);
     pokazi("zaslonPrijava", prijavno);
-    if (prijavno) {
+    pokazi("zaslonBrezPovezave", brezPovezave);
+    if (prijavno || brezPovezave) {
       ["zaslonHubTu", "zaslonBrezHuba", "zaslonPreseljen", "zaslonSeznanitev", "zaslonPovezan", "hubStikalo"]
         .forEach(function (id) { pokazi(id, false); });
-      zacniPrijavo();
+      if (prijavno) zacniPrijavo(); else koncajPrijavo();
       narisiStanje();
       return;
     }
@@ -1804,7 +1830,7 @@
 
   function narisiMeni() {
     if (!jeNamizje()) return;
-    if (jePrijavnoOkno()) return;
+    if (jePrijavnoOkno() || jeBrezPovezave()) return;
     besedilo("dodajKorak3", t("dodajKorak3", { sredisce: imeSredisca() || t("televizor") }));
     document.body.classList.add("namizje");
     pokazi("stranskiMeni", true);
@@ -2062,10 +2088,15 @@
    * Control, ki ni povezan (ne z zetonom ne s krogom zaupanja) in sredisce ne tece tu. Clan kroga
    * zaupanja se poveze sam s podpisom; prijavno okno dobi sele, ce to ne uspe.
    */
-  function jePrijavnoOkno() {
+  function jeNepovezan() {
     if (!stanje.control || stanje.hubTece || (stanje.znan && stanje.seznanjen) || stanje.vKrogu) return false;
     return !(stanje.clanKroga && !prijava.krogNeuspel);
   }
+
+  function jePrijavnoOkno() { return jeNepovezan() && !stanje.brezPovezaveIzbrano; }
+
+  /** Uporabnik je izbral »Nadaljuj brez povezave«: namesto prijave kartica »Poveži naprave«. */
+  function jeBrezPovezave() { return jeNepovezan() && !!stanje.brezPovezaveIzbrano; }
 
   function zacniPrijavo() {
     pokazi("gumbBrezPovezave", !!stanje.brezPovezave);
@@ -2196,7 +2227,9 @@
       } else if (vrsta === "qr") {
         narisiQr(podatki);
       } else if (vrsta === "brezPovezave") {
-        besedilo("opombaBrezPovezave", podatki && podatki.os === false ? t("prijavaOsSeNastaja") : "");
+        var sporociloOs = podatki && podatki.os === false ? t("prijavaOsSeNastaja") : "";
+        besedilo("opombaBrezPovezave", sporociloOs);
+        besedilo("opombaBrezPovezaveOs", sporociloOs);
       } else if (vrsta === "nacin" && jePrijavnoOkno()) {
         besedilo("opombaPrijavaKoda", t("prijavaKodaNaSredisce"));
         var vp = el("prijavaVnosKode");
@@ -2669,6 +2702,7 @@
     stanje.control = !!s.control;
     stanje.vKrogu = !!s.vKrogu;
     stanje.clanKroga = !!s.clanKroga;
+    stanje.brezPovezaveIzbrano = !!s.brezPovezaveIzbrano;
     stanje.brezPovezave = !!s.brezPovezave;
     stanje.deljeneMape = s.deljeneMape || [];
     stanje.standardneDeljene = !!s.standardneDeljene;
@@ -2718,6 +2752,13 @@
       zacniPrijavo();
     });
     naKlik("gumbPrijavaKoda", posljiKodo);
+    naKlik("gumbPoveziNaprave", function () {
+      if (most && most.poveziNaprave) most.poveziNaprave();
+    });
+    naKlik("gumbOdpriOsLokalno", function () {
+      besedilo("opombaBrezPovezaveOs", "");
+      if (most && most.nadaljujBrezPovezave) most.nadaljujBrezPovezave();
+    });
     naKlik("gumbBrezPovezave", function () {
       besedilo("opombaBrezPovezave", "");
       if (most && most.nadaljujBrezPovezave) most.nadaljujBrezPovezave();

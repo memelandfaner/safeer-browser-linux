@@ -68,6 +68,7 @@ MOST_JS = """
     zacniQr: function () { poslji("zacniQr"); },
     prekiniQr: function () { poslji("prekiniQr"); },
     nadaljujBrezPovezave: function () { poslji("nadaljujBrezPovezave"); },
+    poveziNaprave: function () { poslji("poveziNaprave"); },
     poveziSe: function () { poslji("poveziSe"); },
     posljiTrenutno: function (id) { poslji("posljiTrenutno", [id]); },
     poslji: function (id, url, naslov) { poslji("poslji", [id, url, naslov]); },
@@ -202,6 +203,9 @@ class SafeerLink:
             # Clan kroga, ki sredisce se isce: stran pokaze »Povezujem«, ne prijavnega okna.
             "clanKroga": self._clan_kroga(),
             "brezPovezave": self.ob_brez_povezave is not None,
+            # Uporabnik je v prijavnem oknu izbral »Nadaljuj brez povezave naprav«: okno se ne vsiljuje vec,
+            # naprave pa lahko poveze kadarkoli (»Poveži naprave«).
+            "brezPovezaveIzbrano": bool(self.nastavitve.get("brez_povezave", False)),
             "deljeneMape": self._deljene_mape(),
             "standardneDeljene": self._standardne_deljene(),
         }
@@ -487,6 +491,7 @@ class SafeerLink:
             "zacniQr": lambda: self._v_ozadju(self._zacni_qr),
             "prekiniQr": lambda: self._prekini_qr(),
             "nadaljujBrezPovezave": lambda: self._nadaljuj_brez_povezave(),
+            "poveziNaprave": lambda: self._povezi_naprave(),
             "poveziSe": lambda: self._v_ozadju(self._povezi),
             "posljiTrenutno": lambda: self._poslji_trenutno(*argumenti[:1]),
             "poslji": lambda: self._poslji(*argumenti[:3]),
@@ -670,6 +675,7 @@ class SafeerLink:
         self._prijava = None
         self.nastavitve.podatki["control_token"] = zeton
         self.nastavitve.podatki["hub_fp"] = str(prijava.get("odtis", ""))
+        self.nastavitve.podatki.pop("brez_povezave", None)
         self._zapomni_seznanitev()
         self.nastavitve.shrani()
         self._odziv("seznanitev", True)
@@ -728,6 +734,7 @@ class SafeerLink:
                 self.nastavitve.podatki["hub_url"] = naslov
                 self.nastavitve.podatki["control_token"] = zeton
                 self.nastavitve.podatki["hub_fp"] = prijava["odtis"]
+                self.nastavitve.podatki.pop("brez_povezave", None)
                 self._zapomni_seznanitev()
                 self.nastavitve.shrani()
                 self._odziv("seznanitev", True)
@@ -745,6 +752,12 @@ class SafeerLink:
         if stara and naslov:
             self._v_ozadju(lambda: link_hub.preklici_qr(naslov, stara, self._id()))
 
+    def _povezi_naprave(self) -> None:
+        """»Poveži naprave« po izbiri »brez povezave«: spet prijavno okno (QR, koda)."""
+        self.nastavitve.podatki.pop("brez_povezave", None)
+        self.nastavitve.shrani()
+        self._odziv("stanje", None)
+
     def _prekini_qr(self) -> None:
         self._qr_rod += 1
         self._preklici_qr()
@@ -752,6 +765,9 @@ class SafeerLink:
     def _nadaljuj_brez_povezave(self) -> None:
         self._prekini_qr()
         self._prijava = None
+        self.nastavitve.podatki["brez_povezave"] = True
+        self.nastavitve.shrani()
+        self._odziv("stanje", None)
         if self.ob_brez_povezave is not None:
             GLib.idle_add(lambda: (self.ob_brez_povezave(), False)[1])
 
