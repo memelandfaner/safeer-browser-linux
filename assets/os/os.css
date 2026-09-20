@@ -470,6 +470,7 @@ div.vrstica { cursor: default; }
 .vrstica.program.tiho { opacity: .6; }
 #r-zvok .drobno { color: var(--medlo); margin: -4px 0 12px; max-width: 900px; }
 .stikalo.onemogoceno { opacity: .55; }
+.panel .namig { color: var(--medlo); font-size: 14px; line-height: 1.5; margin: -4px 0 14px; max-width: 70ch; }
 .scit-zadnje { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 2px 8px; font-size: 14px; color: var(--medlo); }
 .scit-zadnje b { width: 100%; font-weight: 600; }
 .scit-zadnje i { font-style: normal; opacity: .65; }

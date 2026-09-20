@@ -154,7 +154,7 @@
     document.querySelectorAll(".razdelek").forEach(function (r) { r.classList.toggle("viden", r.id === "r-" + razdelek); });
     $("vsebina").scrollTop = 0;
     if (razdelek === "datoteke" && !S.pot) odpriNedavne();
-    if (razdelek === "naprave") osveziPovezavo();
+    if (razdelek === "naprave") { osveziPovezavo(); napraveZanka(); }
     if (razdelek === "nastavitve") { narisiNastavitve(); nalozScit(); scitZanka(); }
     if (razdelek === "programi") nalozNaprave();
     if (razdelek === "omrezje") nalozOmrezje(false);
@@ -572,14 +572,29 @@
   function osveziPovezavo() {
     return klic("povezava").then(function (p) { S.povezava = p || S.povezava; narisiPovezavo(); }, function () { narisiPovezavo(); });
   }
+  // V Napravah nepovezan racunalnik isce Safeer Link naprej: ko ga uporabnik vklopi na televizorju
+  // ali telefonu, se kartica posodobi sama - brez klikanja »poišči znova«.
+  var napraveCas = null;
+  function napraveZanka() {
+    clearInterval(napraveCas);
+    napraveCas = setInterval(function () {
+      if (S.razdelek !== "naprave") { clearInterval(napraveCas); return; }
+      if (S.povezava.stanje !== "povezan") osveziPovezavo();
+    }, 12000);
+  }
   function narisiPovezavo() {
     var p = S.povezava;
     if (S.stanje) setTimeout(function () { narisiStanje(S.stanje); }, 0);
     var povezan = p.stanje === "povezan";
     $("napravePika").className = "pika" + (povezan ? "" : " siva");
     $("napraveNaslov").textContent = t(povezan ? "povezanNaslov" : (p.stanje === "brez" ? "brezNaslov" : "novNaslov"));
-    $("napraveBesedilo").textContent = !p.control ? t("niControla") :
-      t(povezan ? "povezanOpis" : (p.stanje === "brez" ? "brezOpis" : "novOpis"));
+    // Nepovezan racunalnik: povemo, ali je v omrezju Safeer Link (in kateri) - uporabnik takoj ve, kaj sledi.
+    var hubi = p.hubi || [];
+    $("napraveBesedilo").textContent = !p.control ? t("niControla") : povezan ? t("povezanOpis") :
+      (hubi.length ? t("novOpisHub", { ime: hubi[0].ime }) : (p.hubi ? t("novOpisBrezHuba") : t("novOpis")));
+    var namig = $("napraveNamig");
+    namig.hidden = povezan || !p.control || hubi.length > 0 || !p.hubi;
+    namig.textContent = t("napraveNamig");
     $("gumbControl").hidden = !p.control;
     $("gumbControlBesedilo").textContent = t(povezan ? "odpriControl" : "poveziNaprave");
     $("gumbControl").querySelector("svg").innerHTML = '<path d="' + IK[povezan ? "naprave" : "qr"] + '"/>';
