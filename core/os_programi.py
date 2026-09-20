@@ -170,6 +170,7 @@ class Programi:
         vnosi = self.preberi()
         uporaba = self.shramba.get("uporaba", {}) or {}
         pripeti = list(self.shramba.get("pripeti", []) or [])
+        skriti = set(self.shramba.get("skriti_domov", []) or [])
         izhod = []
         for oznaka, v in sorted(vnosi.items(), key=lambda p: p[1]["ime"].lower()):
             u = uporaba.get(oznaka) or {}
@@ -179,6 +180,7 @@ class Programi:
                 "ikona": ikone(v["ikona"]) if ikone else "",
                 "uporaba": int(u.get("n", 0) or 0), "zadnjic": float(u.get("t", 0) or 0),
                 "pripet": oznaka in pripeti,
+                "skrit": oznaka in skriti,
             })
         return izhod
 
@@ -233,8 +235,18 @@ class Programi:
         pripeti = [p for p in (self.shramba.get("pripeti", []) or []) if p != oznaka]
         if pripet and self.pot(oznaka):
             pripeti.append(oznaka)
+            self.skrij_domov(oznaka, False)      # pripet program je na domacem zaslonu vedno
         self.shramba.set("pripeti", pripeti[:24])
         return pripeti
+
+    def skrij_domov(self, oznaka: str, skrij: bool = True) -> List[str]:
+        """»Odstrani z zacetnega zaslona«: program ostane v Programih, na domacem ga ni vec (tudi ce je
+        pogosto rabljen ali privzet). Ponovno ga pripelje pripenjanje."""
+        skriti = [p for p in (self.shramba.get("skriti_domov", []) or []) if p != oznaka]
+        if skrij and self.pot(oznaka):
+            skriti.append(oznaka)
+        self.shramba.set("skriti_domov", skriti[:200])
+        return skriti
 
 
 # ---------------------------------------------------------------------- ikone

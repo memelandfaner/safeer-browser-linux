@@ -159,6 +159,11 @@ h2 .dodatno:hover { color: var(--besedilo); }
 .ploscica .pripni:hover { color: var(--besedilo); background: rgba(0, 0, 0, .55); }
 .ploscica.dodaj svg { width: 56px; height: 56px; color: var(--zelena); }
 .ploscica .odstrani { position: absolute; top: 8px; right: 8px; display: none; }
+.ploscica .pripni.levo { right: auto; left: 8px; }
+.vrstica .pozabi { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; color: var(--medlo); flex: none; }
+.vrstica .pozabi:hover { background: rgba(255, 107, 107, .2); color: var(--rdeca); }
+.vrstica .pozabi svg { width: 18px; height: 18px; }
+h2 .dodatno + .dodatno { margin-left: 14px; }
 .ploscica:hover .odstrani { display: grid; }
 
 /* Odprta okna */

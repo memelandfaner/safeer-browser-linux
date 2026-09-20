@@ -208,21 +208,34 @@
       setTimeout(narisiDomov, 400);
     }, function () { obvesti(t("niUspelo")); });
   }
-  function ploscicaPrograma(p, zPripenjanjem) {
+  function ploscicaPrograma(p, zPripenjanjem, naDomacem) {
     var b = el("button", "ploscica");
     b.title = p.opis || p.ime;
     b.appendChild(slikaAliCrka(p.ikona, p.ime));
     b.appendChild(el("span", "ime", ubezi(p.ime)));
     b.addEventListener("click", function () { zazeni(p); });
     if (zPripenjanjem) {
-      var pr = el("span", "pripni" + (p.pripet ? " pripet" : ""), svg("zvezda"));
+      var pr = el("span", "pripni" + (p.pripet ? " pripet" : "") + (naDomacem ? " levo" : ""), svg("zvezda"));
       pr.title = p.pripet ? t("odpni") : t("pripni");
       pr.addEventListener("click", function (e) {
         e.stopPropagation();
         p.pripet = !p.pripet;
+        if (p.pripet) p.skrit = false;
         klic("pripni", [p.id, p.pripet]).then(function () { narisiPrograme(); narisiDomov(); });
       });
       b.appendChild(pr);
+    }
+    if (naDomacem) {
+      // Vsaka ploscica na domacem zaslonu gre stran: pripeta se odpne, pogosta ali privzeta se skrije.
+      var x = el("span", "pripni odstrani", svg("x"));
+      x.title = t("odstraniZDomacega");
+      x.addEventListener("click", function (e) {
+        e.stopPropagation();
+        p.pripet = false; p.skrit = true;
+        klic("pripni", [p.id, false]).then(function () { return klic("skrijDomov", [p.id, true]); })
+          .then(function () { narisiPrograme(); narisiDomov(); });
+      });
+      b.appendChild(x);
     }
     return b;
   }
@@ -252,12 +265,12 @@
     "org.gnome.Rhythmbox3.desktop", "thunderbird.desktop", "xviewer.desktop", "mintupdate.desktop"];
   function domaciProgrami() {
     var izbrani = S.programi.filter(function (p) { return p.pripet; });
-    var uporabljeni = S.programi.filter(function (p) { return !p.pripet && p.uporaba > 0; })
+    var uporabljeni = S.programi.filter(function (p) { return !p.pripet && !p.skrit && p.uporaba > 0; })
       .sort(function (a, b) { return (b.uporaba - a.uporaba) || (b.zadnjic - a.zadnjic); });
     izbrani = izbrani.concat(uporabljeni);
     PRIVZETI.forEach(function (id) {
       var p = S.programi.find(function (x) { return x.id === id; });
-      if (p && izbrani.indexOf(p) < 0) izbrani.push(p);
+      if (p && !p.skrit && izbrani.indexOf(p) < 0) izbrani.push(p);
     });
     return izbrani.slice(0, 11);
   }
@@ -289,7 +302,7 @@
     var nProgramov = Math.min(programi.length, mest - 1 - nSpletnih);
     nSpletnih = Math.min(splet.length, mest - 1 - nProgramov);
     vrsta.innerHTML = "";
-    programi.slice(0, nProgramov).forEach(function (p) { vrsta.appendChild(ploscicaPrograma(p, true)); });
+    programi.slice(0, nProgramov).forEach(function (p) { vrsta.appendChild(ploscicaPrograma(p, true, true)); });
     splet.slice(0, nSpletnih).forEach(function (a, i) { vrsta.appendChild(ploscicaSpletne(a, i)); });
     var dodaj = el("button", "ploscica dodaj", svg("plus") + '<span class="ime">' + ubezi(t("dodaj")) + "</span>");
     dodaj.addEventListener("click", odpriDodaj);
@@ -376,7 +389,7 @@
   }
   var IKONA_VRSTE = { mapa: "mapa", slika: "slika", video: "video", zvok: "glasba", dokument: "dokument",
                       arhiv: "arhiv", program: "program", drugo: "datoteka" };
-  function vrsticaDatoteke(d, zPotjo) {
+  function vrsticaDatoteke(d, zPotjo, nedavna) {
     var b = el("button", "vrstica");
     b.innerHTML = svg(IKONA_VRSTE[d.vrsta] || "datoteka") + '<span class="ime">' + ubezi(d.ime) + "</span>" +
       (zPotjo ? '<span class="pod pot">' + ubezi(skrajsajPot(d.pot.replace(/\/[^\/]*$/, "") || "/")) + "</span>" : "") +
@@ -385,7 +398,24 @@
       if (d.mapa) { pojdi("datoteke"); odpriMapo(d.pot); }
       else { obvesti(t("odpiram", { ime: d.ime })); klic("odpriDatoteko", [d.pot]); }
     });
+    if (nedavna) {
+      // Iz seznama nedavnih (datoteka ostane): X na vsaki vrstici.
+      var x = el("span", "pozabi", svg("x"));
+      x.title = t("pozabiNedavno");
+      x.addEventListener("click", function (e) {
+        e.stopPropagation();
+        klic("nedavnePozabi", [d.pot]).then(function () { b.remove(); osveziNedavne(); });
+      });
+      b.appendChild(x);
+    }
     return b;
+  }
+  function osveziNedavne() {
+    narisiNedavneDomov();
+    if (S.razdelek === "datoteke" && !S.pot) odpriNedavne();
+  }
+  function pocistiNedavne() {
+    klic("nedavnePocisti").then(function () { obvesti(t("seznamPocisten")); osveziNedavne(); });
   }
   function dom() { return (S.zacetek && S.zacetek.mape && S.zacetek.mape[0] && S.zacetek.mape[0].pot) || ""; }
   function skrajsajPot(p) { var d = dom(); return d && p.indexOf(d) === 0 ? "~" + p.slice(d.length) : p; }
@@ -409,12 +439,17 @@
     var dr = $("drobtine");
     dr.innerHTML = "";
     dr.appendChild(el("button", "", ubezi(t("nedavno"))));
+    var desnoN = el("div", "desno");
+    var poc = el("button", "gumb", svg("x") + "<span>" + ubezi(t("pocistiSeznam")) + "</span>");
+    poc.addEventListener("click", pocistiNedavne);
+    desnoN.appendChild(poc);
+    dr.appendChild(desnoN);
     klic("nedavne").then(function (seznam) {
       S.nedavne = seznam || [];
       var v = $("vsebinaMape");
       v.innerHTML = "";
       if (!S.nedavne.length) { v.appendChild(el("div", "prazno", ubezi(t("prazno")))); return; }
-      S.nedavne.forEach(function (d) { v.appendChild(vrsticaDatoteke(d, true)); });
+      S.nedavne.forEach(function (d) { v.appendChild(vrsticaDatoteke(d, true, true)); });
     }, function () {});
   }
   function odpriMapo(pot) {
@@ -456,7 +491,7 @@
       $("blokNedavne").hidden = !seznam.length;
       var v = $("nedavneDomov");
       v.innerHTML = "";
-      seznam.forEach(function (d) { v.appendChild(vrsticaDatoteke(d, true)); });
+      seznam.forEach(function (d) { v.appendChild(vrsticaDatoteke(d, true, true)); });
     }, function () {});
   }
 
@@ -1173,6 +1208,7 @@
     $("stanjeZvok").addEventListener("click", function (e) { e.stopPropagation(); zapriSloje(); pojdi("zvok"); });
     $("stanjeZvok").addEventListener("contextmenu", function (e) { e.preventDefault(); e.stopPropagation(); zapriSloje(); pojdi("zvok"); });
     $("gumbZvokNazaj").addEventListener("click", function () { pojdi("nastavitve"); });
+    $("gumbNedavnePocistiDomov").addEventListener("click", pocistiNedavne);
     $("gumbZvokNapredno").addEventListener("click", function () {
       obvesti(t("odpiram", { ime: t("napredno") }));
       klic("nastavitve", ["sound"]);
