@@ -793,6 +793,11 @@
       naprava: "Naprava",
       deliDotik: "Dotakni se za deljenje",
       deliKlik: "Klikni za deljenje in daljinec",
+      dodajNaslov: "Dodaj telefon ali tablico",
+      dodajKorak1: "Na telefonu odpri Safeer in v meniju izberi Safeer Link.",
+      dodajKorak2: "Pritisni »Poveži s Safeer Link«.",
+      dodajKorak3: "Na napravi {sredisce} se izpiše 6-mestna koda – prepiši jo v telefon.",
+      dodajOpomba: "Koda se pokaže samo na središču: kdor ga ne vidi, se ne more povezati – tudi ne v javnem omrežju.",
       istaNaprava: "{ime} teče na tej napravi",
       daljinec: "Daljinec",
       ospredjeOpis: "Da se Safeer odpre sam, ko mu s telefona pošlješ stran ali ukaz, mu enkrat dovoli prekrivanje drugih aplikacij.",
@@ -839,6 +844,11 @@
       naprava: "Device",
       deliDotik: "Tap to share",
       deliKlik: "Click to share or use the remote",
+      dodajNaslov: "Add a phone or tablet",
+      dodajKorak1: "On the phone, open Safeer and choose Safeer Link in the menu.",
+      dodajKorak2: "Tap “Connect to Safeer Link”.",
+      dodajKorak3: "A 6-digit code appears on {sredisce} – type it into the phone.",
+      dodajOpomba: "The code is shown only on the hub: whoever cannot see it cannot connect – not even on public Wi-Fi.",
       istaNaprava: "{ime} runs on this device",
       daljinec: "Remote control",
       ospredjeOpis: "So that Safeer opens by itself when your phone sends it a page or a command, allow it once to appear over other apps.",
@@ -1615,6 +1625,9 @@
     pokazi("panelSync", false);
     pokazi("predvajalnik", false);
     pokazi("panelMape", stanje.znan && stanje.seznanjen);
+    pokazi("panelDodaj", stanje.znan && stanje.seznanjen);
+    var sredisce = imeSredisca() || t("televizor");
+    besedilo("dodajKorak3", t("dodajKorak3", { sredisce: sredisce }));
     narisiMape();
     narisiMeni();
   }
@@ -1627,6 +1640,7 @@
 
   function narisiMeni() {
     if (!jeNamizje()) return;
+    besedilo("dodajKorak3", t("dodajKorak3", { sredisce: imeSredisca() || t("televizor") }));
     document.body.classList.add("namizje");
     pokazi("stranskiMeni", true);
     // Razdelek je na voljo le, ce je njegov panel sploh na voljo (Control nima strani za posiljanje ne sinhronizacije).

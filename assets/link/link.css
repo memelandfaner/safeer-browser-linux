@@ -526,3 +526,16 @@ body.namizje[data-razdelek="poslji"] #zaslonPovezan .panel[data-razdelek="poslji
 body.namizje[data-razdelek="mape"] #zaslonPovezan .panel[data-razdelek="mape"]:not([hidden]),
 body.namizje[data-razdelek="sync"] #zaslonPovezan .panel[data-razdelek="sync"]:not([hidden]) { display: block !important; }
 
+/* Koraki (Dodaj napravo): stevilke v zelenem krogcu, besedilo v eni vrsti. */
+.koraki { list-style: none; counter-reset: korak; margin: 12px 0; padding: 0; }
+.koraki li { counter-increment: korak; display: flex; gap: 12px; align-items: baseline; margin: 10px 0; color: var(--besedilo); }
+.koraki li::before {
+  content: counter(korak);
+  flex: none;
+  width: 24px; height: 24px; line-height: 24px;
+  border-radius: 50%;
+  background: var(--zelenaTemna);
+  color: var(--zelena);
+  font-size: 13px; font-weight: 700; text-align: center;
+}
+
