@@ -43,7 +43,7 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("WebKit2", "4.1")
 from gi.repository import Gio, GLib, Gtk, WebKit2  # noqa: E402
 
-from core import link_datoteke, link_hub, link_programi, link_sway, link_tls, link_zaslon, link_zvok  # noqa: E402
+from core import link_datoteke, link_deljenje, link_hub, link_programi, link_sway, link_tls, link_zaslon, link_zvok  # noqa: E402
 from core.safeer_link import SafeerLink  # noqa: E402
 
 APP_ID = "io.github.memelandfaner.SafeerControl"
@@ -387,6 +387,7 @@ class SafeerControl(Gtk.Application):
       <method name="Seznam"><arg type="s" name="json" direction="out"/></method>
       <method name="Aplikacije"><arg type="s" name="naprava" direction="in"/><arg type="s" name="json" direction="out"/></method>
       <method name="Zazeni"><arg type="s" name="naprava" direction="in"/><arg type="s" name="app" direction="in"/><arg type="s" name="json" direction="out"/></method>
+      <method name="Preimenuj"><arg type="s" name="naprava" direction="in"/><arg type="s" name="ime" direction="in"/><arg type="s" name="json" direction="out"/></method>
     </interface></node>"""
 
     def _izvozi_naprave(self) -> None:
@@ -417,7 +418,15 @@ class SafeerControl(Gtk.Application):
         if metoda == "Seznam":
             return {"ok": True, "naprave": [
                 {"id": n.get("id", ""), "ime": n.get("ime", ""), "zmoznosti": n.get("zmoznosti") or [],
-                 "platforma": n.get("platforma", ""), "vrsta": n.get("vrsta", "")} for n in link.naprave]}
+                 "platforma": n.get("platforma", ""), "vrsta": n.get("vrsta", ""),
+                 "ta": n.get("id", "") == link._id()} for n in link.naprave]}
+        if metoda == "Preimenuj":
+            # Ime hrani sredisce (/cast/devices/rename) in ga vidijo vse naprave; prazno vrne prvotno ime.
+            if not (link._hub() and link._zeton() and link._odtis()):
+                return {"ok": False, "koda": "hub_ni_znan"}
+            ok, novo, n = link_deljenje.preimenuj_napravo(link._hub(), link._zeton() or "", link._odtis() or "",
+                                                          str(a[0]) if a else "", str(a[1]) if len(a) > 1 else "")
+            return {"ok": bool(ok), "ime": novo, "message": "" if ok else n.get("sporocilo", "")}
         if metoda == "Aplikacije":
             id_naprave = str(a[0]) if a else ""
             # Po kosih (racunalnik daje najvec 60 z ikonami na sporocilo); Android vrne vse naenkrat.

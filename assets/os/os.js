@@ -595,6 +595,7 @@
     var namig = $("napraveNamig");
     namig.hidden = povezan || !p.control || hubi.length > 0 || !p.hubi;
     namig.textContent = t("napraveNamig");
+    narisiSeznamNaprav(povezan && !!p.control);
     $("gumbControl").hidden = !p.control;
     $("gumbControlBesedilo").textContent = t(povezan ? "odpriControl" : "poveziNaprave");
     $("gumbControl").querySelector("svg").innerHTML = '<path d="' + IK[povezan ? "naprave" : "qr"] + '"/>';
@@ -613,6 +614,50 @@
     $("domControl").querySelector("svg").innerHTML = '<path d="' + IK[povezan ? "naprave" : "qr"] + '"/>';
     var sp = $("stanjePovezava");
     sp.innerHTML = '<i class="pika' + (povezan ? "" : " siva") + '"></i><span>' + ubezi(povezan ? t("povezano") : t("brezNaprav")) + "</span>";
+  }
+
+  // Naprave v Linku s preimenovanjem: ime hrani sredisce, zato ga vidijo vse naprave (telefon, TV, tablica).
+  var preimenujem = null;
+  function narisiSeznamNaprav(pokaziSeznam) {
+    var blok = $("blokSeznamNaprav");
+    blok.hidden = !pokaziSeznam;
+    if (!pokaziSeznam) { preimenujem = null; return; }
+    klic("vseNaprave").then(function (naprave) {
+      var ul = $("seznamNaprav"); ul.innerHTML = "";
+      (naprave || []).forEach(function (n) {
+        var li = el("li");
+        var opis = n.ta ? t("taRacunalnik") : (n.platforma ? t("plat_" + n.platforma) : (n.vrsta || ""));
+        if (preimenujem === n.id) {
+          li.innerHTML = svg(ikonaNaprave(n)) + '<input class="vnosImena" maxlength="64"><button class="gumb glavni majhen"></button><button class="gumb majhen"></button>';
+          var vnos = li.querySelector("input"); vnos.value = n.ime; vnos.placeholder = t("vnesiIme");
+          var gumbi = li.querySelectorAll("button");
+          gumbi[0].textContent = t("shraniIme"); gumbi[1].textContent = t("preklici");
+          gumbi[0].addEventListener("click", function () { shraniIme(n.id, vnos.value); });
+          gumbi[1].addEventListener("click", function () { preimenujem = null; narisiSeznamNaprav(true); });
+          vnos.addEventListener("keydown", function (e) {
+            if (e.key === "Enter") shraniIme(n.id, vnos.value);
+            if (e.key === "Escape") { preimenujem = null; narisiSeznamNaprav(true); }
+          });
+          setTimeout(function () { vnos.focus(); vnos.select(); }, 0);
+        } else {
+          li.innerHTML = svg(ikonaNaprave(n)) + "<div><b></b><small></small></div><button class=\"gumb majhen\"></button>";
+          li.querySelector("b").textContent = n.ime || n.id;
+          li.querySelector("small").textContent = opis;
+          var g = li.querySelector("button"); g.textContent = "✎ " + t("preimenuj"); g.title = t("preimenuj");
+          g.addEventListener("click", function () { preimenujem = n.id; narisiSeznamNaprav(true); });
+        }
+        ul.appendChild(li);
+      });
+      $("seznamNapravNamig").textContent = t("preimenujNamig");
+    }, function () {});
+  }
+  function shraniIme(id, ime) {
+    klic("preimenujNapravo", [id, ime]).then(function (r) {
+      preimenujem = null;
+      obvesti(t(r && r.ok ? "preimenovano" : "napPreimenovanje"));
+      narisiSeznamNaprav(true);
+      nalozNaprave();
+    }, function () { obvesti(t("napPreimenovanje")); });
   }
 
   // ------------------------------------------------------------------ stanje sistema (vrstica zgoraj)

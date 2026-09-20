@@ -384,3 +384,31 @@ class Stran(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PreimenovanjeNaprav(unittest.TestCase):
+    """Ime naprave hrani sredisce in ga vidijo vse naprave: Safeer OS ga spremeni prek Controla (D-Bus Preimenuj)."""
+
+    def test_preimenovanje_naprav(self):
+        koren = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(koren, "safeer_os.py"), encoding="utf-8") as f:
+            os_py = f.read()
+        self.assertIn('"vseNaprave": vse_naprave', os_py)
+        self.assertIn('"preimenujNapravo"', os_py)
+        self.assertIn('_control_naprave("Preimenuj"', os_py)
+        with open(os.path.join(koren, "safeer_control.py"), encoding="utf-8") as f:
+            control = f.read()
+        self.assertIn('<method name="Preimenuj">', control)
+        self.assertIn('link_deljenje.preimenuj_napravo(', control)
+        self.assertIn('"ta": n.get("id", "") == link._id()', control)
+        with open(os.path.join(koren, "assets", "os", "os.js"), encoding="utf-8") as f:
+            js = f.read()
+        self.assertIn('klic("preimenujNapravo", [id, ime])', js)
+        self.assertIn('klic("vseNaprave")', js)
+        with open(os.path.join(koren, "assets", "os", "index.html"), encoding="utf-8") as f:
+            html = f.read()
+        self.assertIn('id="seznamNaprav"', html)
+        with open(os.path.join(koren, "assets", "os", "besedila.js"), encoding="utf-8") as f:
+            b = f.read()
+        for kljuc in ("seznamNaprav", "preimenuj:", "shraniIme", "vnesiIme", "preimenovano", "napPreimenovanje", "preimenujNamig", "plat_tv", "plat_web"):
+            self.assertEqual(b.count(kljuc + ("" if kljuc.endswith(":") else ":")), 6, kljuc)
