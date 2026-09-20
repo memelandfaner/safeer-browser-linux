@@ -65,10 +65,32 @@ def _ime_naprave() -> str:
         return "racunalnik"
 
 
-def id_naprave() -> str:
+def stari_id_naprave() -> str:
+    """Id po imenu racunalnika (`pc-<ime>`), kot je veljal pred prehodom na id iz kljuca."""
     ime = _ime_naprave().split(".")[0].lower()
     cisto = "".join(z if (z.isalnum() or z in "-_") else "-" for z in ime)
     return "pc-" + (cisto or "safeer")
+
+
+_id_iz_kljuca: Optional[str] = None
+
+
+def id_naprave() -> str:
+    """Id te naprave: iz njenega kljuca (`n-<16 hex>`, link_krog.id_iz_kljuca) - isti na vseh hubih in po
+    menjavi huba; Control doda pripono `-control`. Stari `pc-<ime>` ostane v krogih kot alias: hub ga ob prvi
+    prijavi s podpisom sam poveze z novim. Ce kljuca ni mogoce dobiti, ostane stari id."""
+    global _id_iz_kljuca
+    if _id_iz_kljuca:
+        return _id_iz_kljuca
+    try:
+        _id_iz_kljuca = link_krog.id_iz_kljuca(link_krog.javni_kljuc_b64())
+        return _id_iz_kljuca
+    except Exception:
+        return stari_id_naprave()
+
+
+def je_id_iz_kljuca(device_id: str) -> bool:
+    return link_krog.je_id_iz_kljuca(device_id)
 
 
 class Nastavitve:
@@ -412,7 +434,7 @@ def vzemi_vstopnico(ws_naslov: str, zeton: str, odtis: Optional[str] = None) -> 
 # Krog zaupanja: prijava s podpisom kljuca naprave namesto zetona
 # ----------------------------------------------------------------------
 
-def vzemi_vstopnico_s_podpisom(ws_naslov: str, device_id: str, odtis: str) -> Tuple[Optional[str], int]:
+def vzemi_vstopnico_s_podpisom(ws_naslov: str, device_id: str, odtis: str, ime: str = "") -> Tuple[Optional[str], int]:
     """(vstopnica, koda HTTP) s podpisom kljuca naprave (core/link_krog.py).
 
     Hub poslje enkratni izziv, naprava podpise izziv + odtis huba + svoj id; hub preveri podpis
@@ -431,8 +453,10 @@ def vzemi_vstopnico_s_podpisom(ws_naslov: str, device_id: str, odtis: str) -> Tu
         podpis = link_krog.podpisi(link_krog.podatki_za_podpis(odtis_huba, nonce, device_id))
     except Exception:
         return None, 0
+    # Ime in platforma: ce hub nov id (iz kljuca) sele vpisuje kot alias starega, naj ima pravo ime.
     koda, odgovor = _zahteva(osnova + "/cast/auth/ticket",
-                             {"device_id": device_id, "nonce": nonce, "signature": podpis}, odtis=odtis)
+                             {"device_id": device_id, "nonce": nonce, "signature": podpis,
+                              "name": ime or "", "platform": "linux"}, odtis=odtis)
     if koda != 200:
         return None, koda
     krog = odgovor.get("ring")
@@ -754,11 +778,12 @@ class Povezava:
         # njem nima, gre po stari poti z zetonom.
         s_podpisom = False
         try:
-            s_podpisom = link_krog.je_vpisan(self.device_id)
+            # Tudi ce je nas kljuc v krogu pod starim id-jem: hub nov id sam vpise kot alias.
+            s_podpisom = link_krog.lahko_s_podpisom(self.device_id)
         except Exception:
             s_podpisom = False
         if s_podpisom:
-            vstopnica, koda = vzemi_vstopnico_s_podpisom(self.ws_naslov, self.device_id, self.odtis)
+            vstopnica, koda = vzemi_vstopnico_s_podpisom(self.ws_naslov, self.device_id, self.odtis, self.ime)
             if vstopnica:
                 self.prijava_s_podpisom = True
         if not vstopnica:

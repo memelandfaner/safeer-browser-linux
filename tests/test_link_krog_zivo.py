@@ -65,7 +65,9 @@ class KrogVZivo(unittest.TestCase):
         print(f"  prej vpisan: {prej}; prva prijava s podpisom: {prva[0]}, vpisala v krog: {prva[1]}")
         self.assertTrue(link_krog.je_vpisan(device_id), "po prvi prijavi mora biti kljuc v krogu")
         if not prej:
-            self.assertTrue(prva[1], "z zetonom bi se moral vpisati v krog")
+            # Nov id iz kljuca: ce je nas kljuc v krogu ze pod starim id-jem, gre ze prva prijava s podpisom
+            # in hub nov id vpise kot alias; sicer se z zetonom vpise v krog.
+            self.assertTrue(prva[1] or prva[0], "z zetonom bi se moral vpisati v krog ali pa priti s podpisom (alias)")
 
         p2 = link_hub.Povezava(hub, zeton, device_id, ime, odtis=odtis)
         self.assertTrue(p2.poveži(), "druga prijava")
