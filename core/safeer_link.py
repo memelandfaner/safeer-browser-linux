@@ -65,6 +65,9 @@ MOST_JS = """
     seznani: function () { poslji("seznani"); },
     potrdiKodo: function (koda) { poslji("potrdiKodo", [String(koda || "")]); },
     prekiniSeznanitev: function () { poslji("prekiniSeznanitev"); },
+    zacniQr: function () { poslji("zacniQr"); },
+    prekiniQr: function () { poslji("prekiniQr"); },
+    nadaljujBrezPovezave: function () { poslji("nadaljujBrezPovezave"); },
     poveziSe: function () { poslji("poveziSe"); },
     posljiTrenutno: function (id) { poslji("posljiTrenutno", [id]); },
     poslji: function (id, url, naslov) { poslji("poslji", [id, url, naslov]); },
@@ -142,6 +145,12 @@ class SafeerLink:
         self._seznanjanje = False
         # Odprta prijava na Hubu (pair_id, hub_id, odtis); caka na vnos kode.
         self._prijava: Optional[dict] = None
+        # Prijava s QR kodo (prijavno okno Safeer Control / Safeer OS): odprta koda in rod - nova koda
+        # ali zaprto okno povecata rod, da nit, ki caka na potrditev, sama odneha.
+        self._qr: Optional[dict] = None
+        self._qr_rod = 0
+        # »Nadaljuj brez povezave naprav« v prijavnem oknu (Safeer Control odpre Safeer OS na tem racunalniku).
+        self.ob_brez_povezave: Optional[Callable[[], None]] = None
         # Naslov, ki se je javil namesto potrjenega; caka na en uporabnikov dotik.
         self._predlagani_naslov = ""
         # Da iskanje po neuspeli povezavi ne tece v krogu.
@@ -188,9 +197,18 @@ class SafeerLink:
             "naprava": self._ime(),
             "id": self._id(),
             "control": self.control,
+            # V krogu zaupanja (prijava s podpisom, brez zetona): prijavnega okna ne potrebuje.
+            "vKrogu": self._v_krogu(),
+            "brezPovezave": self.ob_brez_povezave is not None,
             "deljeneMape": self._deljene_mape(),
             "standardneDeljene": self._standardne_deljene(),
         }
+
+    def _v_krogu(self) -> bool:
+        try:
+            return bool(self._odtis()) and link_krog.lahko_s_podpisom(self._id())
+        except Exception:
+            return False
 
     def _deljene_mape(self) -> list:
         """Deljene mape za stran: ime in pot (stran pot le izpise, nikamor je ne poslje)."""
@@ -362,6 +380,7 @@ class SafeerLink:
         # in zaslon tudi, ko Safeer Link ni odprt - kot telefon s storitvijo.
         self.okno = None
         self.pogled = None
+        self._prekini_qr()
         if self.ob_zaprtju is not None:
             try:
                 self.ob_zaprtju()
@@ -436,6 +455,9 @@ class SafeerLink:
             "potrdiKodo": lambda: self._v_ozadju(
                 lambda: self._potrdi_kodo(str(argumenti[0]) if argumenti else "")),
             "prekiniSeznanitev": lambda: self._prekini_seznanitev(),
+            "zacniQr": lambda: self._v_ozadju(self._zacni_qr),
+            "prekiniQr": lambda: self._prekini_qr(),
+            "nadaljujBrezPovezave": lambda: self._nadaljuj_brez_povezave(),
             "poveziSe": lambda: self._v_ozadju(self._povezi),
             "posljiTrenutno": lambda: self._poslji_trenutno(*argumenti[:1]),
             "poslji": lambda: self._poslji(*argumenti[:3]),
@@ -625,6 +647,76 @@ class SafeerLink:
 
     def _prekini_seznanitev(self) -> None:
         self._prijava = None
+
+    # ---------- prijava s QR kodo (prijavno okno) ----------
+
+    def _zacni_qr(self) -> None:
+        """QR koda za prijavo s telefonom ali tablico, ki sta ze v Safeer Linku. Koda se obnavlja
+        sama, dokler je prijavno okno odprto; ko jo clan Linka dovoli, se ta naprava poveze."""
+        self._qr_rod += 1
+        rod = self._qr_rod
+        self._preklici_qr()
+        if not self._hub():
+            self._poisci_hub()
+        naslov = self._hub()
+        prijava = link_hub.zacni_qr(naslov, self._id(), self._ime()) if naslov else None
+        if prijava is None and naslov:
+            # Znani naslov se ne oglasi - morda je sredisce dobilo nov naslov ali ga zdaj gosti druga naprava.
+            self._poisci_hub()
+            naslov = self._hub()
+            prijava = link_hub.zacni_qr(naslov, self._id(), self._ime()) if naslov else None
+        if rod != self._qr_rod:
+            if prijava and not prijava.get("napaka"):
+                link_hub.preklici_qr(naslov, prijava, self._id())
+            return
+        if not prijava or prijava.get("napaka"):
+            self._odziv("qr", {"napaka": (prijava or {}).get("napaka") or "ni_huba"})
+            return
+        svg = link_hub.qr_svg(prijava["povezava"])
+        self._qr = prijava
+        self._odziv("qr", {"svg": svg, "velja": prijava["velja"]})
+        konec = time.time() + max(30, int(prijava["velja"]) - 20)
+        while rod == self._qr_rod:
+            time.sleep(1.5)
+            if rod != self._qr_rod:
+                return
+            if time.time() > konec:
+                # Nova koda, preden stara potece - uporabnik nikoli ne skenira mrtve kode.
+                self._v_ozadju(self._zacni_qr)
+                return
+            zeton, razlog = link_hub.stanje_qr(naslov, prijava, self._id())
+            if zeton:
+                self._qr = None
+                self._qr_rod += 1
+                self.nastavitve.podatki["hub_url"] = naslov
+                self.nastavitve.podatki["control_token"] = zeton
+                self.nastavitve.podatki["hub_fp"] = prijava["odtis"]
+                self._zapomni_seznanitev()
+                self.nastavitve.shrani()
+                self._odziv("seznanitev", True)
+                self._povezi()
+                return
+            if razlog == "qr_ne_obstaja":
+                # Potekla ali preklicana (npr. preveč poskusov): takoj nova.
+                self._qr = None
+                self._v_ozadju(self._zacni_qr)
+                return
+
+    def _preklici_qr(self) -> None:
+        stara, self._qr = self._qr, None
+        naslov = self._hub()
+        if stara and naslov:
+            self._v_ozadju(lambda: link_hub.preklici_qr(naslov, stara, self._id()))
+
+    def _prekini_qr(self) -> None:
+        self._qr_rod += 1
+        self._preklici_qr()
+
+    def _nadaljuj_brez_povezave(self) -> None:
+        self._prekini_qr()
+        self._prijava = None
+        if self.ob_brez_povezave is not None:
+            GLib.idle_add(lambda: (self.ob_brez_povezave(), False)[1])
 
     def _povezi(self) -> None:
         with self._zaklep_povezave:

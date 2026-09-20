@@ -539,3 +539,98 @@ body.namizje[data-razdelek="sync"] #zaslonPovezan .panel[data-razdelek="sync"]:n
   font-size: 13px; font-weight: 700; text-align: center;
 }
 
+
+/* ---------- prijavno okno (Safeer Control / Safeer OS na racunalniku) ---------- */
+
+body.prijava header.glava, body.prijava #stranskiMeni, body.prijava footer.opozoriloWifi,
+body.prijava #hubStikalo { display: none !important; }
+body.namizje.prijava { display: block; height: auto; overflow: auto; }
+body.namizje.prijava main, body.prijava main { max-width: none; padding: 0; }
+
+.prijavaOkno {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 24px;
+}
+.prijavaZnak { display: flex; align-items: center; gap: 10px; font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
+.znakOs {
+  width: 40px; height: 40px; border-radius: 12px;
+  display: grid; place-items: center;
+  background: var(--zelena); color: var(--zelenaTemna);
+  font-size: 22px; font-weight: 800;
+}
+.prijavaOkno h2 { font-size: 28px; margin: 18px 0 4px; text-align: center; letter-spacing: -0.01em; }
+.prijavaPodnaslov { color: var(--medlo); margin: 0 0 26px; text-align: center; font-size: 15px; }
+
+.prijavaNacini {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 22px;
+  width: 100%;
+  max-width: 820px;
+}
+.prijavaNacin {
+  background: var(--plosca);
+  border: 1px solid var(--crta);
+  border-radius: 18px;
+  padding: 24px 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.prijavaNacin h3 { font-size: 17px; margin: 16px 0 6px; }
+.prijavaNacin p { color: var(--medlo); font-size: 14px; margin: 0; }
+.prijavaNacin .opomba { margin-top: 10px; }
+.prijavaNacin .drobniGumb { margin-top: 10px; cursor: pointer; }
+
+.qrOkvir {
+  width: 208px; height: 208px;
+  background: #fff;
+  border-radius: 14px;
+  padding: 8px;
+  display: grid; place-items: center;
+}
+.qrOkvir svg { width: 100%; height: 100%; display: block; }
+.qrOkvir.prazno { background: var(--ploscaSvetla); border: 1px dashed var(--crta); }
+.qrCakam { color: #56606b; font-size: 13px; padding: 12px; }
+
+.kodaIkona {
+  width: 208px; height: 88px;
+  display: grid; place-items: center;
+  color: var(--zelena);
+}
+.kodaIkona svg { width: 64px; height: 64px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.prijavaNacin .vnosStevilke { margin: 18px 0 10px; font-size: 30px; }
+.prijavaNacin button.glavni { margin-top: 0; cursor: pointer; }
+
+.prijavaLoci {
+  align-self: center;
+  color: var(--medlo);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+}
+
+button.povezavaGumb {
+  background: none;
+  border: 0;
+  color: var(--medlo);
+  font-size: 15px;
+  margin-top: 26px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+button.povezavaGumb:hover { color: var(--besedilo); }
+button.povezavaGumb:focus-visible { outline: 2px solid var(--zelena); outline-offset: 2px; }
+
+@media (max-width: 720px) {
+  .prijavaNacini { grid-template-columns: minmax(0, 1fr); }
+  .prijavaLoci { justify-self: center; }
+}

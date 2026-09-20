@@ -416,6 +416,94 @@ def potrdi_kodo(ws_naslov: str, prijava: dict, device_id: str, koda: str) -> Tup
     return zeton, ""
 
 
+# ----------------------------------------------------------------------
+# Prijava s QR kodo (prijavno okno Safeer OS / Safeer Control)
+# ----------------------------------------------------------------------
+
+# Povezava v QR: kamera telefona jo odpre v Safeer (aplikacija jo prestreze) ali na strani safeer.si/p,
+# ki ponudi »Odpri v Safeer«. Skrivnost je v delu za #, zato je streznik strani nikoli ne vidi.
+QR_POVEZAVA = "https://safeer.si/p#i={qr_id}&s={skrivnost}&f={odtis}"
+QR_ODTIS_ZNAKOV = 16
+
+
+def zacni_qr(ws_naslov: str, device_id: str, ime: str, platforma: str = "linux") -> Optional[dict]:
+    """Odpre prijavo s QR kodo. Vrne {"qr_id", "odtis", "skrivnost", "prevzem", "povezava", "velja"},
+    {"napaka": ...} ali None, ce se hub ne oglasi.
+
+    V QR gre skrivnost (hub dobi samo njen SHA-256) in zacetek odtisa potrdila, ki ga vidimo zdaj -
+    telefon ga primerja s hubom, ki mu zaupa, zato vsiljivec v sredini ne more dobiti potrditve.
+    Za prevzem zetona je druga skrivnost, ki je v QR ni.
+    """
+    import hashlib
+    import secrets
+    osnova = _osnova(ws_naslov)
+    if not osnova.startswith("https://"):
+        return {"napaka": "hub_brez_tls"}
+    skrivnost = secrets.token_hex(16)
+    prevzem = secrets.token_hex(24)
+    koda, odgovor, videni = link_tls.zahteva(osnova + "/cast/pair/qr/start", {
+        "device_id": device_id, "name": ime, "platform": platforma,
+        "secret_sha256": hashlib.sha256(skrivnost.encode("utf-8")).hexdigest(), "poll_secret": prevzem})
+    if koda == 404 or koda == 405:
+        return {"napaka": "hub_star"}
+    if koda != 200 or not videni:
+        if koda == 429:
+            return {"napaka": "prevec_prijav"}
+        return None
+    qr_id = str(odgovor.get("qr_id", "") or "")
+    if not qr_id:
+        return None
+    odtis = videni.lower()
+    return {
+        "qr_id": qr_id, "odtis": odtis, "skrivnost": skrivnost, "prevzem": prevzem,
+        "povezava": QR_POVEZAVA.format(qr_id=qr_id, skrivnost=skrivnost, odtis=odtis[:QR_ODTIS_ZNAKOV]),
+        "velja": int(odgovor.get("expires_in_seconds", 300) or 300),
+    }
+
+
+def stanje_qr(ws_naslov: str, prijava: dict, device_id: str) -> Tuple[Optional[str], str]:
+    """(zeton, "") ko je prijavo dovolil clan Safeer Linka; (None, "caka"), (None, "qr_ne_obstaja")
+    ali (None, "povezava_ni_uspela"). Govorimo samo s potrdilom, ki smo ga videli ob zacetku."""
+    koda, odgovor = _zahteva(_osnova(ws_naslov) + "/cast/pair/qr/status",
+                             {"qr_id": prijava.get("qr_id", ""), "device_id": device_id,
+                              "poll_secret": prijava.get("prevzem", "")}, odtis=prijava.get("odtis"))
+    if koda == 404:
+        return None, "qr_ne_obstaja"
+    if koda != 200:
+        return None, "povezava_ni_uspela"
+    zeton = odgovor.get("token")
+    if odgovor.get("approved") and isinstance(zeton, str) and zeton:
+        return zeton, ""
+    return None, "caka"
+
+
+def preklici_qr(ws_naslov: str, prijava: dict, device_id: str) -> None:
+    """Stara koda ne sme veljati do poteka, ko je okno zaprto ali koda zamenjana."""
+    try:
+        _zahteva(_osnova(ws_naslov) + "/cast/pair/qr/cancel",
+                 {"qr_id": prijava.get("qr_id", ""), "device_id": device_id,
+                  "poll_secret": prijava.get("prevzem", "")}, odtis=prijava.get("odtis"), timeout=3.0)
+    except Exception:
+        pass
+
+
+def qr_svg(besedilo: str) -> str:
+    """QR koda kot SVG (python3-qrcode). Prazen niz, ce knjiznice ni - stran takrat ponudi samo kodo."""
+    try:
+        import qrcode  # type: ignore
+        import qrcode.image.svg  # type: ignore
+    except Exception:
+        return ""
+    import io
+    qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M, border=2, box_size=10)
+    qr.add_data(besedilo)
+    qr.make(fit=True)
+    slika = qr.make_image(image_factory=qrcode.image.svg.SvgPathImage)
+    izhod = io.BytesIO()
+    slika.save(izhod)
+    return izhod.getvalue().decode("utf-8")
+
+
 def vzemi_vstopnico_s_kodo(ws_naslov: str, zeton: str, odtis: Optional[str] = None) -> Tuple[Optional[str], int]:
     """(vstopnica, koda HTTP). Koda 401 pomeni: Hub tega zetona ne pozna vec (npr. gostitelj
     je bil ponastavljen ali je napravo odstranil) - naprava se mora znova seznaniti."""
