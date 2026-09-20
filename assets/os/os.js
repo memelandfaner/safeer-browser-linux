@@ -134,6 +134,8 @@
   // ------------------------------------------------------------------ stanje
   var S = {
     zacetek: null, programi: [], skupina: "vse", razdelek: "domov", pot: "", stanje: null,
+    // Multi-host: programi drugih naprav v Safeer Linku (id naprave -> seznam), izbrana naprava ("" = ta racunalnik).
+    naprave: [], programiNaprav: {}, nalagam: {}, naprava: "",
     povezava: { stanje: "nov", control: true }, spletne: null, nedavne: []
   };
   var PRIVZETE_SPLETNE = [
@@ -154,6 +156,7 @@
     if (razdelek === "datoteke" && !S.pot) odpriNedavne();
     if (razdelek === "naprave") osveziPovezavo();
     if (razdelek === "nastavitve") narisiNastavitve();
+    if (razdelek === "programi") nalozNaprave();
     if (razdelek === "omrezje") nalozOmrezje(false);
     if (razdelek === "zvok") { nalozZvok(); zvokZanka(); if (!jblStanje) nalozJbl(); }
   }
@@ -200,6 +203,13 @@
     }, function () {});
   }
   function zazeni(p) {
+    if (p.naprava) {
+      var n = S.naprave.find(function (x) { return x.id === p.naprava; }) || { ime: "" };
+      obvesti(t("zaganjamNa", { ime: p.ime, naprava: n.ime }));
+      klic("zazeniNaNapravi", [p.naprava, p.id]).then(function (ok) { if (!ok) obvesti(t("niUspelo")); },
+                                                        function () { obvesti(t("niUspelo")); });
+      return;
+    }
     obvesti(t("odpiram", { ime: p.ime }));
     klic("zazeni", [p.id]).then(function (ok) {
       if (!ok) { obvesti(t("niUspelo")); return; }
@@ -240,23 +250,85 @@
     return b;
   }
   var SKUPINE = ["splet", "pisarna", "predstavnost", "igre", "ucenje", "programiranje", "orodja", "sistem", "drugo"];
+  // ---- multi-host: naprave v Linku in njihovi programi
+  function programiIzbrane() {
+    return S.naprava ? (S.programiNaprav[S.naprava] || []) : S.programi;
+  }
+  function vsiProgramiNaprav() {
+    var vsi = [];
+    Object.keys(S.programiNaprav).forEach(function (id) { vsi = vsi.concat(S.programiNaprav[id]); });
+    return vsi;
+  }
+  function nalozNaprave() {
+    if (S.povezava.stanje !== "povezan") { S.naprave = []; narisiPrograme(); return; }
+    klic("napraveSProgrami").then(function (n) {
+      S.naprave = n || [];
+      if (S.naprava && !S.naprave.some(function (x) { return x.id === S.naprava; })) S.naprava = "";
+      narisiPrograme();
+      S.naprave.forEach(function (x) { if (!S.programiNaprav[x.id]) nalozProgrameNaprave(x.id); });
+    }, function () {});
+  }
+  function nalozProgrameNaprave(id) {
+    if (S.nalagam[id]) return;
+    S.nalagam[id] = true;
+    klic("programiNaprave", [id]).then(function (r) {
+      S.nalagam[id] = false;
+      S.programiNaprav[id] = (r && r.programi) || [];
+      if (r && !r.ok) S.programiNaprav[id].napaka = r.koda || "napaka";
+      else if (r && r.deli === false) S.programiNaprav[id].napaka = "ne_deli";
+      narisiPrograme();
+    }, function () { S.nalagam[id] = false; narisiPrograme(); });
+  }
+  function ikonaNaprave(n) {
+    return n.platforma === "tv" ? "zaslon" : (n.platforma === "linux" || n.platforma === "windows" ? "namizje" : "naprave");
+  }
   function narisiPrograme() {
+    var fn = $("filtriNaprav");
+    fn.innerHTML = "";
+    fn.hidden = !S.naprave.length;
+    if (S.naprave.length) {
+      var ta = el("button", S.naprava === "" ? "izbran" : "", svg("namizje") + ubezi(t("taRacunalnik")) + "<span>" + S.programi.length + "</span>");
+      ta.addEventListener("click", function () { S.naprava = ""; S.skupina = "vse"; narisiPrograme(); });
+      fn.appendChild(ta);
+      S.naprave.forEach(function (n) {
+        var seznam = S.programiNaprav[n.id];
+        var st = seznam ? seznam.length : (S.nalagam[n.id] ? "…" : "");
+        var b = el("button", S.naprava === n.id ? "izbran" : "", svg(ikonaNaprave(n)) + ubezi(n.ime) + (st !== "" ? "<span>" + st + "</span>" : ""));
+        b.addEventListener("click", function () {
+          S.naprava = n.id; S.skupina = "vse"; narisiPrograme();
+          if (!S.programiNaprav[n.id]) nalozProgrameNaprave(n.id);
+        });
+        fn.appendChild(b);
+      });
+    }
+    var programi = programiIzbrane();
     var stevci = {};
-    S.programi.forEach(function (p) { stevci[p.skupina] = (stevci[p.skupina] || 0) + 1; });
-    $("programiPod").textContent = t("programiPod", { n: S.programi.length });
+    programi.forEach(function (p) { stevci[p.skupina] = (stevci[p.skupina] || 0) + 1; });
+    var izbranaNaprava = S.naprave.find(function (x) { return x.id === S.naprava; });
+    $("programiPod").textContent = S.naprava
+      ? t("programiNaprave", { n: programi.length, naprava: izbranaNaprava ? izbranaNaprava.ime : "" })
+      : (S.naprave.length ? t("programiPodNaprave", { n: S.programi.length, k: S.naprave.length }) : t("programiPod", { n: S.programi.length }));
     var filtri = $("filtri");
     filtri.innerHTML = "";
     ["vse"].concat(SKUPINE).forEach(function (s) {
       if (s !== "vse" && !stevci[s]) return;
       var b = el("button", s === S.skupina ? "izbran" : "",
-                 ubezi(t("sk_" + s)) + "<span>" + (s === "vse" ? S.programi.length : stevci[s]) + "</span>");
+                 ubezi(t("sk_" + s)) + "<span>" + (s === "vse" ? programi.length : stevci[s]) + "</span>");
       b.addEventListener("click", function () { S.skupina = s; narisiPrograme(); });
       filtri.appendChild(b);
     });
     var mreza = $("vsiProgrami");
     mreza.innerHTML = "";
-    S.programi.filter(function (p) { return S.skupina === "vse" || p.skupina === S.skupina; })
-      .forEach(function (p) { mreza.appendChild(ploscicaPrograma(p, true)); });
+    if (S.naprava) {
+      var seznamN = S.programiNaprav[S.naprava];
+      if (!seznamN) { mreza.appendChild(el("div", "programi-obvestilo", ubezi(t("nalagamPrograme")))); return; }
+      if (seznamN.napaka) {
+        mreza.appendChild(el("div", "programi-obvestilo", ubezi(t(seznamN.napaka === "ne_deli" ? "napravaNeDeli" : "napravaNiOdgovorila"))));
+        if (seznamN.napaka !== "ne_deli") return;
+      }
+    }
+    programi.filter(function (p) { return S.skupina === "vse" || p.skupina === S.skupina; })
+      .forEach(function (p) { mreza.appendChild(ploscicaPrograma(p, !p.naprava)); });
   }
   // Programi, ki jih ima vsak Mint, kot zacetni izbor, dokler uporabnik se nicesar ne odpira.
   var PRIVZETI = ["safeer-browser.desktop", "firefox.desktop", "nemo.desktop", "org.gnome.Terminal.desktop",
@@ -1042,15 +1114,17 @@
     var z = $("zadetki");
     z.innerHTML = "";
     // Programi
-    var programi = S.programi.map(function (p) {
+    var programi = S.programi.concat(vsiProgramiNaprav()).map(function (p) {
       var ocena = ujemanje(p.ime, n) * 10 + ujemanje(p.splosno, n) * 3 + ujemanje((p.kljucne || []).join(" "), n) * 2 +
         ujemanje(p.opis, n);
+      if (ocena && p.naprava) ocena -= 1;          // program tega racunalnika ima prednost pred istim na napravi
       return { p: p, ocena: ocena + (ocena ? Math.min(5, p.uporaba || 0) : 0) };
     }).filter(function (x) { return x.ocena > 0; }).sort(function (a, b) { return b.ocena - a.ocena; }).slice(0, 6);
     if (programi.length) {
       z.appendChild(el("h4", "", ubezi(t("zProgrami"))));
       programi.forEach(function (x) {
-        z.appendChild(zadetek(slikaAliCrka(x.p.ikona, x.p.ime), x.p.ime, x.p.opis, function () { zazeni(x.p); }));
+        var n2 = x.p.naprava ? S.naprave.find(function (y) { return y.id === x.p.naprava; }) : null;
+        z.appendChild(zadetek(slikaAliCrka(x.p.ikona, x.p.ime), x.p.ime, n2 ? n2.ime : x.p.opis, function () { zazeni(x.p); }));
       });
     }
     // Nastavitve
