@@ -54,7 +54,9 @@
     uporabnik: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4 21a8 8 0 0 1 16 0",
     zvonec: "M6 16v-5a6 6 0 0 1 12 0v5l2 2H4z M10 20a2 2 0 0 0 4 0",
     ura: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M12 7v5l3 2",
-    disk: "M4 6h16v12H4z M4 13h16 M16 16v.1"
+    disk: "M4 6h16v12H4z M4 13h16 M16 16v.1",
+    slusalke: "M4 15v-3a8 8 0 0 1 16 0v3 M4 15h3v5H5a1 1 0 0 1-1-1z M20 15h-3v5h2a1 1 0 0 0 1-1z",
+    mikrofon: "M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z M5 11a7 7 0 0 0 14 0 M12 18v3"
   };
   function svg(ime) {
     return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + (IK[ime] || IK.datoteka) + '"/></svg>';
@@ -153,6 +155,7 @@
     if (razdelek === "naprave") osveziPovezavo();
     if (razdelek === "nastavitve") narisiNastavitve();
     if (razdelek === "omrezje") nalozOmrezje(false);
+    if (razdelek === "zvok") { nalozZvok(); zvokZanka(); }
   }
   window.safeerOsPojdi = function (kam) {
     kam = String(kam || "");
@@ -680,6 +683,173 @@
     $("gumbOmrezjeNapredno").hidden = !o.napredno;
   }
 
+  // ------------------------------------------------------------------ zvok
+  var zvokStanje = null, zvokCas = 0, zvokDotik = 0, zvokCaka = "";
+  var IKONA_ZVOKA = { zvocniki: "zvok", slusalke: "slusalke", hdmi: "zaslon", bluetooth: "bluetooth", usb: "zvok", mikrofon: "mikrofon" };
+  function nalozZvok() {
+    klic("zvok").then(function (z) {
+      zvokStanje = z;
+      // Med vlecenjem drsnika ali izbiro v meniju ne risemo znova - sicer bi uporabniku ukradli miško.
+      var a = document.activeElement;
+      if (a && (a.type === "range" || a.tagName === "SELECT") && $("r-zvok").contains(a)) return;
+      if (Date.now() - zvokDotik < 1200) return;
+      narisiZvok(z);
+    }, function () {});
+  }
+  function zvokZanka() {
+    clearInterval(zvokCas);
+    zvokCas = setInterval(function () {
+      if (S.razdelek !== "zvok") { clearInterval(zvokCas); return; }
+      nalozZvok();
+    }, 2000);
+  }
+  function zvokDrsnik(kljuc, ikona, vrednost, utisan, naGlasnost, naUtisaj) {
+    var ovoj = el("div", "zvok-glasnost");
+    var d = drsnik(kljuc, utisan ? "utisan" : ikona, Math.min(100, vrednost), function (v) { zvokDotik = Date.now(); naGlasnost(v); });
+    d.querySelector("input").addEventListener("input", function () { zvokDotik = Date.now(); });
+    var u = el("button", "gumb-utisaj" + (utisan ? " utisan" : ""), svg(utisan ? "utisan" : "zvok"));
+    u.title = t("utisaj");
+    u.addEventListener("click", function () { zvokDotik = 0; naUtisaj(!utisan); });
+    ovoj.appendChild(d);
+    ovoj.appendChild(u);
+    return ovoj;
+  }
+  function zvokVrstica(ikona, ime, pod, izbran, desno) {
+    var v = el("div", "vrstica" + (izbran ? " izbran" : ""));
+    v.tabIndex = 0;
+    v.innerHTML = svg(ikona) + '<span class="besedilo"><b>' + ubezi(ime) + "</b>" + (pod ? "<small>" + ubezi(pod) + "</small>" : "") + "</span>";
+    var d = el("span", "dejanja");
+    if (desno) d.appendChild(desno);
+    v.appendChild(d);
+    return v;
+  }
+  function narisiZvok(z) {
+    z = z || { izhodi: [], vhodi: [], programi: [], link: { naprave: [], zvok: {} } };
+    var link = z.link || { naprave: [], zvok: {} }, naLinku = (link.zvok || {}).naprava || "";
+    // Izhodi racunalnika
+    var c = $("zvokIzhodi");
+    c.innerHTML = "";
+    z.izhodi.forEach(function (i) {
+      var izbran = i.privzeti && !naLinku;
+      var pod = [t("tip_" + i.vrsta), i.podnapis].filter(function (x, k, a) {
+        return x && a.indexOf(x) === k && x.toLowerCase() !== String(i.ime).toLowerCase();
+      }).join(" · ");
+      var v = zvokVrstica(IKONA_ZVOKA[i.vrsta] || "zvok", i.ime, pod, izbran, izbran ? el("span", "znacka", ubezi(t("vUporabi"))) : null);
+      var izberi = function () {
+        if (izbran) return;
+        zvokDotik = 0;
+        klic("zvokIzhod", [i.id]).then(function (ok) {
+          if (!ok) obvesti(t("niUspelo")); else if (naLinku) obvesti(t("zvokNazaj"));
+          nalozZvok(); osveziStanje();
+        });
+      };
+      v.addEventListener("click", izberi);
+      v.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); izberi(); } });
+      c.appendChild(v);
+    });
+    if (!z.izhodi.length) c.appendChild(el("div", "prazno", ubezi(t("niUspelo"))));
+    var g = $("zvokGlasnostIzhoda");
+    g.innerHTML = "";
+    var privzeti = z.izhodi.filter(function (i) { return i.privzeti; })[0];
+    if (privzeti && !naLinku) {
+      g.appendChild(zvokDrsnik("glasnost", "zvok", privzeti.glasnost, privzeti.utisan,
+        function (v) { klic("zvokGlasnostIzhoda", [privzeti.id, v]).then(osveziStanje); },
+        function (u) { klic("zvokUtisajIzhod", [privzeti.id, u]).then(function () { nalozZvok(); osveziStanje(); }); }));
+    }
+    // Naprave v Safeer Linku
+    var l = $("zvokLink");
+    l.innerHTML = "";
+    link.naprave.forEach(function (n) {
+      var tece = naLinku === n.id, caka = zvokCaka === n.id && !tece;
+      var ikona = (n.platforma === "tablet" || n.platforma === "phone") ? "naprave" : "zaslon";
+      var gumb;
+      if (tece) {
+        gumb = el("span", "dejanja");
+        var st = (link.zvok.stanje === "tece") ? "zvokPredvaja" : "zvokPovezujem";
+        gumb.appendChild(el("span", "znacka" + (link.zvok.stanje === "tece" ? " tece" : ""), ubezi(t(st))));
+        var ust = el("button", "gumb", ubezi(t("ustavi")));
+        ust.addEventListener("click", function (e) {
+          e.stopPropagation();
+          klic("zvokUstavi").then(function () { zvokCaka = ""; obvesti(t("zvokNazaj")); setTimeout(nalozZvok, 600); });
+        });
+        gumb.appendChild(ust);
+      } else {
+        gumb = el("button", "gumb" + (caka ? "" : " glavni"), ubezi(t(caka ? "zvokPovezujem" : "predvajajTukaj")));
+        gumb.addEventListener("click", function (e) {
+          e.stopPropagation();
+          zvokCaka = n.id;
+          narisiZvok(z);
+          klic("zvokNaNapravo", [n.id]).then(function (ok) {
+            if (!ok) { zvokCaka = ""; obvesti(t("niUspelo")); } else obvesti(t("zvokNaNapravoZacet", { ime: n.ime }));
+            setTimeout(nalozZvok, 800); setTimeout(function () { zvokCaka = ""; nalozZvok(); }, 6000);
+          });
+        });
+      }
+      l.appendChild(zvokVrstica(ikona, n.ime, "Safeer Link", tece, gumb));
+    });
+    if (!link.naprave.length) l.appendChild(el("div", "prazno", ubezi(t(link.povezan ? "zvokBrezNaprav" : "zvokBrezLinka"))));
+    // Programi
+    var p = $("zvokProgrami");
+    p.innerHTML = "";
+    var izbire = z.izhodi.map(function (i) { return [i.id, i.ime]; });
+    if (naLinku) izbire.push(["safeer_link_zvok", link.zvok.ime || "Safeer Link"]);
+    z.programi.forEach(function (pr) {
+      var v = el("div", "vrstica program" + (pr.predvaja ? "" : " tiho"));
+      v.appendChild(el("span", "crka", ubezi(String(pr.ime || "?").charAt(0).toUpperCase())));
+      v.appendChild(el("span", "besedilo", "<b>" + ubezi(pr.ime) + "</b><small>" + ubezi(pr.predvaja ? (pr.naslov || "") : t("zvokUstavljeno")) + "</small>"));
+      var r = el("input");
+      r.type = "range"; r.min = 0; r.max = 100; r.value = Math.min(100, pr.glasnost);
+      r.setAttribute("aria-label", t("glasnost") + " · " + pr.ime);
+      var o = el("output", "", Math.min(100, pr.glasnost) + " %");
+      var zam = 0;
+      r.addEventListener("input", function () {
+        zvokDotik = Date.now();
+        o.textContent = r.value + " %";
+        clearTimeout(zam);
+        zam = setTimeout(function () { klic("zvokGlasnostPrograma", [pr.id, parseInt(r.value, 10)]); }, 120);
+      });
+      var u = el("button", "gumb-utisaj" + (pr.utisan ? " utisan" : ""), svg(pr.utisan ? "utisan" : "zvok"));
+      u.title = t("utisaj");
+      u.addEventListener("click", function () { klic("zvokUtisajProgram", [pr.id, !pr.utisan]).then(nalozZvok); });
+      var s = el("select");
+      s.title = t("zvokIzhodPrograma");
+      izbire.forEach(function (i) {
+        var op = el("option", "", ubezi(i[1]));
+        op.value = i[0];
+        if (i[0] === pr.izhod) op.selected = true;
+        s.appendChild(op);
+      });
+      s.addEventListener("change", function () {
+        klic("zvokPremakniProgram", [pr.id, s.value]).then(function (ok) { if (!ok) obvesti(t("niUspelo")); s.blur(); nalozZvok(); });
+      });
+      v.appendChild(r); v.appendChild(o); v.appendChild(u);
+      if (izbire.length > 1) v.appendChild(s);
+      p.appendChild(v);
+    });
+    $("blokZvokProgrami").hidden = !z.programi.length;
+    // Vhod
+    var vh = $("zvokVhodi");
+    vh.innerHTML = "";
+    z.vhodi.forEach(function (i) {
+      var v = zvokVrstica(IKONA_ZVOKA[i.vrsta] || "mikrofon", i.ime, i.podnapis, i.privzeti, i.privzeti ? el("span", "znacka", ubezi(t("vUporabi"))) : null);
+      v.addEventListener("click", function () {
+        if (i.privzeti) return;
+        klic("zvokVhod", [i.id]).then(function (ok) { if (!ok) obvesti(t("niUspelo")); nalozZvok(); });
+      });
+      vh.appendChild(v);
+    });
+    var gv = $("zvokGlasnostVhoda");
+    gv.innerHTML = "";
+    var vhod = z.vhodi.filter(function (i) { return i.privzeti; })[0];
+    if (vhod) {
+      gv.appendChild(zvokDrsnik("mikrofon", "mikrofon", vhod.glasnost, vhod.utisan,
+        function (v) { klic("zvokGlasnostVhoda", [vhod.id, v]); },
+        function (u) { klic("zvokUtisajVhod", [vhod.id, u]).then(nalozZvok); }));
+    }
+    $("blokZvokVhod").hidden = !z.vhodi.length;
+    $("gumbZvokNapredno").hidden = !z.napredno;
+  }
+
   // ------------------------------------------------------------------ nastavitve
   var SKUPINE_NASTAVITEV = [
     ["g_videz", "paleta", ["backgrounds", "themes", "fonts", "effects", "desktop", "panel", "applets", "desklets", "extensions"]],
@@ -716,6 +886,8 @@
   function odpriNastavitev(n) {
     // Omrezje ima Safeer OS svojo stran; Mintovo okno ostane pod »Napredno«.
     if (n.modul === "omrezje") { pojdi("omrezje"); return; }
+    // Zvok ima Safeer OS svojo stran (izhodi, programi, naprave v Linku); Mintovo okno je pod »Napredno«.
+    if (n.modul === "sound") { pojdi("zvok"); return; }
     obvesti(t("odpiram", { ime: n.ime }));
     klic("nastavitve", [n.modul]).then(function (ok) { if (!ok) obvesti(t("niUspelo")); });
   }
@@ -973,6 +1145,13 @@
       klic("nastavitve", ["omrezje"]);
     });
     $("stanjeOmrezje").addEventListener("click", function (e) { e.stopPropagation(); zapriSloje(); pojdi("omrezje"); });
+    $("stanjeZvok").addEventListener("click", function (e) { e.stopPropagation(); zapriSloje(); pojdi("zvok"); });
+    $("stanjeZvok").addEventListener("contextmenu", function (e) { e.preventDefault(); e.stopPropagation(); zapriSloje(); pojdi("zvok"); });
+    $("gumbZvokNazaj").addEventListener("click", function () { pojdi("nastavitve"); });
+    $("gumbZvokNapredno").addEventListener("click", function () {
+      obvesti(t("odpiram", { ime: t("napredno") }));
+      klic("nastavitve", ["sound"]);
+    });
     $("mintPreklici").addEventListener("click", zapriSloje);
     $("mintSamoTokrat").addEventListener("click", function () { klic("nazajVMint", [false]); });
     $("mintZaStalno").addEventListener("click", function () { klic("nazajVMint", [true]); });

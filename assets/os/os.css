@@ -435,3 +435,28 @@ body.namizje #noga { display: none; }
 div.vrstica { cursor: default; }
 .gumbi-naprav { display: flex; gap: 10px; flex-wrap: wrap; }
 .gumb.opozorilo { border-color: var(--rdeca); color: #ffb3b3; }
+
+/* Zvok */
+.zvok-izbira .vrstica { cursor: pointer; }
+.zvok-izbira .vrstica.izbran { border-color: var(--zelena); background: var(--kartica-poudarek); }
+.zvok-izbira .vrstica .besedilo { flex: 1; min-width: 0; }
+.zvok-izbira .vrstica .besedilo b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zvok-izbira .vrstica .besedilo small { display: block; color: var(--medlo); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zvok-glasnost { display: flex; gap: 10px; align-items: stretch; margin: 10px 0 4px; max-width: 1100px; }
+.zvok-glasnost .drsnik { flex: 1; }
+.zvok-glasnost .gumb-utisaj, .program .gumb-utisaj { width: 56px; border-radius: 16px; background: var(--kartica); border: 1px solid var(--rob); display: grid; place-items: center; color: var(--zelena); }
+.zvok-glasnost .gumb-utisaj.utisan, .program .gumb-utisaj.utisan { color: var(--rdeca); border-color: rgba(255, 107, 107, .5); }
+.zvok-glasnost .gumb-utisaj:hover, .program .gumb-utisaj:hover { border-color: var(--zelena); }
+.vrstica.program { flex-wrap: wrap; gap: 10px 14px; }
+.vrstica.program .crka { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: rgba(84, 214, 165, .16); color: var(--zelena); font-weight: 700; flex: none; }
+.vrstica.program .besedilo { flex: 1 1 200px; min-width: 0; }
+.vrstica.program .besedilo b { display: block; font-weight: 600; }
+.vrstica.program .besedilo small { display: block; color: var(--medlo); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vrstica.program input[type=range] { flex: 1 1 220px; accent-color: var(--zelena); }
+.vrstica.program output { width: 48px; text-align: right; color: var(--medlo); }
+.vrstica.program .gumb-utisaj { width: 40px; height: 36px; border-radius: 10px; }
+.vrstica.program select { height: 36px; border-radius: 10px; background: rgba(255, 255, 255, .07); color: var(--besedilo); border: 1px solid var(--rob); padding: 0 10px; max-width: 260px; font: inherit; font-size: 14px; }
+.vrstica.program.tiho { opacity: .6; }
+#r-zvok .drobno { color: var(--medlo); margin: -4px 0 12px; max-width: 900px; }
+.vrstica .znacka.tece { animation: utrip 1.6s ease-in-out infinite; }
+@keyframes utrip { 50% { opacity: .55; } }

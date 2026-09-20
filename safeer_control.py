@@ -42,7 +42,7 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("WebKit2", "4.1")
 from gi.repository import Gio, GLib, Gtk, WebKit2  # noqa: E402
 
-from core import link_datoteke, link_hub, link_programi, link_sway, link_tls, link_zaslon  # noqa: E402
+from core import link_datoteke, link_hub, link_programi, link_sway, link_tls, link_zaslon, link_zvok  # noqa: E402
 from core.safeer_link import SafeerLink  # noqa: E402
 
 APP_ID = "io.github.memelandfaner.SafeerControl"
@@ -354,6 +354,10 @@ class SafeerControl(Gtk.Application):
                              else None)
         self.programi.drugi = self.drugi_zaslon
         self.zaslon.drugi = self.drugi_zaslon
+        # Zvok racunalnika na televizorju ali tablici (Safeer OS: stran Zvok). Navidezni izhod, ki ga je
+        # pustil prejsnji (ubit) Control, pospravimo takoj - sicer bi zvok sel v prazno.
+        self.zvok = link_zvok.ZvokNaNapravo()
+        self.zvok.ustavi()
 
     def do_startup(self) -> None:
         Gtk.Application.do_startup(self)
@@ -363,10 +367,14 @@ class SafeerControl(Gtk.Application):
         self.add_action(zaupanje)
         # Safeer OS: prijavno okno, »Poveži novo napravo« in »Odjavi ta računalnik«.
         for ime, klic in (("prijava", self.prijava_iz_os), ("nova-naprava", self.nova_naprava),
-                          ("odjava", self.odjava)):
+                          ("odjava", self.odjava), ("zvok-ustavi", self.zvok_ustavi)):
             dejanje = Gio.SimpleAction.new(ime, None)
             dejanje.connect("activate", lambda _d, _v, k=klic: k())
             self.add_action(dejanje)
+        # Safeer OS: »Predvajaj na« - zvok racunalnika na napravo v Safeer Linku (id naprave).
+        zvok = Gio.SimpleAction.new("zvok-na-napravo", GLib.VariantType.new("s"))
+        zvok.connect("activate", lambda _d, v: self.zvok_na_napravo(v.get_string()))
+        self.add_action(zvok)
         if self.ozadje:
             self.hold()  # brez okna bi se GApplication koncal; ikona v pladnju ga drzi
 
@@ -398,6 +406,8 @@ class SafeerControl(Gtk.Application):
         self.link.datoteke = self.datoteke
         self.link.programi = self.programi
         self.link.zaslon = self.zaslon
+        self.link.zvok = self.zvok
+        self.zvok.ob_spremembi = lambda _opis: self.link.zapisi_stanje_za_os() if self.link is not None else None
 
     # ------------------------------------------------------------------ Safeer OS
     _iz_os = False
@@ -433,6 +443,17 @@ class SafeerControl(Gtk.Application):
         if self.link is None:
             self._pripravi_link()
         self.link._v_ozadju(self.link._pozabi_napravo)
+
+    def zvok_na_napravo(self, id_naprave: str) -> None:
+        if self.link is None:
+            self._pripravi_link()
+        self.link._v_ozadju(lambda: self.link.zvok_na_napravo(str(id_naprave or "")))
+
+    def zvok_ustavi(self) -> None:
+        if self.link is None:
+            self.zvok.ustavi()
+            return
+        self.link._v_ozadju(self.link.zvok_ustavi)
 
     def _po_seznanitvi(self) -> None:
         if not self._iz_os:
@@ -571,6 +592,10 @@ class SafeerControl(Gtk.Application):
             pass
         try:
             self.datoteke.ustavi()
+        except Exception:
+            pass
+        try:
+            self.zvok.ustavi()
         except Exception:
             pass
         try:

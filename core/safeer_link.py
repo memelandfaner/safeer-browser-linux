@@ -140,6 +140,8 @@ class SafeerLink:
         self.datoteke = None
         self.programi = None
         self.zaslon = None
+        # Safeer Control: zvok racunalnika na napravi v Linku (core/link_zvok.ZvokNaNapravo).
+        self.zvok = None
 
         self.nastavitve = nastavitve if nastavitve is not None else link_hub.Nastavitve()
         self.povezava: Optional[link_hub.Povezava] = None
@@ -960,6 +962,7 @@ class SafeerLink:
 
     def _na_stanje_povezave(self, povezan: bool) -> None:
         self._odziv("povezava", povezan)
+        self.zapisi_stanje_za_os()
         if self.ob_povezavi is not None:
             try:
                 self.ob_povezavi(povezan)
@@ -1001,6 +1004,11 @@ class SafeerLink:
                 })
             self.naprave = naprave
             self._odziv("naprave", naprave)
+            zvok = self.zvok
+            if zvok is not None and zvok.naprava and not any(n["id"] == zvok.naprava for n in naprave):
+                # Naprava, ki je predvajala zvok racunalnika, je izginila iz Linka: zvok nazaj.
+                self._v_ozadju(zvok.ustavi)
+            self.zapisi_stanje_za_os()
         elif vrsta == "cast.status":
             telo = sporocilo.get("payload") or {}
             self._odziv("predvajanje", {
@@ -1341,9 +1349,87 @@ class SafeerLink:
             "payload": {"action": dejanje, "params": parametri if isinstance(parametri, dict) else {}},
         })
 
+    # ------------------------------------------------------------------
+    # Zvok racunalnika na napravi v Linku (Safeer OS: stran Zvok)
+    # ------------------------------------------------------------------
+
+    def zapisi_stanje_za_os(self) -> None:
+        """Safeer OS (locen proces) bere naprave in stanje zvoka iz datoteke v XDG_RUNTIME_DIR.
+        Samo imena, zmoznosti in platforma - nic, kar bi bilo skrivno."""
+        if not self.control:
+            return
+        try:
+            mapa = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/run/user/%d" % os.getuid(), "safeer-link")
+            os.makedirs(mapa, mode=0o700, exist_ok=True)
+            p = self.povezava
+            stanje = {
+                "povezan": bool(p is not None and p.tece),
+                "naprave": [{"id": n.get("id", ""), "ime": n.get("ime", ""), "zmoznosti": n.get("zmoznosti") or [],
+                             "platforma": n.get("platforma", ""), "vrsta": n.get("vrsta", "")}
+                            for n in self.naprave],
+                "zvok": self.zvok.opis() if self.zvok is not None else {},
+                "cas": time.time(),
+            }
+            zacasna = os.path.join(mapa, ".stanje.json")
+            with open(zacasna, "w", encoding="utf-8") as f:
+                json.dump(stanje, f, ensure_ascii=False)
+            os.replace(zacasna, os.path.join(mapa, "stanje.json"))
+        except Exception as e:  # noqa: BLE001
+            print(f"[SafeerLink] Stanja za Safeer OS ni bilo mogoče zapisati: {e}")
+
+    def zvok_na_napravo(self, id_naprave: str) -> bool:
+        """Zvok racunalnika na napravo v Linku (klic iz ozadja). Naprava mora imeti zmoznost `audio`."""
+        from core import link_zvok
+        zvok, povezava = self.zvok, self.povezava
+        naprava = next((n for n in self.naprave if n.get("id") == id_naprave), None)
+        if zvok is None or povezava is None or not povezava.tece or naprava is None:
+            return False
+        if link_zvok.ZMOZNOST not in (naprava.get("zmoznosti") or []):
+            return False
+        try:
+            parametri = zvok.zacni(id_naprave, str(naprava.get("ime") or ""), self._hub())
+        except Exception as e:  # noqa: BLE001
+            print(f"[SafeerLink] Zvoka ni bilo mogoče pripraviti: {e}")
+            zvok.ustavi()
+            return False
+        poslano = povezava.poslji({
+            "id": "zvok-" + str(int(time.time() * 1000)),
+            "type": "control.command",
+            "target": id_naprave,
+            "payload": {"action": "audio.play", "params": parametri},
+        })
+        if not poslano:
+            zvok.ustavi()
+        return bool(poslano)
+
+    def zvok_ustavi(self) -> bool:
+        """Zvok nazaj na racunalnik; napravi povemo, naj neha (povezavo sicer zapre ze racunalnik)."""
+        zvok, povezava = self.zvok, self.povezava
+        if zvok is None:
+            return False
+        naprava = zvok.naprava
+        imel = zvok.ustavi()
+        if naprava and povezava is not None and povezava.tece:
+            povezava.poslji({"id": "zvok-stop-" + str(int(time.time() * 1000)), "type": "control.command",
+                             "target": naprava, "payload": {"action": "audio.stop", "params": {}}})
+        return imel
+
+    def _zvok_odziv(self, sporocilo: dict, telo: dict) -> None:
+        if sporocilo.get("type") == "control.ack" and sporocilo.get("status") == "accepted":
+            return
+        if str(sporocilo.get("ref_id", "")).startswith("zvok-stop-"):
+            return
+        ok = sporocilo.get("type") != "control.ack" and bool(telo.get("ok"))
+        if not ok and self.zvok is not None:
+            print("[SafeerLink] Naprava zvoka ne sprejme: %s" % (telo.get("message") or sporocilo.get("error") or "?"))
+            self._v_ozadju(self.zvok.ustavi)
+
     def _ukaz_odziv(self, sporocilo: dict) -> None:
         """Odgovor naprave (control.result) ali zavrnitev sredisca (control.ack) -> stran."""
         telo = sporocilo.get("payload") or {}
+        if str(sporocilo.get("ref_id", "") or "").startswith("zvok-"):
+            self._zvok_odziv(sporocilo, telo)
+            return
         if str(sporocilo.get("ref_id", "") or "").startswith("vnos-"):
             # Odgovor na vnos iz okna gledalca: stran Linka ga ne potrebuje.
             if self.ob_odzivu_vnosa is not None:
