@@ -183,6 +183,33 @@ class RazresevalnikTest(unittest.TestCase):
         self.assertEqual(r.vrata, 0)
 
 
+class UsmeriTest(unittest.TestCase):
+    def test_rezerva_za_docker(self):
+        """resolvectl dobi nas razresevalnik PRVI in streznike usmerjevalnika kot rezervo: brez njih bi
+        /run/systemd/resolve/resolv.conf ostal brez uporabnega streznika (Docker izpusti loopback)."""
+        klici = []
+
+        def zazeni(ukaz, cas=8.0):
+            klici.append(ukaz)
+            return 0, ""
+        izvirni = os_scit._zazeni
+        os_scit._zazeni = zazeni
+        try:
+            self.assertTrue(os_scit.usmeri("eth9", 5354, ["192.168.0.1", "1.1.1.1"]))
+        finally:
+            os_scit._zazeni = izvirni
+        self.assertEqual(klici[0], ["resolvectl", "dns", "eth9", "127.0.0.1:5354", "192.168.0.1", "1.1.1.1"])
+        self.assertEqual(klici[1], ["resolvectl", "domain", "eth9", "~."])
+
+    def test_trenutni_streznik(self):
+        izvirni = os_scit._zazeni
+        os_scit._zazeni = lambda ukaz, cas=8.0: (0, "Link 2 (eth9)\n    Current DNS Server: 192.168.0.1\n       DNS Servers: 127.0.0.1:5354 192.168.0.1\n")
+        try:
+            self.assertEqual(os_scit.trenutni_streznik("eth9"), "192.168.0.1")
+        finally:
+            os_scit._zazeni = izvirni
+
+
 class ScitTest(unittest.TestCase):
     def test_stanje_brez_sistema(self):
         class Shramba(dict):

@@ -536,6 +536,15 @@ def dns_vmesnika(vmesnik: str) -> str:
     return izpis.split(":", 1)[1].strip() if koda == 0 and ":" in izpis else ""
 
 
+def trenutni_streznik(vmesnik: str) -> str:
+    """Streznik, ki ga systemd-resolved za ta vmesnik trenutno uporablja (»Current DNS Server«)."""
+    koda, izpis = _zazeni(["resolvectl", "status", vmesnik])
+    if koda != 0:
+        return ""
+    m = re.search(r"Current DNS Server:\s*(\S+)", izpis)
+    return m.group(1) if m else ""
+
+
 def pravilo_namesceno() -> bool:
     """Ali smemo nastaviti DNS brez gesla. Mape /etc/polkit-1/rules.d uporabnik ne more brati (0750
     root:polkitd), zato pravila ne iscemo po datoteki, ampak polkit vprasamo naravnost (pkcheck brez
@@ -586,8 +595,12 @@ def namesti_pravilo() -> bool:
             pass
 
 
-def usmeri(vmesnik: str, vrata: int) -> bool:
-    ok1, _ = _zazeni(["resolvectl", "dns", vmesnik, "%s:%d" % (NASLOV, vrata)], cas=30.0)
+def usmeri(vmesnik: str, vrata: int, rezerva: Optional[List[str]] = None) -> bool:
+    """DNS vmesnika: nas razresevalnik prvi, strezniki usmerjevalnika za njim kot rezerva. Rezerva je
+    nujna: Docker in podobni bereta /run/systemd/resolve/resolv.conf, kjer resolved nas 127.0.0.1 izpusti
+    (loopback brez vrat) - brez rezerve bi vsebniki ostali brez DNS. resolved uporablja prvi streznik,
+    na rezervo preide sele, ce nas ne odgovori; straza ga vrne nazaj."""
+    ok1, _ = _zazeni(["resolvectl", "dns", vmesnik, "%s:%d" % (NASLOV, vrata)] + list(rezerva or []), cas=30.0)
     ok2, _ = _zazeni(["resolvectl", "domain", vmesnik, "~."], cas=30.0)
     return ok1 == 0 and ok2 == 0
 
@@ -677,11 +690,13 @@ class Scit:
         povezani = vmesniki_povezani()
         strezniki: List[str] = []
         for v in povezani:
-            for s in upstream_strezniki(v):
+            lastni = upstream_strezniki(v)
+            for s in lastni:
                 if s not in strezniki:
                     strezniki.append(s)
-            if dns_vmesnika(v) != cilj:
-                if usmeri(v, r.vrata) and v not in self.vmesniki:
+            # Nastavimo (znova), ce nas ni na prvem mestu ali ce je resolved presel na rezervo.
+            if not dns_vmesnika(v).startswith(cilj) or (self.vmesniki and trenutni_streznik(v) not in ("", cilj, NASLOV)):
+                if usmeri(v, r.vrata, lastni) and v not in self.vmesniki:
                     self.vmesniki.append(v)
             elif v not in self.vmesniki:
                 self.vmesniki.append(v)
