@@ -5,7 +5,9 @@ import tempfile
 import unittest
 from unittest import mock
 
-from core import os_datoteke, os_omrezje, os_programi, os_sistem
+import json
+
+from core import os_datoteke, os_omrezje, os_programi, os_sistem, os_zvok
 
 KOREN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -171,6 +173,100 @@ class Datoteke(unittest.TestCase):
             self.assertEqual(os_datoteke.isci("p", dom), [])
 
 
+def _vol(p):
+    return {"front-left": {"value_percent": "%d%%" % p}, "front-right": {"value_percent": "%d%%" % p}}
+
+
+IZHODI = [
+    {"index": 51, "name": "alsa_output.hdmi3", "description": "Tiger Lake HDMI 3", "mute": False, "volume": _vol(100),
+     "active_port": "[Out] HDMI3", "ports": [{"name": "[Out] HDMI3", "description": "HDMI / DisplayPort 3 Output",
+                                              "type": "HDMI", "availability": "not available"}],
+     "properties": {"device.product.name": "Tiger Lake-LP"}},
+    {"index": 54, "name": "alsa_output.speaker", "description": "Tiger Lake Speaker", "mute": False, "volume": _vol(40),
+     "active_port": "[Out] Speaker", "ports": [{"name": "[Out] Speaker", "description": "Speaker", "type": "Speaker",
+                                                "availability": "unknown"}],
+     "properties": {"device.product.name": "Tiger Lake-LP"}},
+    {"index": 1325, "name": "bluez_output.4C.1", "description": "JBL BAR 300", "mute": False, "volume": _vol(27),
+     "properties": {"device.bus": "bluetooth"}},
+    {"index": 1400, "name": "safeer_link_zvok", "description": "TV (Safeer Link)", "mute": False, "volume": _vol(100),
+     "properties": {}},
+]
+VHODI = [
+    {"index": 1, "name": "bluez_output.4C.1.monitor", "properties": {"device.class": "monitor"}, "volume": _vol(100)},
+    {"index": 56, "name": "alsa_input.mic", "description": "Digital Microphone", "mute": True, "volume": _vol(80),
+     "active_port": "[In] Mic1", "ports": [{"name": "[In] Mic1", "description": "Digital Microphone", "type": "Mic"}],
+     "properties": {"device.product.name": "Tiger Lake-LP"}},
+]
+TOKOVI = [
+    {"index": 1268, "sink": 1325, "corked": True, "mute": False, "volume": {"mono": {"value_percent": "100%"}},
+     "properties": {"application.name": "Safeer Browser", "application.process.binary": "WebKitWebProcess", "media.name": "error"}},
+    {"index": 1301, "sink": 1325, "corked": False, "mute": False, "volume": _vol(70),
+     "properties": {"application.name": "Safeer Browser", "application.process.binary": "WebKitWebProcess", "media.name": "YouTube"}},
+    {"index": 1302, "sink": 54, "corked": False, "mute": False, "volume": _vol(50),
+     "properties": {"application.name": "Rhythmbox", "application.process.binary": "rhythmbox", "media.name": "Pesem"}},
+]
+
+
+class Zvok(unittest.TestCase):
+    def setUp(self):
+        self.klici = []
+
+        def pactl(argumenti, cas=4.0):
+            self.klici.append(list(argumenti))
+            if argumenti == ["get-default-sink"]:
+                return 0, "bluez_output.4C.1\n"
+            if argumenti == ["get-default-source"]:
+                return 0, "alsa_input.mic\n"
+            if argumenti[:2] == ["-f", "json"]:
+                return 0, json.dumps({"sinks": IZHODI, "sources": VHODI, "sink-inputs": TOKOVI}[argumenti[3]])
+            return 0, ""
+        self.popravek = mock.patch.object(os_zvok, "_pactl", pactl)
+        self.popravek.start()
+        self.addCleanup(self.popravek.stop)
+
+    def test_izhodi_vhodi_programi(self):
+        izhodi = os_zvok.izhodi()
+        # HDMI brez zaslona in navidezni izhod Linka nista na seznamu; privzeti je prvi.
+        self.assertEqual([i["id"] for i in izhodi], ["bluez_output.4C.1", "alsa_output.speaker"])
+        self.assertEqual((izhodi[0]["ime"], izhodi[0]["vrsta"], izhodi[0]["glasnost"]), ("JBL BAR 300", "bluetooth", 27))
+        self.assertEqual((izhodi[1]["ime"], izhodi[1]["podnapis"], izhodi[1]["vrsta"]), ("Speaker", "Tiger Lake-LP", "zvocniki"))
+        vhodi = os_zvok.vhodi()
+        self.assertEqual([(v["id"], v["utisan"], v["vrsta"]) for v in vhodi], [("alsa_input.mic", True, "mikrofon")])
+        programi = os_zvok.programi()
+        self.assertEqual([p["ime"] for p in programi], ["Rhythmbox", "Safeer Browser"])
+        brskalnik = programi[1]
+        self.assertEqual((brskalnik["tokovi"], brskalnik["predvaja"], brskalnik["naslov"], brskalnik["izhod"]),
+                         ([1268, 1301], True, "YouTube", "bluez_output.4C.1"))
+
+    def test_dejanja_samo_za_znane(self):
+        self.assertTrue(os_zvok.nastavi_izhod("alsa_output.speaker"))
+        self.assertIn(["set-default-sink", "alsa_output.speaker"], self.klici)
+        self.assertIn(["move-sink-input", "1302", "alsa_output.speaker"], self.klici)
+        self.assertFalse(os_zvok.nastavi_izhod("; rm -rf ~"))
+        self.assertFalse(os_zvok.nastavi_vhod("bluez_output.4C.1.monitor"))
+        self.assertTrue(os_zvok.glasnost_programa("WebKitWebProcess|Safeer Browser", 180))
+        self.assertIn(["set-sink-input-volume", "1301", "150%"], self.klici)
+        self.assertTrue(os_zvok.premakni_program("rhythmbox|Rhythmbox", "bluez_output.4C.1"))
+        self.assertFalse(os_zvok.premakni_program("rhythmbox|Rhythmbox", "neznan"))
+
+    def test_naprave_linka(self):
+        with tempfile.TemporaryDirectory() as mapa:
+            os.makedirs(os.path.join(mapa, "safeer-link"))
+            _pisi(os.path.join(mapa, "safeer-link", "stanje.json"), json.dumps({
+                "povezan": True, "zvok": {"naprava": "tv-1", "ime": "Philips", "stanje": "tece"},
+                "naprave": [{"id": "tv-1", "ime": "Philips", "zmoznosti": ["url", "audio"]},
+                            {"id": "tel", "ime": "Telefon", "zmoznosti": ["url"]}]}))
+            with mock.patch.dict(os.environ, {"XDG_RUNTIME_DIR": mapa}):
+                l = os_zvok.link_naprave()
+                self.assertEqual([n["id"] for n in l["naprave"]], ["tv-1"])
+                self.assertEqual(l["zvok"]["stanje"], "tece")
+                _pisi(os.path.join(mapa, "safeer-link", "stanje.json"), json.dumps({"povezan": False, "naprave": [
+                    {"id": "tv-1", "ime": "Philips", "zmoznosti": ["audio"]}]}))
+                self.assertEqual(os_zvok.link_naprave()["naprave"], [])
+            with mock.patch.dict(os.environ, {"XDG_RUNTIME_DIR": os.path.join(mapa, "ni")}):
+                self.assertEqual(os_zvok.link_naprave()["naprave"], [])
+
+
 class Stran(unittest.TestCase):
     def test_elementi_in_prevodi(self):
         html = _beri("assets", "os", "index.html")
@@ -197,6 +293,16 @@ class Stran(unittest.TestCase):
         py = _beri("safeer_os.py")
         for metoda in set(re.findall(r'klic\("(\w+)"', js)):
             self.assertIn('"%s":' % metoda, py, metoda)
+
+    def test_zvok_desni_klik_in_nastavitev(self):
+        vrstica = _beri("assets", "os", "vrstica.js")
+        js = _beri("assets", "os", "os.js")
+        self.assertIn('$("sZvok").addEventListener("contextmenu"', vrstica)
+        self.assertIn('klic("domov", ["zvok"])', vrstica)
+        self.assertIn('if (n.modul === "sound") { pojdi("zvok"); return; }', js)
+        besedila = _beri("assets", "os", "besedila.js")
+        for vrsta in ("zvocniki", "slusalke", "hdmi", "bluetooth", "usb", "mikrofon"):
+            self.assertIn("tip_%s:" % vrsta, besedila)
 
 
 if __name__ == "__main__":

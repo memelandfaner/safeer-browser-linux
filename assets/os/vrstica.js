@@ -81,6 +81,11 @@
     $("gumbProgrami").addEventListener("click", function () { klic("domov", ["programi"]); });
     $("gumbIsci").addEventListener("click", function () { klic("domov", ["iskanje:"]); });
     $("gumbStanje").addEventListener("click", function () { klic("domov", ["hitro"]); });
+    // Desni klik na zvocnik odpre stran Zvok (izhodi, programi, predvajanje na napravi v Linku),
+    // na omrezje pa stran Omrezje - kot v vrstici Minta, le v nasi preobleki.
+    $("sZvok").addEventListener("contextmenu", function (e) { e.preventDefault(); e.stopPropagation(); klic("domov", ["zvok"]); });
+    $("sOmrezje").addEventListener("contextmenu", function (e) { e.preventDefault(); e.stopPropagation(); klic("domov", ["omrezje"]); });
+    document.addEventListener("contextmenu", function (e) { e.preventDefault(); });
     ura();
     setInterval(ura, 1000);
     if (!most) return;

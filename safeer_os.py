@@ -42,7 +42,7 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("WebKit2", "4.1")
 from gi.repository import Gdk, Gio, GLib, Gtk, WebKit2  # noqa: E402
 
-from core import os_datoteke, os_omrezje, os_programi, os_sistem  # noqa: E402
+from core import os_datoteke, os_omrezje, os_programi, os_sistem, os_zvok  # noqa: E402
 
 APP_ID = "io.github.memelandfaner.SafeerOS"
 RAZLICICA = "0.1.0"
@@ -182,7 +182,7 @@ def _control_na_vodilu(vodilo) -> bool:
                             Gio.DBusCallFlags.NONE, 2000, None).unpack()[0]
 
 
-def control_dejanje(ime: str) -> bool:
+def control_dejanje(ime: str, parameter: Optional["GLib.Variant"] = None) -> bool:
     """Dejanje v Safeer Controlu (prijava, nova-naprava, odjava). Ce Control ne tece, ga zazenemo v ozadju
     (pladenj) in pocakamo, da se javi na vodilu. Klicati v ozadju (ne na glavni niti)."""
     try:
@@ -201,11 +201,32 @@ def control_dejanje(ime: str) -> bool:
                 return False
             time.sleep(0.5)
         vodilo.call_sync(CONTROL_ID, CONTROL_POT, "org.gtk.Actions", "Activate",
-                         GLib.Variant("(sava{sv})", (ime, [], {})), None, Gio.DBusCallFlags.NONE, 5000, None)
+                         GLib.Variant("(sava{sv})", (ime, [parameter] if parameter is not None else [], {})),
+                         None, Gio.DBusCallFlags.NONE, 5000, None)
         return True
     except Exception as e:  # noqa: BLE001
         print("[SafeerOS] Control:", ime, e)
         return False
+
+
+def zvok_na_napravo(id_naprave: str) -> bool:
+    """»Predvajaj na«: Safeer Control preusmeri zvok racunalnika na napravo v Linku (core/link_zvok.py)."""
+    id_naprave = str(id_naprave or "")
+    if id_naprave not in {n["id"] for n in os_zvok.link_naprave()["naprave"]}:
+        return False
+    return control_dejanje("zvok-na-napravo", GLib.Variant("s", id_naprave))
+
+
+def zvok_izhod(ime: str) -> bool:
+    """Izbran izhod racunalnika. Ce zvok ta trenutek tece na napravo v Linku, ga Control najprej vrne
+    (in navidezni izhod pospravi), sele nato nastavimo uporabnikovo izbiro - sicer bi jo prepisal."""
+    if os_zvok.link_naprave()["zvok"]["naprava"]:
+        control_dejanje("zvok-ustavi")
+        for _ in range(30):
+            if not os_zvok.link_naprave()["zvok"]["naprava"]:
+                break
+            time.sleep(0.1)
+    return os_zvok.nastavi_izhod(ime)
 
 
 SAMOZAGON = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
@@ -662,6 +683,18 @@ class SafeerOS(Gtk.Application):
             "omrezjeOdklopi": lambda: os_omrezje.odklopi(str(a[0]) if a else ""),
             "omrezjeAktiviraj": lambda: os_omrezje.aktiviraj(str(a[0]) if a else ""),
             "omrezjePozabi": lambda: os_omrezje.pozabi(str(a[0]) if a else ""),
+            "zvok": os_zvok.stanje,
+            "zvokIzhod": lambda: zvok_izhod(str(a[0]) if a else ""),
+            "zvokVhod": lambda: os_zvok.nastavi_vhod(str(a[0]) if a else ""),
+            "zvokGlasnostIzhoda": lambda: os_zvok.glasnost_izhoda(str(a[0]), int(a[1])),
+            "zvokUtisajIzhod": lambda: os_zvok.utisaj_izhod(str(a[0]), bool(a[1])),
+            "zvokGlasnostVhoda": lambda: os_zvok.glasnost_vhoda(str(a[0]), int(a[1])),
+            "zvokUtisajVhod": lambda: os_zvok.utisaj_vhod(str(a[0]), bool(a[1])),
+            "zvokGlasnostPrograma": lambda: os_zvok.glasnost_programa(str(a[0]), int(a[1])),
+            "zvokUtisajProgram": lambda: os_zvok.utisaj_program(str(a[0]), bool(a[1])),
+            "zvokPremakniProgram": lambda: os_zvok.premakni_program(str(a[0]), str(a[1])),
+            "zvokNaNapravo": lambda: zvok_na_napravo(str(a[0]) if a else ""),
+            "zvokUstavi": lambda: control_dejanje("zvok-ustavi"),
         }
         if metoda in glavna:
             try:
