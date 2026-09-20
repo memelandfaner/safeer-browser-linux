@@ -45,7 +45,17 @@ from gi.repository import Gdk, Gio, GLib, Gtk, WebKit2  # noqa: E402
 from core import os_datoteke, os_jbl, os_omrezje, os_programi, os_scit, os_sistem, os_zvok  # noqa: E402
 
 APP_ID = "io.github.memelandfaner.SafeerOS"
-RAZLICICA = "0.1.0"
+
+
+def _razlicica() -> str:
+    try:
+        with open(os.path.join(KOREN, "packaging", "VERSION_OS"), encoding="utf-8") as d:
+            return d.read().strip()
+    except Exception:
+        return "0.4.1"
+
+
+RAZLICICA = _razlicica()
 CONTROL_NASTAVITVE = os.path.expanduser("~/.config/safeer-control/link.json")
 BRSKALNIK_NASTAVITVE = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
                                     "safeer-mint", "settings.json")
