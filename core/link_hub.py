@@ -740,8 +740,12 @@ class Povezava:
 
     def __init__(self, ws_naslov: str, zeton: str, device_id: str, ime: str,
                  sinhronizira: bool = False, odtis: Optional[str] = None,
-                 dodatne_zmoznosti: Optional[List[str]] = None) -> None:
+                 dodatne_zmoznosti: Optional[List[str]] = None,
+                 katalog: Optional[Callable[[], dict]] = None) -> None:
         self.ws_naslov = ws_naslov
+        # Protocol v1: katalog aplikacij te naprave ({"<id>": {"name", "kind"}}), ki gre v prijavo.
+        # Klic, ne vrednost: katalog se prebere ob vsaki (ponovni) povezavi, da je svez.
+        self.katalog = katalog
         # Zmoznosti, ki jih doda klicatelj (Safeer Control: "files" - deljene mape za televizor).
         self.dodatne_zmoznosti = list(dodatne_zmoznosti or [])
         self.zeton = zeton
@@ -821,6 +825,13 @@ class Povezava:
                 **model_naprave_v1(self.device_id),
             },
         }
+        if self.katalog is not None:
+            try:
+                katalog = self.katalog()
+            except Exception:
+                katalog = None
+            if isinstance(katalog, dict) and katalog:
+                prijava["payload"]["apps"] = katalog
         # Racunalnik sprejema besedilo, datoteke in zaslon; sync samo, ce je vklopljen.
         # "remote": Safeer Control sme temu racunalniku posiljati ukaze daljinca (core/link_daljinec.py).
         zmoznosti = ["url", "text", "file", "screen", "remote"]
@@ -934,6 +945,11 @@ class Povezava:
             return True
         except Exception:
             return False
+
+    def objavi_katalog(self, katalog: dict) -> bool:
+        """Protocol v1: naknadno objavi (ali izprazni) katalog aplikacij brez ponovne prijave."""
+        return self.poslji({"id": str(int(time.time() * 1000)), "type": "apps.announce",
+                            "payload": {"apps": katalog if isinstance(katalog, dict) else {}}})
 
     def poslji_url(self, cilj: str, url: str, naslov: Optional[str] = None) -> bool:
         return self.poslji({

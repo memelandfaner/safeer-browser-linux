@@ -219,6 +219,25 @@ class Programi:
             vnosi.append(element)
         return {"enabled": True, "items": vnosi, "total": skupaj, "offset": od}
 
+    def katalog_v1(self) -> dict:
+        """Protocol v1: katalog za prijavo v Safeer Link - {"app:<vnos>.desktop": {"name", "kind"}}.
+
+        Brez ikon in opisov (hub hrani najvec 200 vnosov in 32 KiB); ikone da `apps.list`, ko jih
+        odjemalec res potrebuje. Prazen, dokler uporabnik programov za televizor ne dovoli.
+        """
+        if not self.vklopljeno:
+            return {}
+        katalog: Dict[str, dict] = {}
+        velikost = 2
+        for e in self.seznam(z_ikonami=False).get("items", [])[:NAJVEC]:
+            vnos = {"name": str(e.get("name", ""))[:64], "kind": "linux"}
+            dodatek = len(e["id"]) + len(vnos["name"]) + 40
+            if velikost + dodatek > 30 * 1024:
+                break
+            katalog[e["id"][:64]] = vnos
+            velikost += dodatek
+        return katalog
+
     def zazeni(self, oznaka: str) -> bool:
         """Zazene program z oznako s seznama. Nic drugega; ukaza z omrezja ne izvajamo."""
         if not self.vklopljeno:
