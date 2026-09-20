@@ -7,7 +7,7 @@ from unittest import mock
 
 import json
 
-from core import os_datoteke, os_omrezje, os_programi, os_sistem, os_zvok
+from core import os_datoteke, os_jbl, os_omrezje, os_programi, os_sistem, os_zvok
 
 KOREN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -265,6 +265,48 @@ class Zvok(unittest.TestCase):
                 self.assertEqual(os_zvok.link_naprave()["naprave"], [])
             with mock.patch.dict(os.environ, {"XDG_RUNTIME_DIR": os.path.join(mapa, "ni")}):
                 self.assertEqual(os_zvok.link_naprave()["naprave"], [])
+
+
+class Jbl(unittest.TestCase):
+    AVAHI = ('+;enp1s0;IPv4;JBL\\032BAR\\032300;_jbl-product._tcp;local\n'
+             '=;enp1s0;IPv4;JBL\\032BAR\\032300;_jbl-product._tcp;local;audiocast_ba64.local;192.168.0.229;59152;'
+             '"bootid=x" "security=https 3.0" "MAC=4C:6B:B8:90:BA:64" "uuid=uuid:FF"\n'
+             '=;enp1s0;IPv6;JBL\\032BAR\\032300;_jbl-product._tcp;local;audiocast_ba64.local;fe80::1;59152;"MAC=4C:6B:B8:90:BA:64"\n')
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        p = mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": self.tmp.name})
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_najdi_in_prepoznaj_izhod(self):
+        r = mock.Mock(stdout=self.AVAHI)
+        with mock.patch.object(os_jbl.shutil, "which", lambda x: "/usr/bin/" + x), \
+                mock.patch.object(os_jbl.subprocess, "run", lambda *a, **k: r):
+            self.assertEqual(os_jbl.najdi(), [{"ime": "JBL BAR 300", "naslov": "192.168.0.229", "mac": "4C:6B:B8:90:BA:64"}])
+        self.assertFalse(os_jbl.je_vrstica("bluez_output.4C_6B_B8_90_BA_65.1"))     # izklopljeno
+        os_jbl._shrani({"vklop": True, "bt": "4C:6B:B8:90:BA:65", "naslov": "192.168.0.229", "ime": "JBL BAR 300"})
+        self.assertTrue(os_jbl.je_vrstica("bluez_output.4C_6B_B8_90_BA_65.1"))
+        self.assertFalse(os_jbl.je_vrstica("bluez_output.00_11_22_33_44_55.1"))
+        self.assertFalse(os_jbl.je_vrstica("alsa_output.speaker"))
+
+    def test_potrdilo_samo_z_ujemajocim_odtisom(self):
+        class Odgovor:
+            def __init__(self, b): self.b = b
+            def read(self): return self.b
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+        self.assertFalse(os_jbl.prenesi_potrdilo(lambda url, timeout: Odgovor(b"ponaredek")))
+        self.assertFalse(os.path.exists(os.path.join(os_jbl.mapa(), "Cert.pem")))
+        self.assertFalse(os_jbl.ima_potrdilo())
+        # brez potrdila ni ukazov, tudi ce je dodatek oznacen kot vklopljen
+        os_jbl._shrani({"vklop": True, "naslov": "192.168.0.229"})
+        with mock.patch.object(os_jbl, "_zahteva", side_effect=AssertionError("ne sme klicati")):
+            self.assertFalse(os_jbl.preklopi("tv"))
+        self.assertFalse(os_jbl.preklopi("reboot"))
+        with self.assertRaises(ValueError):
+            os_jbl._zahteva("192.168.0.1/../x", "getStatusEx")
 
 
 class Stran(unittest.TestCase):

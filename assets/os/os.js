@@ -155,7 +155,7 @@
     if (razdelek === "naprave") osveziPovezavo();
     if (razdelek === "nastavitve") narisiNastavitve();
     if (razdelek === "omrezje") nalozOmrezje(false);
-    if (razdelek === "zvok") { nalozZvok(); zvokZanka(); }
+    if (razdelek === "zvok") { nalozZvok(); zvokZanka(); if (!jblStanje) nalozJbl(); }
   }
   window.safeerOsPojdi = function (kam) {
     kam = String(kam || "");
@@ -686,6 +686,31 @@
   // ------------------------------------------------------------------ zvok
   var zvokStanje = null, zvokCas = 0, zvokDotik = 0, zvokCaka = "";
   var IKONA_ZVOKA = { zvocniki: "zvok", slusalke: "slusalke", hdmi: "zaslon", bluetooth: "bluetooth", usb: "zvok", mikrofon: "mikrofon" };
+  var jblStanje = null, jblZaposleno = false;
+  function nalozJbl() {
+    klic("jbl").then(function (j) { jblStanje = j; narisiJbl(); }, function () {});
+  }
+  function narisiJbl() {
+    var c = $("zvokJbl");
+    c.innerHTML = "";
+    var j = jblStanje;
+    if (!j || !(j.vklop || j.najdena)) return;
+    var pod = jblZaposleno ? t("jblPrenasam") : t("jblOpis");
+    var st = stikalo("jblStikalo", "zvok", !!j.vklop, function (v) {
+      if (jblZaposleno) return;
+      jblZaposleno = true;
+      narisiJbl();
+      klic("jblVklop", [v]).then(function (r) {
+        jblZaposleno = false;
+        jblStanje = r;
+        if (r && r.napaka) obvesti(t("jblNapaka_" + r.napaka));
+        else if (v) obvesti(t("jblVklopljeno", { ime: r.ime || "JBL" }));
+        narisiJbl();
+      }, function () { jblZaposleno = false; narisiJbl(); });
+    }, pod);
+    st.querySelector("span").textContent = t("jblStikalo", { ime: j.ime || "JBL" });
+    c.appendChild(st);
+  }
   function nalozZvok() {
     klic("zvok").then(function (z) {
       zvokStanje = z;
