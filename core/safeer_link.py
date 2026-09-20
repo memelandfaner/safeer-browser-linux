@@ -26,7 +26,7 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("WebKit2", "4.1")
 from gi.repository import Gtk, WebKit2, GLib  # noqa: E402
 
-from core import link_deljenje, link_hub, link_tls  # noqa: E402
+from core import link_deljenje, link_hub, link_krog, link_tls  # noqa: E402
 
 KATEGORIJA_ZAZNAMKI = "bookmarks"
 
@@ -547,6 +547,10 @@ class SafeerLink:
         if znana and znana.get("token"):
             self.nastavitve.podatki["control_token"] = znana["token"]
             self.nastavitve.podatki["hub_fp"] = fp
+        elif najden.get("krog"):
+            # Izvoljeni hub iz kroga zaupanja: zetona ni, prijava gre s podpisom kljuca te naprave.
+            self.nastavitve.podatki.pop("control_token", None)
+            self.nastavitve.podatki["hub_fp"] = fp
         else:
             self.nastavitve.podatki.pop("control_token", None)
             self.nastavitve.podatki.pop("hub_fp", None)
@@ -624,8 +628,9 @@ class SafeerLink:
 
     def _povezi_zaklenjeno(self) -> bool:
         naslov = self._hub()
-        zeton = self._zeton()
-        if not naslov or not zeton or not self._odtis():
+        zeton = self._zeton() or ""
+        # Brez zetona gre samo, ce je ta naprava v krogu zaupanja (prijava s podpisom, izvoljeni hub).
+        if not naslov or not self._odtis() or (not zeton and not link_krog.je_vpisan(self._id())):
             return True  # ni kaj povezati; to ni neuspeh, ki bi ga bilo treba iskati
         if self.povezava is not None:
             self.povezava.zapri()
