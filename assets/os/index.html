@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src file: data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>Safeer OS</title>
+<link rel="stylesheet" href="os.css">
+</head>
+<body>
+<div id="ozadje"></div>
+<div id="aplikacija">
+  <aside id="stranska">
+    <div class="znamka">
+      <img src="znak.svg" alt="">
+      <div><b>Safeer OS</b><span data-t="podnaslov"></span></div>
+    </div>
+    <nav id="meni">
+      <button data-razdelek="domov" class="izbran"><svg data-ikona="domov"></svg><span data-t="domov"></span></button>
+      <button data-razdelek="programi"><svg data-ikona="programi"></svg><span data-t="programi"></span></button>
+      <button data-razdelek="datoteke"><svg data-ikona="mapa"></svg><span data-t="datoteke"></span></button>
+      <button data-razdelek="naprave"><svg data-ikona="povezava"></svg><span data-t="naprave"></span></button>
+      <button data-razdelek="nastavitve"><svg data-ikona="drsniki"></svg><span data-t="nastavitve"></span></button>
+    </nav>
+    <div class="stranska-dno">
+      <div class="uporabnik">
+        <div class="zacetnica" id="zacetnica">S</div>
+        <div class="ime"><b id="imeUporabnika"></b><span id="imeRacunalnika"></span></div>
+        <button class="gumb-ikona" id="gumbNapajanje" data-naslov="napajanje"><svg data-ikona="napajanje"></svg></button>
+      </div>
+      <div class="poganja"><span data-t="poganja"></span><b><svg data-ikona="povezava"></svg>Safeer Link</b></div>
+    </div>
+  </aside>
+
+  <main id="glavno">
+    <header id="vrh">
+      <label class="iskanje">
+        <svg data-ikona="isci"></svg>
+        <input id="iskanje" type="text" autocomplete="off" spellcheck="false" data-ph="isci">
+        <kbd data-t="tipkaj"></kbd>
+      </label>
+      <div class="presledek"></div>
+      <button class="stanje" id="gumbStanje">
+        <span id="stanjePovezava"><i class="pika siva"></i><span data-t="brezNaprav"></span></span>
+        <span id="stanjeOmrezje"></span>
+        <span id="stanjeZvok"></span>
+        <span id="stanjeBaterija"></span>
+      </button>
+      <div class="ura"><b id="ura">--:--</b><span id="datum"></span></div>
+    </header>
+
+    <div id="vsebina">
+      <!-- DOMOV -->
+      <section class="razdelek viden" id="r-domov">
+        <h1 id="pozdrav"></h1>
+        <p data-t="pozdravPod"></p>
+        <div class="velike">
+          <button class="velika" id="kBrskalnik"><svg data-ikona="splet"></svg><div><b data-t="brskalnik"></b><span data-t="brskalnikPod"></span></div><svg class="puscica" data-ikona="desno"></svg></button>
+          <button class="velika" data-pojdi="datoteke"><svg data-ikona="mapa"></svg><div><b data-t="datoteke"></b><span data-t="datotekePod"></span></div><svg class="puscica" data-ikona="desno"></svg></button>
+          <button class="velika" data-pojdi="naprave"><svg data-ikona="naprave"></svg><div><b data-t="naprave"></b><span id="kNapravePod" data-t="napravePodNov"></span></div><svg class="puscica" data-ikona="desno"></svg></button>
+        </div>
+        <h2><span data-t="nedavnoUporabljeno"></span><button class="dodatno" data-pojdi="programi" data-t="vsiProgrami"></button></h2>
+        <div class="vrsta-plosc" id="domaciProgrami"></div>
+        <div id="blokOkna" hidden>
+          <h2><span data-t="odprtoZdaj"></span></h2>
+          <div class="okna" id="okna"></div>
+        </div>
+        <div class="plosce">
+          <div class="plosca-dom">
+            <button class="glava-plosce" data-pojdi="naprave"><b data-t="povezaneNaprave"></b><svg data-ikona="desno"></svg></button>
+            <div class="vrstica-naprave"><svg data-ikona="naprave"></svg><div><b data-t="taRacunalnik"></b><span id="domNapravaStanje"><i class="pika siva"></i><span data-t="niPovezano"></span></span></div></div>
+            <p class="drobno" id="domNapraveOpis" data-t="napraveVControl"></p>
+            <button class="gumb" id="domControl"><svg data-ikona="qr"></svg><span id="domControlBesedilo" data-t="poveziNaprave"></span></button>
+          </div>
+          <div class="plosca-dom">
+            <div class="glava-plosce"><b data-t="hitriDostop"></b></div>
+            <div class="hitri" id="hitriDostop"></div>
+          </div>
+          <div class="plosca-dom">
+            <button class="glava-plosce" data-pojdi="nastavitve"><b data-t="sistem"></b><svg data-ikona="desno"></svg></button>
+            <div class="sistem-vrstica"><svg data-ikona="namizje"></svg><div><b id="sistemIme">Linux Mint</b><span id="sistemRacunalnik"></span></div></div>
+            <dl class="sistem-podatki" id="sistemPodatki"></dl>
+          </div>
+        </div>
+        <div id="blokNedavne" hidden>
+          <h2><span data-t="nedavneDatoteke"></span><button class="dodatno" data-pojdi="datoteke" data-t="vseDatoteke"></button></h2>
+          <div class="vrstice" id="nedavneDomov"></div>
+        </div>
+      </section>
+
+      <!-- PROGRAMI -->
+      <section class="razdelek" id="r-programi">
+        <h1 data-t="programi"></h1>
+        <p id="programiPod"></p>
+        <div class="filtri" id="filtri"></div>
+        <div class="mreza" id="vsiProgrami"></div>
+      </section>
+
+      <!-- DATOTEKE -->
+      <section class="razdelek" id="r-datoteke">
+        <h1 data-t="datoteke"></h1>
+        <p data-t="datotekeOpis"></p>
+        <div class="datoteke-postavitev">
+          <div class="mape-seznam" id="mapeSeznam"></div>
+          <div>
+            <div class="drobtine" id="drobtine"></div>
+            <div class="vrstice" id="vsebinaMape"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- NAPRAVE -->
+      <section class="razdelek" id="r-naprave">
+        <h1 data-t="naprave"></h1>
+        <p data-t="napraveOpis"></p>
+        <div class="panel">
+          <h3><i class="pika siva" id="napravePika"></i><span id="napraveNaslov"></span></h3>
+          <p id="napraveBesedilo"></p>
+          <button class="gumb glavni" id="gumbControl"><svg data-ikona="qr"></svg><span id="gumbControlBesedilo"></span></button>
+        </div>
+        <div class="zmoznosti">
+          <div class="zmoznost"><svg data-ikona="poslji"></svg><span data-t="zmoznost1"></span></div>
+          <div class="zmoznost"><svg data-ikona="zaslon"></svg><span data-t="zmoznost2"></span></div>
+          <div class="zmoznost"><svg data-ikona="daljinec"></svg><span data-t="zmoznost3"></span></div>
+          <div class="zmoznost"><svg data-ikona="programi"></svg><span data-t="zmoznost4"></span></div>
+        </div>
+      </section>
+
+      <!-- NASTAVITVE -->
+      <section class="razdelek" id="r-nastavitve">
+        <h1 data-t="nastavitve"></h1>
+        <p data-t="nastavitveOpis"></p>
+        <h2 data-t="hitreNastavitve"></h2>
+        <div class="hitre" id="hitreNastavitve"></div>
+        <h2>Safeer OS</h2>
+        <div class="hitre">
+          <button class="stikalo" id="stikaloCelozaslonsko" role="switch" aria-checked="true"><svg data-ikona="celozaslonsko"></svg><div><span data-t="celozaslonsko"></span><small data-t="celozaslonskoPod"></small></div><i></i></button>
+          <button class="stikalo" id="gumbNamizje"><svg data-ikona="namizje"></svg><div><span data-t="pokaziNamizje"></span><small data-t="pokaziNamizjePod"></small></div></button>
+        </div>
+        <div id="skupineNastavitev"></div>
+        <p class="o-sistemu" id="oSistemu"></p>
+      </section>
+    </div>
+
+    <footer id="noga">
+      <span><kbd data-t="tipkaKlik"></kbd><span data-t="odpri"></span></span>
+      <span><kbd>Esc</kbd><span data-t="domov"></span></span>
+      <span><kbd>F11</kbd><span data-t="celozaslonsko"></span></span>
+      <span class="podpis" data-t="podpis"></span>
+    </footer>
+  </main>
+</div>
+
+<!-- Iskanje -->
+<div class="sloj" id="slojIskanje"><div class="tancica"></div><div class="plosca zadetki" id="zadetki"></div></div>
+<!-- Hitre nastavitve -->
+<div class="sloj" id="slojHitro"><div class="tancica"></div><div class="plosca" id="hitro"></div></div>
+<!-- Napajanje -->
+<div class="sloj" id="slojNapajanje"><div class="tancica"></div><div class="plosca" id="napajanje"></div></div>
+<!-- Dodaj spletno aplikacijo -->
+<div class="sloj" id="slojDodaj"><div class="tancica"></div>
+  <form class="plosca" id="obrazecDodaj">
+    <h3 data-t="dodajSpletno"></h3>
+    <input id="dodajIme" data-ph="imeAplikacije" maxlength="40">
+    <input id="dodajNaslov" data-ph="naslovAplikacije" maxlength="300">
+    <p class="drobno" data-t="dodajNamig"></p>
+    <div class="gumbi"><button type="button" class="gumb" id="dodajPreklici" data-t="preklici"></button><button type="submit" class="gumb glavni" data-t="dodaj"></button></div>
+  </form>
+</div>
+<div id="obvestilo"></div>
+<script src="besedila.js"></script>
+<script src="os.js"></script>
+</body>
+</html>
