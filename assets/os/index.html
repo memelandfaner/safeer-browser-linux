@@ -117,6 +117,9 @@
           <p id="napraveBesedilo"></p>
           <button class="gumb glavni" id="gumbControl"><svg data-ikona="qr"></svg><span id="gumbControlBesedilo"></span></button>
         </div>
+        <div class="hitre zaupanje" id="blokZaupanje" hidden>
+          <button class="stikalo" id="stikaloZaupaj" role="switch" aria-checked="false"><svg data-ikona="scit"></svg><div><span data-t="zaupajRacunalniku"></span><small id="zaupajPod"></small></div><i></i></button>
+        </div>
         <div class="zmoznosti">
           <div class="zmoznost"><svg data-ikona="poslji"></svg><span data-t="zmoznost1"></span></div>
           <div class="zmoznost"><svg data-ikona="zaslon"></svg><span data-t="zmoznost2"></span></div>
@@ -135,6 +138,8 @@
         <div class="hitre">
           <button class="stikalo" id="stikaloCelozaslonsko" role="switch" aria-checked="true"><svg data-ikona="celozaslonsko"></svg><div><span data-t="celozaslonsko"></span><small data-t="celozaslonskoPod"></small></div><i></i></button>
           <button class="stikalo" id="gumbNamizje"><svg data-ikona="namizje"></svg><div><span data-t="pokaziNamizje"></span><small data-t="pokaziNamizjePod"></small></div></button>
+          <button class="stikalo" id="stikaloSamozagon" role="switch" aria-checked="false"><svg data-ikona="ponovno"></svg><div><span data-t="samozagon"></span><small data-t="samozagonPod"></small></div><i></i></button>
+          <button class="stikalo" id="gumbNazajVMint"><svg data-ikona="odjava"></svg><div><span data-t="nazajVMint"></span><small data-t="nazajVMintPod"></small></div></button>
         </div>
         <div id="skupineNastavitev"></div>
         <p class="o-sistemu" id="oSistemu"></p>
@@ -165,6 +170,18 @@
     <p class="drobno" data-t="dodajNamig"></p>
     <div class="gumbi"><button type="button" class="gumb" id="dodajPreklici" data-t="preklici"></button><button type="submit" class="gumb glavni" data-t="dodaj"></button></div>
   </form>
+</div>
+<!-- Nazaj v Linux Mint -->
+<div class="sloj" id="slojMint"><div class="tancica"></div>
+  <div class="plosca">
+    <h3 data-t="nazajVMint"></h3>
+    <p class="drobno" data-t="nazajOpis"></p>
+    <div class="gumbi">
+      <button type="button" class="gumb" id="mintPreklici" data-t="preklici"></button>
+      <button type="button" class="gumb" id="mintZaStalno" data-t="zaStalno"></button>
+      <button type="button" class="gumb glavni" id="mintSamoTokrat" data-t="samoTokrat"></button>
+    </div>
+  </div>
 </div>
 <div id="obvestilo"></div>
 <script src="besedila.js"></script>

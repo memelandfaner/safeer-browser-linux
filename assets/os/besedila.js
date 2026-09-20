@@ -1,6 +1,7 @@
 /* Besedila Safeer OS za racunalnik: sl, en, de, es, fr, it (isti nabor kot drugje v Safeerju). */
 var BESEDILA_OS = {
   sl: {
+    zaupajRacunalniku: "Zaupaj temu računalniku", zaupajDa: "Povezava ostane tudi po odjavi in ponovnem zagonu.", zaupajNe: "Povezava velja do odjave – ob naslednji prijavi v računalnik se znova povežeš.", samozagon: "Zaženi ob prijavi v računalnik", samozagonPod: "Izklopiš ga lahko tudi v Mintovih Zagonskih programih.", nazajVMint: "Nazaj v Linux Mint", nazajVMintPod: "Zapri Safeer OS in uporabljaj običajno namizje.", nazajOpis: "Safeer OS se zapre in pred tabo je običajno namizje Linux Mint. Znova ga odpreš kadarkoli iz menija (Safeer OS).", samoTokrat: "Samo tokrat", zaStalno: "Ne zaganjaj več ob prijavi",
     nedavnoUporabljeno: "Nedavno uporabljeno", povezaneNaprave: "Povezane naprave", hitriDostop: "Hitri dostop", sistem: "Sistem", taRacunalnik: "Ta računalnik", povezanKratko: "Povezano", niPovezano: "Ni povezano", splet: "Splet", omrezje: "Omrežje", baterija: "Baterija", dodajNamig: "Program pripneš na Domov z zvezdico v razdelku Programi.", napraveVControl: "Seznam naprav in daljinec sta v Safeer Control.",
     podnaslov: "Tvoj računalnik v rokah.", domov: "Domov", programi: "Programi", datoteke: "Datoteke", naprave: "Naprave",
     nastavitve: "Nastavitve", poganja: "Poganja", isci: "Išči programe, datoteke in splet", tipkaj: "Kar začni tipkati",
@@ -54,6 +55,7 @@ var BESEDILA_OS = {
     odstrani: "Odstrani", wifiIzklopljen: "Wi-Fi je izklopljen"
   },
   en: {
+    zaupajRacunalniku: "Trust this computer", zaupajDa: "The connection stays after signing out and restarting.", zaupajNe: "The connection lasts until you sign out – you'll connect again next time you sign in to the computer.", samozagon: "Start when I sign in", samozagonPod: "You can also turn it off in Mint's Startup Applications.", nazajVMint: "Back to Linux Mint", nazajVMintPod: "Close Safeer OS and use the regular desktop.", nazajOpis: "Safeer OS closes and your regular Linux Mint desktop is in front of you. Open it again any time from the menu (Safeer OS).", samoTokrat: "Just this time", zaStalno: "Don't start at sign-in anymore",
     nedavnoUporabljeno: "Recently used", povezaneNaprave: "Connected devices", hitriDostop: "Quick access", sistem: "System", taRacunalnik: "This computer", povezanKratko: "Connected", niPovezano: "Not connected", splet: "Web", omrezje: "Network", baterija: "Battery", dodajNamig: "Pin an app to Home with the star in Apps.", napraveVControl: "The device list and remote are in Safeer Control.",
     podnaslov: "Your computer in your hands.", domov: "Home", programi: "Apps", datoteke: "Files", naprave: "Devices",
     nastavitve: "Settings", poganja: "Powered by", isci: "Search apps, files and the web", tipkaj: "Just start typing",
@@ -107,6 +109,7 @@ var BESEDILA_OS = {
     odstrani: "Remove", wifiIzklopljen: "Wi-Fi is off"
   },
   de: {
+    zaupajRacunalniku: "Diesem Computer vertrauen", zaupajDa: "Die Verbindung bleibt auch nach Abmelden und Neustart.", zaupajNe: "Die Verbindung gilt bis zur Abmeldung – bei der nächsten Anmeldung verbindest du dich erneut.", samozagon: "Beim Anmelden starten", samozagonPod: "Du kannst es auch in Mints Startprogrammen ausschalten.", nazajVMint: "Zurück zu Linux Mint", nazajVMintPod: "Safeer OS schließen und den gewohnten Desktop nutzen.", nazajOpis: "Safeer OS wird geschlossen und du siehst deinen gewohnten Linux-Mint-Desktop. Du öffnest es jederzeit wieder über das Menü (Safeer OS).", samoTokrat: "Nur dieses Mal", zaStalno: "Nicht mehr beim Anmelden starten",
     nedavnoUporabljeno: "Zuletzt verwendet", povezaneNaprave: "Verbundene Geräte", hitriDostop: "Schnellzugriff", sistem: "System", taRacunalnik: "Dieser Computer", povezanKratko: "Verbunden", niPovezano: "Nicht verbunden", splet: "Web", omrezje: "Netzwerk", baterija: "Akku", dodajNamig: "Ein Programm heftest du mit dem Stern unter Programme an Start an.", napraveVControl: "Geräteliste und Fernbedienung findest du in Safeer Control.",
     podnaslov: "Dein Computer in deinen Händen.", domov: "Start", programi: "Programme", datoteke: "Dateien", naprave: "Geräte",
     nastavitve: "Einstellungen", poganja: "Angetrieben von", isci: "Programme, Dateien und das Web durchsuchen", tipkaj: "Einfach lostippen",
@@ -160,6 +163,7 @@ var BESEDILA_OS = {
     odstrani: "Entfernen", wifiIzklopljen: "WLAN ist aus"
   },
   es: {
+    zaupajRacunalniku: "Confiar en este ordenador", zaupajDa: "La conexión se mantiene tras cerrar sesión y reiniciar.", zaupajNe: "La conexión dura hasta que cierres sesión: la próxima vez que entres en el ordenador volverás a conectarte.", samozagon: "Iniciar al iniciar sesión", samozagonPod: "También puedes desactivarlo en las Aplicaciones al inicio de Mint.", nazajVMint: "Volver a Linux Mint", nazajVMintPod: "Cierra Safeer OS y usa el escritorio habitual.", nazajOpis: "Safeer OS se cierra y tienes delante tu escritorio habitual de Linux Mint. Puedes volver a abrirlo cuando quieras desde el menú (Safeer OS).", samoTokrat: "Solo esta vez", zaStalno: "No iniciar más al iniciar sesión",
     nedavnoUporabljeno: "Usado recientemente", povezaneNaprave: "Dispositivos conectados", hitriDostop: "Acceso rápido", sistem: "Sistema", taRacunalnik: "Este ordenador", povezanKratko: "Conectado", niPovezano: "No conectado", splet: "Web", omrezje: "Red", baterija: "Batería", dodajNamig: "Fija un programa en Inicio con la estrella en Programas.", napraveVControl: "La lista de dispositivos y el mando están en Safeer Control.",
     podnaslov: "Tu ordenador en tus manos.", domov: "Inicio", programi: "Programas", datoteke: "Archivos", naprave: "Dispositivos",
     nastavitve: "Ajustes", poganja: "Con la tecnología de", isci: "Busca programas, archivos y en la web", tipkaj: "Empieza a escribir",
@@ -213,6 +217,7 @@ var BESEDILA_OS = {
     odstrani: "Quitar", wifiIzklopljen: "El Wi-Fi está apagado"
   },
   fr: {
+    zaupajRacunalniku: "Faire confiance à cet ordinateur", zaupajDa: "La connexion est conservée après déconnexion et redémarrage.", zaupajNe: "La connexion dure jusqu'à la déconnexion – à la prochaine ouverture de session, vous vous reconnecterez.", samozagon: "Lancer à l'ouverture de session", samozagonPod: "Vous pouvez aussi le désactiver dans les Applications au démarrage de Mint.", nazajVMint: "Retour à Linux Mint", nazajVMintPod: "Fermer Safeer OS et utiliser le bureau habituel.", nazajOpis: "Safeer OS se ferme et votre bureau Linux Mint habituel apparaît. Vous pouvez le rouvrir à tout moment depuis le menu (Safeer OS).", samoTokrat: "Juste cette fois", zaStalno: "Ne plus lancer à l'ouverture de session",
     nedavnoUporabljeno: "Utilisé récemment", povezaneNaprave: "Appareils connectés", hitriDostop: "Accès rapide", sistem: "Système", taRacunalnik: "Cet ordinateur", povezanKratko: "Connecté", niPovezano: "Non connecté", splet: "Web", omrezje: "Réseau", baterija: "Batterie", dodajNamig: "Épinglez une application à l'accueil avec l'étoile dans Applications.", napraveVControl: "La liste des appareils et la télécommande sont dans Safeer Control.",
     podnaslov: "Votre ordinateur entre vos mains.", domov: "Accueil", programi: "Applications", datoteke: "Fichiers", naprave: "Appareils",
     nastavitve: "Paramètres", poganja: "Propulsé par", isci: "Rechercher des applications, des fichiers et sur le web", tipkaj: "Commencez à taper",
@@ -266,6 +271,7 @@ var BESEDILA_OS = {
     odstrani: "Retirer", wifiIzklopljen: "Le Wi-Fi est désactivé"
   },
   it: {
+    zaupajRacunalniku: "Considera attendibile questo computer", zaupajDa: "La connessione resta anche dopo la disconnessione e il riavvio.", zaupajNe: "La connessione vale fino all'uscita: al prossimo accesso al computer ti ricollegherai.", samozagon: "Avvia all'accesso", samozagonPod: "Puoi disattivarlo anche nelle Applicazioni d'avvio di Mint.", nazajVMint: "Torna a Linux Mint", nazajVMintPod: "Chiudi Safeer OS e usa il desktop abituale.", nazajOpis: "Safeer OS si chiude e hai davanti il tuo desktop abituale di Linux Mint. Puoi riaprirlo quando vuoi dal menu (Safeer OS).", samoTokrat: "Solo questa volta", zaStalno: "Non avviare più all'accesso",
     nedavnoUporabljeno: "Usati di recente", povezaneNaprave: "Dispositivi collegati", hitriDostop: "Accesso rapido", sistem: "Sistema", taRacunalnik: "Questo computer", povezanKratko: "Collegato", niPovezano: "Non collegato", splet: "Web", omrezje: "Rete", baterija: "Batteria", dodajNamig: "Fissa un programma nella Home con la stella in Programmi.", napraveVControl: "L'elenco dei dispositivi e il telecomando sono in Safeer Control.",
     podnaslov: "Il tuo computer nelle tue mani.", domov: "Home", programi: "Programmi", datoteke: "File", naprave: "Dispositivi",
     nastavitve: "Impostazioni", poganja: "Con tecnologia", isci: "Cerca programmi, file e sul web", tipkaj: "Inizia a digitare",

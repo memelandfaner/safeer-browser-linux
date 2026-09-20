@@ -829,8 +829,11 @@ class Povezava:
     def __init__(self, ws_naslov: str, zeton: str, device_id: str, ime: str,
                  sinhronizira: bool = False, odtis: Optional[str] = None,
                  dodatne_zmoznosti: Optional[List[str]] = None,
-                 katalog: Optional[Callable[[], dict]] = None) -> None:
+                 katalog: Optional[Callable[[], dict]] = None, v_krog: bool = True) -> None:
         self.ws_naslov = ws_naslov
+        # False za racunalnik, ki mu uporabnik ni zaupal (core/link_seja.py): brez prijave s podpisom
+        # in brez vpisa v krog zaupanja - povezava velja samo z zetonom te prijave.
+        self.v_krog = v_krog
         # Protocol v1: katalog aplikacij te naprave ({"<id>": {"name", "kind"}}), ki gre v prijavo.
         # Klic, ne vrednost: katalog se prebere ob vsaki (ponovni) povezavi, da je svez.
         self.katalog = katalog
@@ -871,7 +874,7 @@ class Povezava:
         s_podpisom = False
         try:
             # Tudi ce je nas kljuc v krogu pod starim id-jem: hub nov id sam vpise kot alias.
-            s_podpisom = link_krog.lahko_s_podpisom(self.device_id)
+            s_podpisom = self.v_krog and link_krog.lahko_s_podpisom(self.device_id)
         except Exception:
             s_podpisom = False
         if s_podpisom:
@@ -883,7 +886,7 @@ class Povezava:
             vstopnica, koda = vzemi_vstopnico_s_kodo(self.ws_naslov, self.zeton, self.odtis)
             # Hub nas ne pozna vec: brez nove seznanitve ne bo slo, zato tega ne poskusamo v krogu.
             self.zavrnjena = koda in (401, 403)
-            if vstopnica and not s_podpisom:
+            if vstopnica and not s_podpisom and self.v_krog:
                 # Zeton je veljaven: vpisemo kljuc naprave v krog, da gre naslednjic s podpisom.
                 # Starejsi hub brez kroga vrne 404 - nic hudega, ostanemo pri zetonu.
                 try:

@@ -26,7 +26,7 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("WebKit2", "4.1")
 from gi.repository import Gdk, Gtk, WebKit2, GLib  # noqa: E402
 
-from core import link_deljenje, link_hub, link_krog, link_tls  # noqa: E402
+from core import link_deljenje, link_hub, link_krog, link_seja, link_tls  # noqa: E402
 
 KATEGORIJA_ZAZNAMKI = "bookmarks"
 
@@ -68,6 +68,7 @@ MOST_JS = """
     zacniQr: function () { poslji("zacniQr"); },
     prekiniQr: function () { poslji("prekiniQr"); },
     nadaljujBrezPovezave: function () { poslji("nadaljujBrezPovezave"); },
+    nastaviZaupanje: function (vklop) { poslji("nastaviZaupanje", [!!vklop]); },
     poveziNaprave: function () { poslji("poveziNaprave"); },
     poveziSe: function () { poslji("poveziSe"); },
     posljiTrenutno: function (id) { poslji("posljiTrenutno", [id]); },
@@ -163,6 +164,16 @@ class SafeerLink:
         self._dovoljeni_koren = ""
         # Kdor Link gosti brez okna (Safeer Control v pladnju), zeli vedeti, ali je povezan.
         self.ob_povezavi: Optional[Callable[[bool], None]] = None
+        # »Zaupaj temu racunalniku« v prijavnem oknu (core/link_seja.py): privzeto ne - racunalnik lahko
+        # uporablja vec ljudi, zato povezava brez zaupanja velja samo do konca te prijave.
+        self._zaupaj_ob_prijavi = False
+        # Nova prijava v racunalnik: kar je veljalo samo za prejsnjo (nezaupana povezava, »brez
+        # povezave«), odpade - prijavno okno se pokaze znova.
+        try:
+            if link_seja.pocisti(self.nastavitve.podatki):
+                self.nastavitve.shrani()
+        except Exception as e:  # noqa: BLE001
+            print(f"[SafeerLink] Seje ni bilo mogoče preveriti: {e}")
 
     # ------------------------------------------------------------------
     # Stanje
@@ -205,21 +216,27 @@ class SafeerLink:
             "brezPovezave": self.ob_brez_povezave is not None,
             # Uporabnik je v prijavnem oknu izbral »Nadaljuj brez povezave naprav«: okno se ne vsiljuje vec,
             # naprave pa lahko poveze kadarkoli (»Poveži naprave«).
-            "brezPovezaveIzbrano": bool(self.nastavitve.get("brez_povezave", False)),
+            "brezPovezaveIzbrano": link_seja.brez_v_seji(self.nastavitve.podatki),
+            # Zaupan racunalnik ostane povezan tudi po odjavi; nezaupan le do konca te prijave.
+            "zaupana": self._zaupana(),
+            "zaupajOkno": self._zaupaj_ob_prijavi,
             "deljeneMape": self._deljene_mape(),
             "standardneDeljene": self._standardne_deljene(),
         }
 
+    def _zaupana(self) -> bool:
+        return link_seja.zaupana(self.nastavitve.podatki)
+
     def _clan_kroga(self) -> bool:
         """Kljuc te naprave je v krogu zaupanja (ne glede na to, ali trenutno sredisce poznamo)."""
         try:
-            return bool(link_krog.lahko_s_podpisom(self._id()))
+            return self._zaupana() and bool(link_krog.lahko_s_podpisom(self._id()))
         except Exception:
             return False
 
     def _v_krogu(self) -> bool:
         try:
-            return bool(self._odtis()) and link_krog.lahko_s_podpisom(self._id())
+            return self._zaupana() and bool(self._odtis()) and link_krog.lahko_s_podpisom(self._id())
         except Exception:
             return False
 
@@ -491,6 +508,7 @@ class SafeerLink:
             "zacniQr": lambda: self._v_ozadju(self._zacni_qr),
             "prekiniQr": lambda: self._prekini_qr(),
             "nadaljujBrezPovezave": lambda: self._nadaljuj_brez_povezave(),
+            "nastaviZaupanje": lambda: self.nastavi_zaupanje(bool(argumenti[0]) if argumenti else False),
             "poveziNaprave": lambda: self._povezi_naprave(),
             "poveziSe": lambda: self._v_ozadju(self._povezi),
             "posljiTrenutno": lambda: self._poslji_trenutno(*argumenti[:1]),
@@ -675,7 +693,7 @@ class SafeerLink:
         self._prijava = None
         self.nastavitve.podatki["control_token"] = zeton
         self.nastavitve.podatki["hub_fp"] = str(prijava.get("odtis", ""))
-        self.nastavitve.podatki.pop("brez_povezave", None)
+        link_seja.po_prijavi(self.nastavitve.podatki, self._zaupaj_ob_prijavi)
         self._zapomni_seznanitev()
         self.nastavitve.shrani()
         self._odziv("seznanitev", True)
@@ -734,7 +752,7 @@ class SafeerLink:
                 self.nastavitve.podatki["hub_url"] = naslov
                 self.nastavitve.podatki["control_token"] = zeton
                 self.nastavitve.podatki["hub_fp"] = prijava["odtis"]
-                self.nastavitve.podatki.pop("brez_povezave", None)
+                link_seja.po_prijavi(self.nastavitve.podatki, self._zaupaj_ob_prijavi)
                 self._zapomni_seznanitev()
                 self.nastavitve.shrani()
                 self._odziv("seznanitev", True)
@@ -765,11 +783,26 @@ class SafeerLink:
     def _nadaljuj_brez_povezave(self) -> None:
         self._prekini_qr()
         self._prijava = None
-        self.nastavitve.podatki["brez_povezave"] = True
+        self.nastavitve.podatki["brez_povezave"] = link_seja.trenutna_seja()
         self.nastavitve.shrani()
         self._odziv("stanje", None)
         if self.ob_brez_povezave is not None:
             GLib.idle_add(lambda: (self.ob_brez_povezave(), False)[1])
+
+    def nastavi_zaupanje(self, zaupaj: bool) -> None:
+        """Kljukica »Zaupaj temu racunalniku« (prijavno okno) ali stikalo v Safeer OS.
+
+        Pred prijavo si odlocitev le zapomnimo. Povezan racunalnik jo dobi takoj: zaupan se ob
+        naslednji povezavi vpise v krog zaupanja (povezava ostane po odjavi), nezaupan velja samo do
+        konca te prijave in ne uporablja vec prijave s podpisom."""
+        self._zaupaj_ob_prijavi = bool(zaupaj)
+        if link_seja.seznanjena(self.nastavitve.podatki) or "zaupana" in self.nastavitve.podatki:
+            self.nastavitve.podatki["zaupana"] = bool(zaupaj)
+            self.nastavitve.podatki["seja_prijave"] = link_seja.trenutna_seja()
+            self.nastavitve.shrani()
+            if zaupaj and self._zeton():
+                self._v_ozadju(self._povezi)   # vpis v krog gre ob povezavi z zetonom
+        self._odziv("stanje", None)
 
     def _povezi(self) -> None:
         with self._zaklep_povezave:
@@ -789,7 +822,7 @@ class SafeerLink:
         naslov = self._hub()
         zeton = self._zeton() or ""
         # Brez zetona gre samo, ce je ta naprava v krogu zaupanja (prijava s podpisom, izvoljeni hub).
-        if not naslov or not self._odtis() or (not zeton and not link_krog.lahko_s_podpisom(self._id())):
+        if not naslov or not self._odtis() or (not zeton and not self._v_krogu()):
             return True  # ni kaj povezati; to ni neuspeh, ki bi ga bilo treba iskati
         if self.povezava is not None:
             self.povezava.zapri()
@@ -804,6 +837,8 @@ class SafeerLink:
             + (["desktop"] if self.zaslon is not None and self.zaslon.na_voljo().get("dovoljeno") else []),
             # Protocol v1: programi racunalnika kot katalog aplikacij (samo, ce jih je uporabnik dovolil).
             katalog=(self.programi.katalog_v1 if self.programi is not None else None),
+            # Nezaupan racunalnik (link_seja): samo zeton te prijave, brez kroga zaupanja.
+            v_krog=self._zaupana(),
         )
         povezava.ob_sporocilu = self._na_sporocilo_huba
         povezava.ob_stanju = self._na_stanje_povezave

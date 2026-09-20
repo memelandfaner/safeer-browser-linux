@@ -409,3 +409,9 @@ button.glava-plosce:hover svg { color: var(--zelena); }
 #vsebina { overflow-x: hidden; }
 .datoteke-postavitev > div { min-width: 0; }
 .vrsta-plosc .ploscica { height: 134px; }
+
+.zaupanje { margin-top: 16px; max-width: 980px; }
+#slojMint .plosca { left: 50%; top: 50%; transform: translate(-50%, -50%); width: 560px; max-width: calc(100vw - 32px); }
+#slojMint h3 { margin: 4px 0 10px; font-size: 22px; }
+#slojMint .drobno { font-size: 15px; margin-bottom: 18px; }
+#slojMint .gumbi { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }

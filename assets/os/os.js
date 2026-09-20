@@ -163,6 +163,7 @@
     }
     if (kam === "hitro") { odpriHitro(); return; }
     if (kam === "napajanje") { odpriNapajanje(); return; }
+    if (kam === "mint") { odpriMint(); return; }
     pojdi(kam);
   };
 
@@ -462,6 +463,9 @@
     $("gumbControlBesedilo").textContent = t(povezan ? "odpriControl" : "poveziNaprave");
     $("gumbControl").querySelector("svg").innerHTML = '<path d="' + IK[povezan ? "naprave" : "qr"] + '"/>';
     $("kNapravePod").textContent = t(povezan ? "napravePodPovezan" : "napravePodNov");
+    $("blokZaupanje").hidden = !povezan;
+    $("stikaloZaupaj").setAttribute("aria-checked", p.zaupana ? "true" : "false");
+    $("zaupajPod").textContent = t(p.zaupana ? "zaupajDa" : "zaupajNe");
     $("domNapravaStanje").innerHTML = '<i class="pika' + (povezan ? "" : " siva") + '"></i><span>' +
       ubezi(t(povezan ? "povezanKratko" : "niPovezano")) + "</span>";
     $("domControl").hidden = !p.control;
@@ -596,6 +600,7 @@
   function narisiNastavitve() {
     kontrole($("hitreNastavitve"), false);
     $("stikaloCelozaslonsko").setAttribute("aria-checked", S.zacetek && S.zacetek.celozaslonsko ? "true" : "false");
+    $("stikaloSamozagon").setAttribute("aria-checked", S.zacetek && S.zacetek.samozagon ? "true" : "false");
     var cilj = $("skupineNastavitev");
     cilj.innerHTML = "";
     seznamNastavitev().forEach(function (g) {
@@ -624,6 +629,9 @@
   function narisiNapajanje() {
     var p = $("napajanje");
     p.innerHTML = "";
+    var mint = el("button", "", svg("namizje") + "<span>" + ubezi(t("nazajVMint")) + "</span>");
+    mint.addEventListener("click", odpriMint);
+    p.appendChild(mint);
     [["zakleni", "zakleni", false], ["spanje", "luna", false], ["odjava", "odjava", true],
      ["ponovni-zagon", "ponovno", true], ["izklop", "napajanje", true]].forEach(function (d) {
       var kljuc = d[0] === "ponovni-zagon" ? "ponovniZagon" : d[0];
@@ -642,6 +650,14 @@
       });
       p.appendChild(b);
     });
+  }
+
+  // ------------------------------------------------------------------ nazaj v Linux Mint
+  function odpriMint() {
+    zapriSloje();
+    $("mintZaStalno").hidden = !(S.zacetek && S.zacetek.samozagon);
+    $("slojMint").classList.add("viden");
+    setTimeout(function () { $("mintSamoTokrat").focus(); }, 30);
   }
 
   // ------------------------------------------------------------------ iskanje
@@ -786,6 +802,24 @@
       klic("celozaslonsko", [nov]);
     });
     $("gumbNamizje").addEventListener("click", function () { klic("namizje"); });
+    $("stikaloSamozagon").addEventListener("click", function () {
+      var b = $("stikaloSamozagon"), nov = b.getAttribute("aria-checked") !== "true";
+      b.setAttribute("aria-checked", nov ? "true" : "false");
+      klic("samozagon", [nov]).then(function (zdaj) {
+        if (S.zacetek) S.zacetek.samozagon = !!zdaj;
+        b.setAttribute("aria-checked", zdaj ? "true" : "false");
+      });
+    });
+    $("stikaloZaupaj").addEventListener("click", function () {
+      var b = $("stikaloZaupaj"), nov = b.getAttribute("aria-checked") !== "true";
+      S.povezava.zaupana = nov;
+      narisiPovezavo();
+      klic("zaupanje", [nov]).then(function () { setTimeout(osveziPovezavo, 600); });
+    });
+    $("gumbNazajVMint").addEventListener("click", odpriMint);
+    $("mintPreklici").addEventListener("click", zapriSloje);
+    $("mintSamoTokrat").addEventListener("click", function () { klic("nazajVMint", [false]); });
+    $("mintZaStalno").addEventListener("click", function () { klic("nazajVMint", [true]); });
     document.querySelectorAll(".sloj .tancica").forEach(function (t_) { t_.addEventListener("click", function () {
       $("iskanje").value = "";
       zapriSloje();
