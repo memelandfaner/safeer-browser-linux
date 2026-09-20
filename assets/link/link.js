@@ -768,6 +768,9 @@
       deliZ: "Deli z: {ime}",
       izberiVsebino: "Kaj želiš deliti s to napravo?",
       deliZaslon: "Zaslon",
+      odpriSafeerOs: "Safeer OS na televizorju",
+      odpriBrskalnik: "Safeer brskalnik",
+      odpiramNaZaslonu: "Odpiram {ime} na napravi {naprava} …",
       deliDatoteka: "Datoteka",
       deliBesedilo: "Besedilo",
       posljiNaNapravo: "Pošlji na napravo",
@@ -789,6 +792,8 @@
       prejetZaslon: "{ime} deli zaslon s to napravo",
       naprava: "Naprava",
       deliDotik: "Dotakni se za deljenje",
+      deliKlik: "Klikni za deljenje in daljinec",
+      istaNaprava: "{ime} teče na tej napravi",
       daljinec: "Daljinec",
       ospredjeOpis: "Da se Safeer odpre sam, ko mu s telefona pošlješ stran ali ukaz, mu enkrat dovoli prekrivanje drugih aplikacij.",
       ospredjeDovoli: "Dovoli",
@@ -809,6 +814,9 @@
       deliZ: "Share with: {ime}",
       izberiVsebino: "What do you want to share with this device?",
       deliZaslon: "Screen",
+      odpriSafeerOs: "Safeer OS on the TV",
+      odpriBrskalnik: "Safeer browser",
+      odpiramNaZaslonu: "Opening {ime} on {naprava} …",
       deliDatoteka: "File",
       deliBesedilo: "Text",
       posljiNaNapravo: "Send to device",
@@ -830,6 +838,8 @@
       prejetZaslon: "{ime} is sharing its screen with this device",
       naprava: "Device",
       deliDotik: "Tap to share",
+      deliKlik: "Click to share or use the remote",
+      istaNaprava: "{ime} runs on this device",
       daljinec: "Remote control",
       ospredjeOpis: "So that Safeer opens by itself when your phone sends it a page or a command, allow it once to appear over other apps.",
       ospredjeDovoli: "Allow",
@@ -850,6 +860,9 @@
       deliZ: "Teilen mit: {ime}",
       izberiVsebino: "Was möchtest du mit diesem Gerät teilen?",
       deliZaslon: "Bildschirm",
+      odpriSafeerOs: "Safeer OS auf dem Fernseher",
+      odpriBrskalnik: "Safeer-Browser",
+      odpiramNaZaslonu: "Öffne {ime} auf {naprava} …",
       deliDatoteka: "Datei",
       deliBesedilo: "Text",
       posljiNaNapravo: "An Gerät senden",
@@ -871,6 +884,8 @@
       prejetZaslon: "{ime} teilt den Bildschirm mit diesem Gerät",
       naprava: "Gerät",
       deliDotik: "Zum Teilen antippen",
+      deliKlik: "Klicken zum Teilen oder für die Fernbedienung",
+      istaNaprava: "{ime} läuft auf diesem Gerät",
       daljinec: "Fernbedienung",
       ospredjeOpis: "Damit sich Safeer von selbst öffnet, wenn das Telefon eine Seite oder einen Befehl schickt, erlaube ihm einmal, über anderen Apps zu erscheinen.",
       ospredjeDovoli: "Erlauben",
@@ -891,6 +906,9 @@
       deliZ: "Compartir con: {ime}",
       izberiVsebino: "¿Qué quieres compartir con este dispositivo?",
       deliZaslon: "Pantalla",
+      odpriSafeerOs: "Safeer OS en el televisor",
+      odpriBrskalnik: "Navegador Safeer",
+      odpiramNaZaslonu: "Abriendo {ime} en {naprava} …",
       deliDatoteka: "Archivo",
       deliBesedilo: "Texto",
       posljiNaNapravo: "Enviar al dispositivo",
@@ -912,6 +930,8 @@
       prejetZaslon: "{ime} comparte su pantalla con este dispositivo",
       naprava: "Dispositivo",
       deliDotik: "Toca para compartir",
+      deliKlik: "Haz clic para compartir o usar el mando",
+      istaNaprava: "{ime} funciona en este dispositivo",
       daljinec: "Mando a distancia",
       ospredjeOpis: "Para que Safeer se abra solo cuando el teléfono le envíe una página o un comando, permítele una vez aparecer sobre otras apps.",
       ospredjeDovoli: "Permitir",
@@ -932,6 +952,9 @@
       deliZ: "Partager avec : {ime}",
       izberiVsebino: "Que veux-tu partager avec cet appareil ?",
       deliZaslon: "Écran",
+      odpriSafeerOs: "Safeer OS sur le téléviseur",
+      odpriBrskalnik: "Navigateur Safeer",
+      odpiramNaZaslonu: "Ouverture de {ime} sur {naprava} …",
       deliDatoteka: "Fichier",
       deliBesedilo: "Texte",
       posljiNaNapravo: "Envoyer à l’appareil",
@@ -953,6 +976,8 @@
       prejetZaslon: "{ime} partage son écran avec cet appareil",
       naprava: "Appareil",
       deliDotik: "Toucher pour partager",
+      deliKlik: "Cliquer pour partager ou utiliser la télécommande",
+      istaNaprava: "{ime} fonctionne sur cet appareil",
       daljinec: "Télécommande",
       ospredjeOpis: "Pour que Safeer s'ouvre tout seul quand le téléphone lui envoie une page ou une commande, autorisez-le une fois à s'afficher par-dessus les autres applis.",
       ospredjeDovoli: "Autoriser",
@@ -994,6 +1019,11 @@
       prejetZaslon: "{ime} condivide lo schermo con questo dispositivo",
       naprava: "Dispositivo",
       deliDotik: "Tocca per condividere",
+      deliKlik: "Fai clic per condividere o usare il telecomando",
+      istaNaprava: "{ime} è in esecuzione su questo dispositivo",
+      odpriSafeerOs: "Safeer OS sul televisore",
+      odpriBrskalnik: "Browser Safeer",
+      odpiramNaZaslonu: "Apro {ime} su {naprava} …",
       daljinec: "Telecomando",
       ospredjeOpis: "Perché Safeer si apra da solo quando il telefono gli invia una pagina o un comando, consentigli una volta di apparire sopra le altre app.",
       ospredjeDovoli: "Consenti",
@@ -1396,14 +1426,24 @@
 
     // Vse naprave, ki jih Hub pozna, razen te: vsaka je lahko cilj deljenja.
     var druge = stanje.naprave.filter(function (n) { return n.id !== stanje.idNaprave; });
+    // Ena fizicna naprava, ena vrstica: Safeer OS (vrsta "os") na istem naslovu kot zaslon je
+    // aplikacija tega zaslona, ne druga naprava. Protocol v1; naprave 0.2 ostanejo, kot so.
+    var sorodniki = {};
+    druge = druge.filter(function (n) {
+      if (n.vrsta !== "os" || !n.naslov) return true;
+      var zaslon = druge.some(function (z) { return z !== n && z.vloga === "receiver" && z.naslov === n.naslov; });
+      if (zaslon) sorodniki[n.naslov] = n;
+      return !zaslon;
+    });
     druge.forEach(function (n) {
       var jeZaslon = n.vloga === "receiver";
       var deljivo = znaDeliti;
       var zasedena = !!n.zasedenaOd && n.zasedenaOd !== stanje.idNaprave;
       var pod = zasedena ? t("zasedenoDeli", { ime: n.zasedenaOdIme || n.zasedenaOd })
-        : (deljivo ? t("deliDotik") : (jeZaslon ? t("zaslon") : t("naprava")));
+        : (deljivo ? t(jeNamizje() ? "deliKlik" : "deliDotik") : (jeZaslon ? t("zaslon") : t("naprava")));
+      if (!zasedena && n.naslov && sorodniki[n.naslov]) pod = t("istaNaprava", { ime: "Safeer OS" }) + " · " + pod;
       seznam.appendChild(vrstica(
-        jeZaslon ? "tv" : ikonaNapraveVSeznamu(n),
+        (jeZaslon && !n.platforma) ? "tv" : ikonaNapraveVSeznamu(n),
         prijaznoIme(n),
         pod,
         zasedena ? t("zasedenoKratko") : t("povezan"), zasedena ? "rumenaZnacka" : "zivo",
@@ -1415,6 +1455,12 @@
   }
 
   function ikonaNapraveVSeznamu(naprava) {
+    // Protocol v1: naprava pove platformo in vrsto sama; ugibanje po imenu ostane za naprave 0.2.
+    var pl = (naprava && naprava.platforma) || "";
+    var vr = (naprava && naprava.vrsta) || "";
+    if (pl === "tv" || vr === "screen" && pl !== "tablet") return "tv";
+    if (pl === "linux" || pl === "windows" || pl === "macos" || vr === "computer" || vr === "control") return "racunalnik";
+    if (pl === "phone" || pl === "tablet" || vr === "handheld") return "telefon";
     var opis = ((naprava && (naprava.ime || "")) + " " + (naprava && (naprava.id || ""))).toLowerCase();
     if (/(televizor|tv|philips|android tv)/.test(opis)) return "tv";
     if (/(racunaln|računaln|computer|namizn|desktop|laptop|prenosn|linux|windows|mac|pc\b)/.test(opis)) return "racunalnik";
@@ -1570,6 +1616,66 @@
     pokazi("predvajalnik", false);
     pokazi("panelMape", stanje.znan && stanje.seznanjen);
     narisiMape();
+    narisiMeni();
+  }
+
+  // ---------- samostojna aplikacija: levi meni z razdelki (samo Safeer Control) ----------
+
+  var razdelek = "";
+
+  function jeNamizje() { return !!stanje.control; }
+
+  function narisiMeni() {
+    if (!jeNamizje()) return;
+    document.body.classList.add("namizje");
+    pokazi("stranskiMeni", true);
+    // Razdelek je na voljo le, ce je njegov panel sploh na voljo (Control nima strani za posiljanje ne sinhronizacije).
+    var gumbi = document.querySelectorAll("#stranskiMeni button[data-razdelek]");
+    for (var i = 0; i < gumbi.length; i++) {
+      var ime = gumbi[i].getAttribute("data-razdelek");
+      var naVoljo = true;
+      if (ime === "poslji") naVoljo = !el("panelCast").hidden;
+      else if (ime === "sync") naVoljo = !el("panelSync").hidden;
+      else if (ime === "mape") naVoljo = !el("panelMape").hidden;
+      else if (ime === "daljinec") naVoljo = napravaZaDaljinec() !== null;
+      gumbi[i].hidden = !naVoljo;
+    }
+    if (!razdelek) izberiRazdelek("naprave");
+    else if (razdelek !== "daljinec" && el("stranskiMeni").querySelector('button[data-razdelek="' + razdelek + '"]').hidden) izberiRazdelek("naprave");
+  }
+
+  /** Zaslon (televizor), ki sprejema ukaze daljinca; prvi tak, ali null. */
+  function napravaZaDaljinec() {
+    var z = zasloni().filter(function (n) { return (n.zmoznosti || []).indexOf("remote") >= 0; });
+    return z.length ? z[0] : null;
+  }
+
+  function oznaciRazdelek(ime) {
+    razdelek = ime;
+    document.body.setAttribute("data-razdelek", ime);
+    var gumbi = document.querySelectorAll("#stranskiMeni button[data-razdelek]");
+    for (var i = 0; i < gumbi.length; i++) {
+      gumbi[i].classList.toggle("izbran", gumbi[i].getAttribute("data-razdelek") === ime);
+    }
+  }
+
+  function izberiRazdelek(ime) {
+    if (ime === "daljinec") {
+      var n = napravaZaDaljinec();
+      if (!n || !window.SafeerDaljinec) { izberiRazdelek("naprave"); return; }
+      oznaciRazdelek("daljinec");
+      window.SafeerDaljinec.odpri(n);
+      return;
+    }
+    if (window.SafeerDaljinec && window.SafeerDaljinec.jeOdprt()) {
+      oznaciRazdelek(ime);
+      window.SafeerDaljinec.zapri();
+      return;
+    }
+    oznaciRazdelek(ime);
+    zapriDeljenje();
+    var glavni = el("main") || document.querySelector("main");
+    if (glavni) glavni.scrollTop = 0;
   }
 
   /** Deljene mape (Safeer Control): seznam, odstranitev s klikom na vrstico, gumb za dodajanje. */
@@ -1867,6 +1973,7 @@
         if (deljenje.naprava && !stanje.naprave.some(function (n) { return n.id === deljenje.naprava.id; })) zapriDeljenje();
         narisiNaprave();
         narisiPrejemnike();
+        narisiMeni();
       } else if (vrsta === "predvajanje") {
         stanje.predvajanje = podatki;
         narisiPredvajanje();
@@ -2002,9 +2109,10 @@
     // Daljinec: napravo, ki javi zmoznost "remote", je mogoce upravljati (Safeer Control).
     var znaDaljinec = !samoIme && !!(most && most.ukaz) && ((naprava.zmoznosti || []).indexOf("remote") >= 0) && !!window.SafeerDaljinec;
     pokazi("gumbDaljinec", znaDaljinec);
+    pokazi("bliznjiceZaslona", znaDaljinec);
     pokazi("izbireDeljenja", !samoIme);
     pokazi("opisIzbire", !samoIme);
-    var izbire = document.querySelectorAll("#panelDeljenje .izbira");
+    var izbire = document.querySelectorAll("#izbireDeljenja .izbira");
     var zasedena = !samoIme && !!naprava.zasedenaOd && naprava.zasedenaOd !== stanje.idNaprave;
     for (var i = 0; i < izbire.length; i++) {
       izbire[i].classList.remove("izbrana");
@@ -2103,7 +2211,7 @@
 
   function izberiVrsto(vrsta) {
     deljenje.vrsta = vrsta;
-    var izbire = document.querySelectorAll("#panelDeljenje .izbira");
+    var izbire = document.querySelectorAll("#izbireDeljenja .izbira");
     for (var i = 0; i < izbire.length; i++) {
       izbire[i].classList.toggle("izbrana", izbire[i].getAttribute("data-vrsta") === vrsta);
     }
@@ -2227,7 +2335,7 @@
     naKlik("gumbPrekiniZaslon", function () {
       if (most && most.koncajDeljenjeZaslona) most.koncajDeljenjeZaslona();
     });
-    var izbire = document.querySelectorAll("#panelDeljenje .izbira");
+    var izbire = document.querySelectorAll("#izbireDeljenja .izbira");
     for (var i = 0; i < izbire.length; i++) {
       (function (gumb) {
         gumb.addEventListener("click", function () { izberiVrsto(gumb.getAttribute("data-vrsta")); });
@@ -2447,15 +2555,21 @@
       if (daljinecOdprt) return;
       daljinecOdprt = true;
       pokritoZaDaljinec = [];
-      var kandidati = document.querySelectorAll("header.glava, main > .zaslon:not(#zaslonDaljinec), #hubStikalo, footer.opozoriloWifi");
+      // V aplikaciji glava in levi meni ostaneta: daljinec je le se en razdelek.
+      var izbor = jeNamizje()
+        ? "main > .zaslon:not(#zaslonDaljinec), #hubStikalo"
+        : "header.glava, main > .zaslon:not(#zaslonDaljinec), #hubStikalo, footer.opozoriloWifi";
+      var kandidati = document.querySelectorAll(izbor);
       for (var i = 0; i < kandidati.length; i++) {
         if (!kandidati[i].hidden) { kandidati[i].hidden = true; pokritoZaDaljinec.push(kandidati[i]); }
       }
+      if (jeNamizje()) oznaciRazdelek("daljinec");
     } else {
       if (!daljinecOdprt) return;
       daljinecOdprt = false;
       for (var j = 0; j < pokritoZaDaljinec.length; j++) pokritoZaDaljinec[j].hidden = false;
       pokritoZaDaljinec = [];
+      if (jeNamizje() && razdelek === "daljinec") oznaciRazdelek("naprave");
       narisiZaslon();
       var nazaj = el("gumbOsvezi");
       if (stanje.televizor && nazaj) { try { nazaj.focus(); } catch (e) {} }
@@ -2496,6 +2610,37 @@
   osveziOpozoriloOspredje();
   document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") osveziOpozoriloOspredje(); });
   window.addEventListener("focus", osveziOpozoriloOspredje);
+
+  var meniGumbi = document.querySelectorAll("#stranskiMeni button[data-razdelek]");
+  for (var mi = 0; mi < meniGumbi.length; mi++) {
+    meniGumbi[mi].addEventListener("click", function () { izberiRazdelek(this.getAttribute("data-razdelek")); });
+  }
+
+  /** Paket Safeer OS na tej napravi: iz kataloga aplikacij (Protocol v1), sicer po platformi. */
+  function paketSafeerOs(n) {
+    var k = n.aplikacije || {};
+    if (k["si.safeer.os"]) return "si.safeer.os";
+    if (k["si.safeer.tablet"]) return "si.safeer.tablet";
+    return n.platforma === "tablet" ? "si.safeer.tablet" : "si.safeer.os";
+  }
+
+  function odpriNaZaslonu(paket, ime) {
+    var n = deljenje.naprava;
+    if (!n || !most || !most.ukaz) return;
+    besedilo("opombaDeljenje", t("odpiramNaZaslonu", { ime: ime, naprava: prijaznoIme(n) }));
+    most.ukaz(n.id, "launch_app", JSON.stringify({ package: paket }), "");
+  }
+
+  var gumbOdpriSafeerOs = el("gumbOdpriSafeerOs");
+  if (gumbOdpriSafeerOs) gumbOdpriSafeerOs.addEventListener("click", function () {
+    var n = deljenje.naprava;
+    if (n) odpriNaZaslonu(paketSafeerOs(n), "Safeer OS");
+  });
+  var gumbOdpriBrskalnik = el("gumbOdpriBrskalnik");
+  if (gumbOdpriBrskalnik) gumbOdpriBrskalnik.addEventListener("click", function () {
+    var n = deljenje.naprava;
+    if (n) odpriNaZaslonu(n.platforma === "tablet" ? "si.safeer.tablet" : "si.safeer.tv", "Safeer");
+  });
 
   var gumbDaljinec = el("gumbDaljinec");
   if (gumbDaljinec) gumbDaljinec.addEventListener("click", function () {

@@ -458,3 +458,71 @@ svg[aria-hidden] { display: inline-block; fill: none; stroke: currentColor; stro
 .panel.opozoriloOspredje { border-left: 4px solid var(--rumena); padding-left: 14px; }
 .panel.opozoriloOspredje .pojasnilo { margin-bottom: 4px; }
 .panel.opozoriloOspredje button.drugotni.tanek { margin-top: 8px; }
+
+/* ---------- samostojna aplikacija (Safeer Control na racunalniku) ----------
+   Levi meni z razdelki, vsebina desno; glava cez celo sirino. Telefon in televizor
+   tega ne vidita (body brez razreda namizje). */
+
+.stranski {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px 12px;
+  border-right: 1px solid var(--crta);
+  background: var(--plosca);
+}
+
+.stranski button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--medlo);
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.stranski button svg {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.stranski button:hover { color: var(--besedilo); background: var(--ploscaSvetla); }
+.stranski button:focus-visible { outline: 2px solid var(--zelena); outline-offset: -2px; }
+.stranski button.izbran { color: var(--besedilo); background: var(--ploscaSvetla); border-color: var(--crta); }
+.stranski button.izbran svg { color: var(--zelena); }
+
+body.namizje {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100vh;
+  padding-bottom: 0;
+  overflow: hidden;
+}
+
+body.namizje header.glava { grid-column: 1 / -1; position: static; background: var(--ozadje); border-bottom: 1px solid var(--crta); padding: 14px 18px; }
+body.namizje .stranski { grid-row: 2; overflow-y: auto; }
+body.namizje main { grid-row: 2; overflow-y: auto; padding: 18px 28px 28px; max-width: 900px; }
+body.namizje footer.opozoriloWifi { grid-column: 1 / -1; }
+body.namizje #hubStikalo { max-width: 560px; }
+
+/* V aplikaciji je viden samo izbrani razdelek; kar je za vse (deljenje zaslona tece), ostane. */
+body.namizje #zaslonPovezan .panel[data-razdelek] { display: none !important; }
+body.namizje[data-razdelek="naprave"] #zaslonPovezan .panel[data-razdelek="naprave"]:not([hidden]),
+body.namizje[data-razdelek="poslji"] #zaslonPovezan .panel[data-razdelek="poslji"]:not([hidden]),
+body.namizje[data-razdelek="mape"] #zaslonPovezan .panel[data-razdelek="mape"]:not([hidden]),
+body.namizje[data-razdelek="sync"] #zaslonPovezan .panel[data-razdelek="sync"]:not([hidden]) { display: block !important; }
+
