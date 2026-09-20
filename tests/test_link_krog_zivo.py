@@ -52,11 +52,16 @@ class KrogVZivo(unittest.TestCase):
         device_id, ime = link_hub.id_naprave() + "-control", "Safeer Control (" + ime_g + ")"
 
         prej = link_krog.je_vpisan(device_id)
+        sporocila = []
         p = link_hub.Povezava(hub, zeton, device_id, ime, odtis=odtis)
+        p.ob_sporocilu = sporocila.append
         self.assertTrue(p.poveži(), "prva prijava")
         time.sleep(1.5)
         prva = (p.prijava_s_podpisom, p.vpisana_v_krog)
         p.zapri()
+        potrditve = [s for s in sporocila if s.get("type") == "cast.ack"]
+        print(f"  potrditev prijave: {[(s.get('status'), s.get('error_code')) for s in potrditve]}")
+        self.assertTrue(potrditve and potrditve[0].get("status") == "accepted", "hub mora prijavo sprejeti (vstopnica je vezana na ta device_id)")
         print(f"  prej vpisan: {prej}; prva prijava s podpisom: {prva[0]}, vpisala v krog: {prva[1]}")
         self.assertTrue(link_krog.je_vpisan(device_id), "po prvi prijavi mora biti kljuc v krogu")
         if not prej:
