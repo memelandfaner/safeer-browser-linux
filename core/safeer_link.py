@@ -28,6 +28,11 @@ from gi.repository import Gdk, Gtk, WebKit2, GLib  # noqa: E402
 
 from core import link_deljenje, link_hub, link_krog, link_seja, link_tls  # noqa: E402
 
+
+def secrets_token() -> str:
+    import secrets
+    return secrets.token_urlsafe(9)
+
 KATEGORIJA_ZAZNAMKI = "bookmarks"
 
 # Skripta, ki v strani naredi window.SafeerLink. Sinhroni bralci berejo stanje, ki
@@ -142,6 +147,8 @@ class SafeerLink:
         self.zaslon = None
         # Safeer Control: zvok racunalnika na napravi v Linku (core/link_zvok.ZvokNaNapravo).
         self.zvok = None
+        # Ukazi drugim napravam, na katere kdo caka (Safeer OS prek D-Bus): ref -> (Event, odgovor).
+        self._cakajoci: Dict[str, list] = {}
 
         self.nastavitve = nastavitve if nastavitve is not None else link_hub.Nastavitve()
         self.povezava: Optional[link_hub.Povezava] = None
@@ -1424,11 +1431,48 @@ class SafeerLink:
             print("[SafeerLink] Naprava zvoka ne sprejme: %s" % (telo.get("message") or sporocilo.get("error") or "?"))
             self._v_ozadju(self.zvok.ustavi)
 
+    def ukaz_pocakaj(self, id_naprave: str, dejanje: str, parametri: Optional[dict] = None,
+                     cas: float = 15.0) -> dict:
+        """Ukaz napravi in pocakan odgovor (za klice iz ozadja, npr. Safeer OS prek D-Bus).
+        Vrne {"ok", "message", "data", "koda"}; ce naprava ne odgovori, ok=False."""
+        povezava = self.povezava
+        if povezava is None or not povezava.tece:
+            return {"ok": False, "message": "Ni povezave s Safeer Linkom.", "koda": "ni_povezave"}
+        ref = "cakaj-" + secrets_token()
+        dogodek = threading.Event()
+        self._cakajoci[ref] = [dogodek, None]
+        poslano = povezava.poslji({"id": ref, "type": "control.command", "target": id_naprave,
+                                   "payload": {"action": dejanje, "params": parametri or {}}})
+        if not poslano:
+            self._cakajoci.pop(ref, None)
+            return {"ok": False, "message": "Ukaza ni bilo mogoče poslati.", "koda": "ni_poslano"}
+        dogodek.wait(cas)
+        vnos = self._cakajoci.pop(ref, None)
+        if vnos is None or vnos[1] is None:
+            return {"ok": False, "message": "Naprava ni odgovorila.", "koda": "cas"}
+        return vnos[1]
+
     def _ukaz_odziv(self, sporocilo: dict) -> None:
         """Odgovor naprave (control.result) ali zavrnitev sredisca (control.ack) -> stran."""
         telo = sporocilo.get("payload") or {}
-        if str(sporocilo.get("ref_id", "") or "").startswith("zvok-"):
+        ref = str(sporocilo.get("ref_id", "") or "")
+        if ref.startswith("zvok-"):
             self._zvok_odziv(sporocilo, telo)
+            return
+        if ref.startswith("cakaj-"):
+            vnos = self._cakajoci.get(ref)
+            if vnos is None:
+                return
+            if sporocilo.get("type") == "control.ack":
+                if sporocilo.get("status") == "accepted":
+                    return
+                vnos[1] = {"ok": False, "message": str(sporocilo.get("error") or "Središče je ukaz zavrnilo."),
+                           "koda": str(sporocilo.get("error_code") or ""), "data": {}}
+            else:
+                vnos[1] = {"ok": bool(telo.get("ok")), "message": str(telo.get("message") or ""),
+                           "koda": str(telo.get("code") or ""),
+                           "data": telo.get("data") if isinstance(telo.get("data"), dict) else {}}
+            vnos[0].set()
             return
         if str(sporocilo.get("ref_id", "") or "").startswith("vnos-"):
             # Odgovor na vnos iz okna gledalca: stran Linka ga ne potrebuje.

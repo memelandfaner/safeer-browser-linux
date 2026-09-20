@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import threading
 import time
 import sys
 from typing import Optional
@@ -46,6 +47,7 @@ from core import link_datoteke, link_hub, link_programi, link_sway, link_tls, li
 from core.safeer_link import SafeerLink  # noqa: E402
 
 APP_ID = "io.github.memelandfaner.SafeerControl"
+CONTROL_POT = "/io/github/memelandfaner/SafeerControl"
 NASTAVITVE_MAPA = os.path.expanduser("~/.config/safeer-control")
 SAMOZAGON_POT = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")), "autostart", "safeer-control.desktop")
 
@@ -377,6 +379,64 @@ class SafeerControl(Gtk.Application):
         self.add_action(zvok)
         if self.ozadje:
             self.hold()  # brez okna bi se GApplication koncal; ikona v pladnju ga drzi
+        self._izvozi_naprave()
+
+    # ------------------------------------------------------------------ D-Bus za Safeer OS: naprave in njihovi programi
+    VMESNIK_NAPRAVE = """
+    <node><interface name="io.github.memelandfaner.SafeerControl.Naprave">
+      <method name="Seznam"><arg type="s" name="json" direction="out"/></method>
+      <method name="Aplikacije"><arg type="s" name="naprava" direction="in"/><arg type="s" name="json" direction="out"/></method>
+      <method name="Zazeni"><arg type="s" name="naprava" direction="in"/><arg type="s" name="app" direction="in"/><arg type="s" name="json" direction="out"/></method>
+    </interface></node>"""
+
+    def _izvozi_naprave(self) -> None:
+        """Safeer OS (locen proces) prek tega vmesnika naste naprave v Linku, njihove programe (apps.list) in
+        jih zazene (apps.launch). Klici cakajo na odgovor naprave, zato tecejo v ozadju, ne na glavni niti."""
+        try:
+            vodilo = self.get_dbus_connection() or Gio.bus_get_sync(Gio.BusType.SESSION, None)
+            info = Gio.DBusNodeInfo.new_for_xml(self.VMESNIK_NAPRAVE)
+            vodilo.register_object(CONTROL_POT + "/naprave", info.interfaces[0], self._klic_naprave, None, None)
+        except Exception as e:  # noqa: BLE001
+            print("[SafeerControl] D-Bus Naprave:", e)
+
+    def _klic_naprave(self, _vodilo, _posiljatelj, _pot, _vmesnik, metoda, parametri, klic) -> None:
+        argumenti = list(parametri.unpack())
+
+        def delo() -> None:
+            try:
+                izid = self._naprave_metoda(metoda, argumenti)
+            except Exception as e:  # noqa: BLE001
+                izid = {"ok": False, "message": str(e)}
+            klic.return_value(GLib.Variant("(s)", (json.dumps(izid, ensure_ascii=True),)))
+        threading.Thread(target=delo, name="safeer-dbus-naprave", daemon=True).start()
+
+    def _naprave_metoda(self, metoda: str, a: list) -> dict:
+        if self.link is None:
+            self._pripravi_link()
+        link = self.link
+        if metoda == "Seznam":
+            return {"ok": True, "naprave": [
+                {"id": n.get("id", ""), "ime": n.get("ime", ""), "zmoznosti": n.get("zmoznosti") or [],
+                 "platforma": n.get("platforma", ""), "vrsta": n.get("vrsta", "")} for n in link.naprave]}
+        if metoda == "Aplikacije":
+            id_naprave = str(a[0]) if a else ""
+            # Po kosih (racunalnik daje najvec 60 z ikonami na sporocilo); Android vrne vse naenkrat.
+            vsi, od = [], 0
+            for _ in range(20):
+                r = link.ukaz_pocakaj(id_naprave, "apps.list", {"icons": True, "offset": od, "limit": 60}, cas=20.0)
+                if not r.get("ok"):
+                    return r
+                d = r.get("data") or {}
+                kos = d.get("items") if isinstance(d.get("items"), list) else []
+                vsi += kos
+                skupaj = int(d.get("total") or len(vsi))
+                od = int(d.get("offset") or 0) + len(kos)
+                if not kos or od >= skupaj:
+                    break
+            return {"ok": True, "items": vsi, "enabled": bool((r.get("data") or {}).get("enabled", True))}
+        if metoda == "Zazeni":
+            return link.ukaz_pocakaj(str(a[0]) if a else "", "apps.launch", {"app": str(a[1]) if len(a) > 1 else ""})
+        return {"ok": False, "message": "neznana metoda"}
 
     def _pripravi_link(self) -> None:
         nastavitve_linka = link_hub.Nastavitve(os.path.join(NASTAVITVE_MAPA, "link.json"))

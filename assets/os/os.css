@@ -221,6 +221,12 @@ h2 .dodatno + .dodatno { margin-left: 14px; }
 .filtri button:hover { border-color: var(--rob); }
 .filtri button.izbran { background: var(--zelena); color: var(--zelena-temna); font-weight: 600; }
 .filtri button span { opacity: .65; margin-left: 6px; }
+.naprave-filtri { margin-bottom: 10px; }
+.naprave-filtri button { display: inline-flex; align-items: center; gap: 8px; }
+.naprave-filtri button svg { width: 18px; height: 18px; }
+.naprave-filtri button.izbran svg { color: var(--zelena-temna); }
+.naprave-filtri button svg { color: var(--zelena); }
+.programi-obvestilo { color: var(--medlo); padding: 10px 4px 18px; }
 
 /* Naprave */
 .panel {

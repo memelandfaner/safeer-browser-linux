@@ -390,7 +390,14 @@ class Programi:
         """Ikona kot PNG v base64 (televizor ne zna SVG). Prazno, ce je ne najdemo."""
         if not ime:
             return ""
-        pot = ime if os.path.isabs(ime) and os.path.isfile(ime) else (self._iz_teme(ime) or self._poisci_ikono(ime))
+        pot = ""
+        if os.path.isabs(ime):
+            pot = ime if os.path.isfile(ime) else ""
+        else:
+            # Debianovi vnosi imajo pogosto »Icon=igra.xpm«: datoteko iscemo z imenom vred, temo pa
+            # brez koncnice (GTK ikone s koncnico ne najde).
+            steblo = ime[:-4] if ime.lower().endswith((".png", ".svg", ".xpm")) else ime
+            pot = self._poisci_ikono(ime, samo_pixmaps=True) or self._iz_teme(steblo) or self._poisci_ikono(steblo)
         if not pot:
             return ""
         try:
@@ -430,7 +437,7 @@ class Programi:
             pass
         return ""
 
-    def _poisci_ikono(self, ime: str) -> str:
+    def _poisci_ikono(self, ime: str, samo_pixmaps: bool = False) -> str:
         doma = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
         korenine = [os.path.join(doma, "icons"), os.path.expanduser("~/.icons"),
                     "/usr/share/icons", "/usr/local/share/icons",
@@ -439,7 +446,7 @@ class Programi:
                     os.path.join(doma, "flatpak/exports/share/icons")]
         velikosti = ["128x128", "96x96", "64x64", "256x256", "48x48", "scalable"]
         teme = ["hicolor", "Papirus", "Adwaita", "breeze"]
-        for koren in korenine:
+        for koren in ([] if samo_pixmaps else korenine):
             for tema in teme:
                 for velikost in velikosti:
                     for konec in (".png", ".svg"):
@@ -447,8 +454,8 @@ class Programi:
                         if os.path.isfile(pot):
                             return pot
         for mapa in ("/usr/share/pixmaps", os.path.join(doma, "pixmaps")):
-            for konec in (".png", ".svg", ".xpm"):
+            for konec in ("", ".png", ".svg", ".xpm"):
                 pot = os.path.join(mapa, ime + konec)
-                if os.path.isfile(pot):
+                if os.path.isfile(pot) and (konec or ime.lower().endswith((".png", ".svg", ".xpm"))):
                     return pot
         return ""

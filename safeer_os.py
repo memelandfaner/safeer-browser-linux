@@ -182,24 +182,29 @@ def _control_na_vodilu(vodilo) -> bool:
                             Gio.DBusCallFlags.NONE, 2000, None).unpack()[0]
 
 
+def _zagotovi_control(vodilo) -> bool:
+    """Control tece (na vodilu) - ce ne, ga zazenemo v ozadju (pladenj) in pocakamo, da se javi."""
+    if _control_na_vodilu(vodilo):
+        return True
+    ukaz = _ukaz_controla()
+    if not ukaz:
+        return False
+    subprocess.Popen(ukaz + ["--ozadje"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    for _ in range(40):
+        time.sleep(0.25)
+        if _control_na_vodilu(vodilo):
+            time.sleep(0.5)
+            return True
+    return False
+
+
 def control_dejanje(ime: str, parameter: Optional["GLib.Variant"] = None) -> bool:
     """Dejanje v Safeer Controlu (prijava, nova-naprava, odjava). Ce Control ne tece, ga zazenemo v ozadju
     (pladenj) in pocakamo, da se javi na vodilu. Klicati v ozadju (ne na glavni niti)."""
     try:
         vodilo = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-        if not _control_na_vodilu(vodilo):
-            ukaz = _ukaz_controla()
-            if not ukaz:
-                return False
-            subprocess.Popen(ukaz + ["--ozadje"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                             start_new_session=True)
-            for _ in range(40):
-                time.sleep(0.25)
-                if _control_na_vodilu(vodilo):
-                    break
-            else:
-                return False
-            time.sleep(0.5)
+        if not _zagotovi_control(vodilo):
+            return False
         vodilo.call_sync(CONTROL_ID, CONTROL_POT, "org.gtk.Actions", "Activate",
                          GLib.Variant("(sava{sv})", (ime, [parameter] if parameter is not None else [], {})),
                          None, Gio.DBusCallFlags.NONE, 5000, None)
@@ -250,6 +255,80 @@ def zvok_izhod(ime: str) -> bool:
     if ok and os_jbl.je_vrstica(ime):
         os_jbl.preklopi("bluetooth")
     return ok
+
+
+# ---------------------------------------------------------------------- programi z drugih naprav (prek Controla)
+def _control_naprave(metoda: str, *argumenti: str) -> dict:
+    """Klic vmesnika Naprave v Safeer Controlu (D-Bus); Control zazenemo, ce ne tece. V ozadju."""
+    try:
+        vodilo = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        if not _zagotovi_control(vodilo):
+            return {"ok": False, "koda": "ni_controla"}
+        podpis = "(" + "s" * len(argumenti) + ")"
+        r = vodilo.call_sync(CONTROL_ID, CONTROL_POT + "/naprave", CONTROL_ID + ".Naprave", metoda,
+                             GLib.Variant(podpis, tuple(argumenti)) if argumenti else None,
+                             GLib.VariantType("(s)"), Gio.DBusCallFlags.NONE, 60000, None)
+        izid = json.loads(r.unpack()[0])
+        return izid if isinstance(izid, dict) else {"ok": False}
+    except Exception as e:  # noqa: BLE001
+        print("[SafeerOS] naprave:", metoda, e)
+        return {"ok": False, "koda": "napaka", "message": str(e)}
+
+
+_ANDROID_SKUPINE = (
+    ("igre", ("game", "games", "unity", "rovio", "supercell", "king.", "gameloft", "ea.", "minecraft", "roblox")),
+    ("splet", ("browser", "chrome", "firefox", "safeer", "youtube", "netflix", "spotify", "tv", "video", "music", "radio")),
+    ("pisarna", ("docs", "office", "sheets", "calendar", "mail", "notes", "keep", "drive", "pdf")),
+    ("predstavnost", ("photo", "gallery", "camera", "media", "player", "vlc", "kodi", "plex")),
+    ("sistem", ("settings", "android.", "google.android", "launcher", "samsung.", "philips", "tv.settings")),
+)
+
+
+def _skupina_paketa(paket: str) -> str:
+    p = str(paket or "").lower()
+    for skupina, kljuci in _ANDROID_SKUPINE:
+        if any(k in p for k in kljuci):
+            return skupina
+    return "drugo"
+
+
+def naprave_s_programi() -> list:
+    """Naprave v Safeer Linku, ki znajo nasteti in zagnati programe (zmoznost apps ali remote); brez tega
+    racunalnika (njegovi programi so ze v meniju)."""
+    izid = _control_naprave("Seznam")
+    naprave = []
+    for n in izid.get("naprave") or []:
+        z = n.get("zmoznosti") or []
+        if n.get("vrsta") == "control" or n.get("platforma") == "linux" and socket.gethostname() in n.get("ime", ""):
+            continue
+        if "apps" in z or "remote" in z:
+            naprave.append({"id": n["id"], "ime": n.get("ime", ""), "platforma": n.get("platforma", ""),
+                            "vrsta": n.get("vrsta", "")})
+    return naprave
+
+
+def programi_naprave(id_naprave: str) -> dict:
+    """Programi ene naprave v obliki, kot jo ima stran (ikone kot data URL)."""
+    izid = _control_naprave("Aplikacije", str(id_naprave or ""))
+    if not izid.get("ok"):
+        return {"ok": False, "koda": izid.get("koda", ""), "programi": []}
+    programi = []
+    for e in izid.get("items") or []:
+        if not isinstance(e, dict) or not e.get("id"):
+            continue
+        ikona = str(e.get("icon") or "")
+        if not ikona and e.get("icon_png"):
+            ikona = "data:image/png;base64," + str(e["icon_png"])
+        if ikona and not ikona.startswith("data:image/"):
+            ikona = ""
+        programi.append({"id": str(e["id"]), "ime": str(e.get("name") or e["id"]), "opis": str(e.get("comment") or ""),
+                         "skupina": str(e.get("group") or _skupina_paketa(e["id"])), "ikona": ikona,
+                         "naprava": str(id_naprave)})
+    return {"ok": True, "programi": programi, "deli": bool(izid.get("enabled", True))}
+
+
+def zazeni_na_napravi(id_naprave: str, app: str) -> bool:
+    return bool(_control_naprave("Zazeni", str(id_naprave or ""), str(app or "")).get("ok"))
 
 
 SAMOZAGON = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
@@ -720,6 +799,9 @@ class SafeerOS(Gtk.Application):
             "zvokUtisajProgram": lambda: os_zvok.utisaj_program(str(a[0]), bool(a[1])),
             "zvokPremakniProgram": lambda: os_zvok.premakni_program(str(a[0]), str(a[1])),
             "zvokNaNapravo": lambda: zvok_na_napravo(str(a[0]) if a else ""),
+            "napraveSProgrami": naprave_s_programi,
+            "programiNaprave": lambda: programi_naprave(str(a[0]) if a else ""),
+            "zazeniNaNapravi": lambda: zazeni_na_napravi(str(a[0]) if a else "", str(a[1]) if len(a) > 1 else ""),
             "zvokUstavi": zvok_ustavi,
             "jbl": lambda: os_jbl.stanje(True),
             "jblVklop": lambda: os_jbl.vklopi(bool(a[0]) if a else False),
