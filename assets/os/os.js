@@ -458,6 +458,7 @@
   }
 
   // ------------------------------------------------------------------ naprave
+  var odjavaPotrjujem = false, odjavaCas = 0;
   function osveziPovezavo() {
     return klic("povezava").then(function (p) { S.povezava = p || S.povezava; narisiPovezavo(); }, function () { narisiPovezavo(); });
   }
@@ -474,6 +475,10 @@
     $("gumbControl").querySelector("svg").innerHTML = '<path d="' + IK[povezan ? "naprave" : "qr"] + '"/>';
     $("kNapravePod").textContent = t(povezan ? "napravePodPovezan" : "napravePodNov");
     $("blokZaupanje").hidden = !povezan;
+    $("gumbNovaNaprava").hidden = !povezan || !p.control;
+    $("gumbOdjava").hidden = !povezan || !p.control;
+    $("gumbOdjava").classList.toggle("opozorilo", odjavaPotrjujem);
+    $("gumbOdjavaBesedilo").textContent = t(odjavaPotrjujem ? "odjavaPotrdi" : "odjaviRacunalnik");
     $("stikaloZaupaj").setAttribute("aria-checked", p.zaupana ? "true" : "false");
     $("zaupajPod").textContent = t(p.zaupana ? "zaupajDa" : "zaupajNe");
     $("domNapravaStanje").innerHTML = '<i class="pika' + (povezan ? "" : " siva") + '"></i><span>' +
@@ -905,7 +910,27 @@
     });
     $("gumbControl").addEventListener("click", function () {
       obvesti(t("odpiram", { ime: "Safeer Control" }));
-      klic("control");
+      // Povezan racunalnik: Control z napravami; sicer prijavno okno (QR / koda / brez povezave).
+      klic(S.povezava.stanje === "povezan" ? "control" : "prijava");
+    });
+    $("gumbNovaNaprava").addEventListener("click", function () {
+      obvesti(t("odpiram", { ime: "Safeer Control" }));
+      klic("novaNaprava");
+    });
+    $("gumbOdjava").addEventListener("click", function () {
+      if (!odjavaPotrjujem) {
+        odjavaPotrjujem = true;
+        clearTimeout(odjavaCas);
+        odjavaCas = setTimeout(function () { odjavaPotrjujem = false; narisiPovezavo(); }, 5000);
+        narisiPovezavo();
+        return;
+      }
+      odjavaPotrjujem = false;
+      klic("odjava").then(function (ok) {
+        obvesti(t(ok ? "odjavljen" : "niUspelo"));
+        setTimeout(osveziPovezavo, 2500);
+        setTimeout(osveziPovezavo, 6000);
+      });
     });
     $("domControl").addEventListener("click", function () { $("gumbControl").click(); });
     $("gumbStanje").addEventListener("click", function () {

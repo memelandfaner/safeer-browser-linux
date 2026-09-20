@@ -176,6 +176,38 @@ def nastavi_zaupanje(zaupaj: bool) -> bool:
         return False
 
 
+def _control_na_vodilu(vodilo) -> bool:
+    return vodilo.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameHasOwner",
+                            GLib.Variant("(s)", (CONTROL_ID,)), GLib.VariantType("(b)"),
+                            Gio.DBusCallFlags.NONE, 2000, None).unpack()[0]
+
+
+def control_dejanje(ime: str) -> bool:
+    """Dejanje v Safeer Controlu (prijava, nova-naprava, odjava). Ce Control ne tece, ga zazenemo v ozadju
+    (pladenj) in pocakamo, da se javi na vodilu. Klicati v ozadju (ne na glavni niti)."""
+    try:
+        vodilo = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        if not _control_na_vodilu(vodilo):
+            ukaz = _ukaz_controla()
+            if not ukaz:
+                return False
+            subprocess.Popen(ukaz + ["--ozadje"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True)
+            for _ in range(40):
+                time.sleep(0.25)
+                if _control_na_vodilu(vodilo):
+                    break
+            else:
+                return False
+            time.sleep(0.5)
+        vodilo.call_sync(CONTROL_ID, CONTROL_POT, "org.gtk.Actions", "Activate",
+                         GLib.Variant("(sava{sv})", (ime, [], {})), None, Gio.DBusCallFlags.NONE, 5000, None)
+        return True
+    except Exception as e:  # noqa: BLE001
+        print("[SafeerOS] Control:", ime, e)
+        return False
+
+
 SAMOZAGON = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
                          "autostart", "safeer-os.desktop")
 
@@ -623,6 +655,8 @@ class SafeerOS(Gtk.Application):
             "iskanjeSplet": lambda: self._splet(_iskalnik() + GLib.uri_escape_string(str(a[0] if a else ""), None, False)),
             "povezava": stanje_povezave,
             "zaupanje": lambda: nastavi_zaupanje(bool(a[0]) if a else False),
+            "novaNaprava": lambda: control_dejanje("nova-naprava"),
+            "odjava": lambda: control_dejanje("odjava"),
             "omrezje": lambda: os_omrezje.stanje(bool(a[0]) if a else False),
             "omrezjePovezi": lambda: os_omrezje.povezi(str(a[0]) if a else "", str(a[1]) if len(a) > 1 else ""),
             "omrezjeOdklopi": lambda: os_omrezje.odklopi(str(a[0]) if a else ""),
@@ -820,8 +854,10 @@ class SafeerOS(Gtk.Application):
         return False
 
     def _prijava(self) -> bool:
-        """Prijavno okno Safeer Linka (QR / koda / brez povezave) - zanj skrbi Safeer Control."""
-        return self._odpri_control()
+        """Prijavno okno Safeer Linka (QR / koda / brez povezave) - zanj skrbi Safeer Control; okno je nad
+        Safeer OS in se po prijavi samo zapre."""
+        threading.Thread(target=lambda: control_dejanje("prijava") or self._odpri_control(), daemon=True).start()
+        return True
 
     def _odpri_control(self) -> bool:
         """Safeer Control: prijavno okno (QR / koda) ali seznam naprav, ce je racunalnik ze povezan."""

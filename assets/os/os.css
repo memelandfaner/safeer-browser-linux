@@ -433,3 +433,5 @@ body.namizje #noga { display: none; }
 .vnosGesla:focus { border-color: var(--zelena); }
 .stikalo.napredno { margin-top: 24px; max-width: 540px; }
 div.vrstica { cursor: default; }
+.gumbi-naprav { display: flex; gap: 10px; flex-wrap: wrap; }
+.gumb.opozorilo { border-color: var(--rdeca); color: #ffb3b3; }

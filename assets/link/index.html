@@ -281,6 +281,12 @@
          kdor sredisca ne vidi, se ne more prikljuciti), zato povemo, kje jo bo uporabnik videl. -->
     <div class="panel" id="panelDodaj" data-razdelek="naprave" hidden>
       <h2 data-t="dodajNaslov">Dodaj telefon ali tablico</h2>
+      <div id="vabiloBlok" class="vabilo" hidden>
+        <p class="pojasnilo" data-t="vabiloOpis">S kamero telefona ali tablice skeniraj kodo – Safeer se odpre in naprava se poveže s Safeer Linkom.</p>
+        <div class="qrOkvir" id="vabiloQr" hidden></div>
+        <button class="glavni" id="gumbVabilo" data-t="vabiloGumb">Pokaži QR kodo za novo napravo</button>
+        <p class="opomba" id="opombaVabilo"></p>
+      </div>
       <ol class="koraki">
         <li data-t="dodajKorak1">Na telefonu odpri Safeer in v meniju izberi Safeer Link.</li>
         <li data-t="dodajKorak2">Pritisni »Poveži s Safeer Link«.</li>

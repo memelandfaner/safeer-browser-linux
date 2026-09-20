@@ -361,6 +361,12 @@ class SafeerControl(Gtk.Application):
         zaupanje = Gio.SimpleAction.new("zaupanje", GLib.VariantType.new("b"))
         zaupanje.connect("activate", self._na_zaupanje)
         self.add_action(zaupanje)
+        # Safeer OS: prijavno okno, »Poveži novo napravo« in »Odjavi ta računalnik«.
+        for ime, klic in (("prijava", self.prijava_iz_os), ("nova-naprava", self.nova_naprava),
+                          ("odjava", self.odjava)):
+            dejanje = Gio.SimpleAction.new(ime, None)
+            dejanje.connect("activate", lambda _d, _v, k=klic: k())
+            self.add_action(dejanje)
         if self.ozadje:
             self.hold()  # brez okna bi se GApplication koncal; ikona v pladnju ga drzi
 
@@ -388,9 +394,57 @@ class SafeerControl(Gtk.Application):
         )
         self.link.ob_povezavi = self._na_povezavo
         self.link.ob_brez_povezave = self.odpri_safeer_os
+        self.link.ob_seznanitvi = self._po_seznanitvi
         self.link.datoteke = self.datoteke
         self.link.programi = self.programi
         self.link.zaslon = self.zaslon
+
+    # ------------------------------------------------------------------ Safeer OS
+    _iz_os = False
+
+    def prijava_iz_os(self) -> None:
+        """Safeer OS pokaze prijavno okno (QR / koda / brez povezave). Okno je nad Safeer OS; po prijavi
+        ali »brez povezave« se zapre in uporabnik je spet v Safeer OS."""
+        if self.link is None:
+            self._pripravi_link()
+        self._iz_os = True
+        if self.link.nastavitve.get("brez_povezave"):
+            self.link._povezi_naprave()        # prej izbral »brez povezave«: spet prijavno okno
+        self.pokazi_okno()
+        if self.link.okno is not None:
+            self.link.okno.set_keep_above(True)
+            self.link.okno.present()
+
+    def nova_naprava(self) -> None:
+        """»Poveži novo napravo« iz Safeer OS: okno Control z QR kodo za nov telefon ali tablico."""
+        if self.link is None:
+            self._pripravi_link()
+        koda = "window.safeerLinkOdpri && safeerLinkOdpri('novaNaprava')"
+        nalozena = self.link.pogled is not None
+        self.link.ob_nalozitvi_js = "" if nalozena else koda
+        self.pokazi_okno()
+        if nalozena:
+            self.link._js(koda)
+        if self.link.okno is not None:
+            self.link.okno.present()
+
+    def odjava(self) -> None:
+        """»Odjavi ta računalnik« iz Safeer OS: sredisce ga pozabi, ob naslednjem odprtju je prijavno okno."""
+        if self.link is None:
+            self._pripravi_link()
+        self.link._v_ozadju(self.link._pozabi_napravo)
+
+    def _po_seznanitvi(self) -> None:
+        if not self._iz_os:
+            return
+        self._iz_os = False
+
+        def nazaj():
+            if self.link is not None and self.link.okno is not None:
+                self.link.okno.set_keep_above(False)
+            self.odpri_safeer_os()
+            return False
+        GLib.timeout_add(2500, nazaj)      # »Prijavljeno« ostane vidno, nato nazaj v Safeer OS
 
     def _na_zaupanje(self, _dejanje, vrednost) -> None:
         if self.link is None:
@@ -529,6 +583,9 @@ class SafeerControl(Gtk.Application):
     def odpri_safeer_os(self) -> None:
         """»Nadaljuj brez povezave naprav« v prijavnem oknu: odpre Safeer OS na tem racunalniku, Control
         gre v pladenj. Dokler Safeer OS za racunalnik ni namescen, to okno to posteno pove."""
+        self._iz_os = False
+        if self.link is not None and self.link.okno is not None:
+            self.link.okno.set_keep_above(False)
         ukaz = None
         pot = shutil_which("safeer-os")
         if pot:
