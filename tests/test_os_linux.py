@@ -62,6 +62,15 @@ class Programi(unittest.TestCase):
         self.assertEqual(self.shramba.get("uporaba")["firefox.desktop"]["n"], 1)
         self.assertEqual([e for e in self.p.seznam() if e["id"] == "firefox.desktop"][0]["uporaba"], 1)
 
+    def test_skrij_z_domacega(self):
+        oznaka = self.p.seznam()[0]["id"]
+        self.p.skrij_domov(oznaka)
+        self.assertTrue(next(x for x in self.p.seznam() if x["id"] == oznaka)["skrit"])
+        self.p.pripni(oznaka, True)             # pripenjanje skritje razveljavi
+        z = next(x for x in self.p.seznam() if x["id"] == oznaka)
+        self.assertEqual((z["pripet"], z["skrit"]), (True, False))
+        self.assertEqual(self.p.skrij_domov("../zlo.desktop"), [])
+
     def test_pripenjanje_se_shrani(self):
         self.p.pripni("firefox.desktop", True)
         self.p.pripni("ne-obstaja.desktop", True)

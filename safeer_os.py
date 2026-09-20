@@ -667,6 +667,9 @@ class SafeerOS(Gtk.Application):
             "programi": lambda: self.programi.seznam(self._ikona),
             "zazeni": lambda: self.programi.zazeni(str(a[0]) if a else "", self._zazeni_vnos),
             "pripni": lambda: self.programi.pripni(str(a[0]), bool(a[1]) if len(a) > 1 else True),
+            "skrijDomov": lambda: self.programi.skrij_domov(str(a[0]), bool(a[1]) if len(a) > 1 else True),
+            "nedavnePozabi": lambda: self._nedavne_pozabi(str(a[0]) if a else ""),
+            "nedavnePocisti": self._nedavne_pocisti,
             "nedavne": self._nedavne,
             "odprtaOkna": self._odprta_okna,
             "aktivirajOkno": lambda: self._okno_dejanje(a[0] if a else 0, "aktiviraj"),
@@ -818,6 +821,24 @@ class SafeerOS(Gtk.Application):
             print("[SafeerOS] nedavne:", e)
         izhod.sort(key=lambda d: -d["cas"])
         return izhod[:24]
+
+    def _nedavne_pozabi(self, pot: str) -> bool:
+        """Ena datoteka iz seznama nedavnih (datoteka sama ostane)."""
+        if not pot or not os.path.isabs(pot):
+            return False
+        try:
+            return bool(Gtk.RecentManager.get_default().remove_item(GLib.filename_to_uri(pot, None)))
+        except Exception as e:  # noqa: BLE001
+            print("[SafeerOS] nedavne pozabi:", e)
+            return False
+
+    def _nedavne_pocisti(self) -> bool:
+        try:
+            Gtk.RecentManager.get_default().purge_items()
+            return True
+        except Exception as e:  # noqa: BLE001
+            print("[SafeerOS] nedavne pocisti:", e)
+            return False
 
     # --- odprta okna (Wnck: samo X11; na Waylandu seznama ni)
     def _zaslon_wnck(self):
