@@ -1068,7 +1068,8 @@
       prijavaPreverjam: "Preverjam …",
       prijavaBrez: "Nadaljuj brez povezave naprav",
       prijavaOsSeNastaja: "Safeer OS za računalnik še nastaja. Ko bo nameščen, se odpre od tu.",
-      prijavaUspela: "Prijavljeno. Povezujem …"
+      prijavaUspela: "Prijavljeno. Povezujem …",
+      prijavaZnovaZazeni: "Safeer Control je treba znova zagnati, da naloži posodobitev: zapri ga v pladnju ali se odjavi in prijavi."
     },
     en: {
       prijavaNaslov: "Sign in",
@@ -1091,7 +1092,8 @@
       prijavaPreverjam: "Checking …",
       prijavaBrez: "Continue without connecting devices",
       prijavaOsSeNastaja: "Safeer OS for computers is still being built. Once installed, it opens from here.",
-      prijavaUspela: "Signed in. Connecting …"
+      prijavaUspela: "Signed in. Connecting …",
+      prijavaZnovaZazeni: "Restart Safeer Control to load the update: quit it from the tray, or log out and back in."
     },
     de: {
       prijavaNaslov: "Anmelden",
@@ -1114,7 +1116,8 @@
       prijavaPreverjam: "Wird geprüft …",
       prijavaBrez: "Ohne Geräteverbindung fortfahren",
       prijavaOsSeNastaja: "Safeer OS für Computer entsteht noch. Sobald es installiert ist, öffnet es sich von hier.",
-      prijavaUspela: "Angemeldet. Verbinde …"
+      prijavaUspela: "Angemeldet. Verbinde …",
+      prijavaZnovaZazeni: "Starte Safeer Control neu, um das Update zu laden: im Infobereich beenden oder ab- und wieder anmelden."
     },
     es: {
       prijavaNaslov: "Iniciar sesión",
@@ -1137,7 +1140,8 @@
       prijavaPreverjam: "Comprobando …",
       prijavaBrez: "Continuar sin conectar dispositivos",
       prijavaOsSeNastaja: "Safeer OS para ordenador aún está en desarrollo. Cuando esté instalado, se abrirá desde aquí.",
-      prijavaUspela: "Sesión iniciada. Conectando …"
+      prijavaUspela: "Sesión iniciada. Conectando …",
+      prijavaZnovaZazeni: "Reinicia Safeer Control para cargar la actualización: ciérralo desde la bandeja o cierra y abre sesión."
     },
     fr: {
       prijavaNaslov: "Connexion",
@@ -1160,7 +1164,8 @@
       prijavaPreverjam: "Vérification …",
       prijavaBrez: "Continuer sans connecter d'appareils",
       prijavaOsSeNastaja: "Safeer OS pour ordinateur est encore en préparation. Une fois installé, il s'ouvrira d'ici.",
-      prijavaUspela: "Connecté. Connexion en cours …"
+      prijavaUspela: "Connecté. Connexion en cours …",
+      prijavaZnovaZazeni: "Redémarre Safeer Control pour charger la mise à jour : quitte-le depuis la zone de notification ou reconnecte-toi."
     },
     it: {
       prijavaNaslov: "Accedi",
@@ -1183,7 +1188,8 @@
       prijavaPreverjam: "Verifica …",
       prijavaBrez: "Continua senza collegare dispositivi",
       prijavaOsSeNastaja: "Safeer OS per computer è ancora in preparazione. Una volta installato, si aprirà da qui.",
-      prijavaUspela: "Accesso eseguito. Connessione …"
+      prijavaUspela: "Accesso eseguito. Connessione …",
+      prijavaZnovaZazeni: "Riavvia Safeer Control per caricare l'aggiornamento: chiudilo dall'area di notifica o esci e rientra."
     }
   };
   for (var _jp in BESEDILA_PRIJAVA) {
@@ -2050,17 +2056,32 @@
   // Prijavno okno (Safeer Control / Safeer OS na racunalniku)
   // ----------------------------------------------------------------
 
-  var prijava = { qr: false, koda: false };
+  var prijava = { qr: false, koda: false, krogNeuspel: false, cakalnik: null };
 
-  /** Control, ki ni povezan (ne z zetonom ne s krogom zaupanja) in sredisce ne tece tu. */
+  /**
+   * Control, ki ni povezan (ne z zetonom ne s krogom zaupanja) in sredisce ne tece tu. Clan kroga
+   * zaupanja se poveze sam s podpisom; prijavno okno dobi sele, ce to ne uspe.
+   */
   function jePrijavnoOkno() {
-    return !!stanje.control && !stanje.hubTece && !(stanje.znan && stanje.seznanjen) && !stanje.vKrogu;
+    if (!stanje.control || stanje.hubTece || (stanje.znan && stanje.seznanjen) || stanje.vKrogu) return false;
+    return !(stanje.clanKroga && !prijava.krogNeuspel);
   }
 
   function zacniPrijavo() {
     pokazi("gumbBrezPovezave", !!stanje.brezPovezave);
-    if (prijava.qr || !most || !most.zacniQr) return;
+    if (most && !most.zacniQr) {
+      // Stran je novejsa od programa, ki tece (posodobitev med tekom): povemo, kaj pomaga.
+      besedilo("opombaQr", t("prijavaZnovaZazeni"));
+      return;
+    }
+    if (prijava.qr || !most) return;
     prijava.qr = true;
+    // Odgovor pride v nekaj sekundah; ce ga ni, uporabnik ne sme gledati »Pripravljam kodo« v nedogled.
+    if (prijava.cakalnik) clearTimeout(prijava.cakalnik);
+    prijava.cakalnik = setTimeout(function () {
+      prijava.cakalnik = null;
+      if (prijava.qr && !(el("qrSlika") && el("qrSlika").querySelector("svg"))) narisiQr({ napaka: "ni_huba" });
+    }, 20000);
     var okvir = el("qrSlika");
     if (okvir && !okvir.querySelector("svg")) {
       okvir.classList.remove("prazno");
@@ -2082,6 +2103,7 @@
   }
 
   function narisiQr(podatki) {
+    if (prijava.cakalnik) { clearTimeout(prijava.cakalnik); prijava.cakalnik = null; }
     var okvir = el("qrSlika");
     if (!okvir) return;
     if (podatki && podatki.svg) {
@@ -2144,6 +2166,7 @@
           }
         } else {
           povezujemPoIskanju = false;
+          if (stanje.clanKroga && !prijava.krogNeuspel) { prijava.krogNeuspel = true; narisiZaslon(); }
           besedilo("opombaIskanje", t("niNajden"));
           besedilo("opombaSeznanitev", t("niNajden"));
           narisiStanje();
@@ -2293,6 +2316,13 @@
         besedilo("opombaIskanje", sporocilo);
         besedilo("opombaCast", sporocilo);
         besedilo("opombaSeznanitev", sporocilo);
+        if (jePrijavnoOkno()) besedilo("opombaPrijavaKoda", sporocilo);
+        // Clan kroga, ki ga sredisce ne sprejme vec: zdaj potrebuje prijavo (QR ali koda).
+        var kodaNapake = podatki && typeof podatki === "object" ? podatki.koda : "";
+        if (stanje.clanKroga && !prijava.krogNeuspel && kodaNapake === "naprava_ni_znana") {
+          prijava.krogNeuspel = true;
+          narisiZaslon();
+        }
         narisiStanje();
       }
     } catch (e) {
@@ -2638,6 +2668,7 @@
     stanje.idNaprave = s.id || "";
     stanje.control = !!s.control;
     stanje.vKrogu = !!s.vKrogu;
+    stanje.clanKroga = !!s.clanKroga;
     stanje.brezPovezave = !!s.brezPovezave;
     stanje.deljeneMape = s.deljeneMape || [];
     stanje.standardneDeljene = !!s.standardneDeljene;
