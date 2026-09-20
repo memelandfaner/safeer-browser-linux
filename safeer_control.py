@@ -379,6 +379,7 @@ class SafeerControl(Gtk.Application):
             ob_zaprtju=self.ob_zaprtju_okna,
         )
         self.link.ob_povezavi = self._na_povezavo
+        self.link.ob_brez_povezave = self.odpri_safeer_os
         self.link.datoteke = self.datoteke
         self.link.programi = self.programi
         self.link.zaslon = self.zaslon
@@ -507,6 +508,35 @@ class SafeerControl(Gtk.Application):
         except Exception:
             pass
         self.quit()
+
+    def odpri_safeer_os(self) -> None:
+        """»Nadaljuj brez povezave naprav« v prijavnem oknu: odpre Safeer OS na tem racunalniku, Control
+        gre v pladenj. Dokler Safeer OS za racunalnik ni namescen, to okno to posteno pove."""
+        ukaz = None
+        pot = shutil_which("safeer-os")
+        if pot:
+            ukaz = [pot]
+        else:
+            skripta = os.path.join(KOREN, "safeer_os.py")
+            if os.path.isfile(skripta):
+                ukaz = [sys.executable, skripta]
+        if not ukaz:
+            if self.link is not None:
+                self.link._odziv("brezPovezave", {"os": False})
+            return
+        try:
+            subprocess.Popen(ukaz, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as e:  # noqa: BLE001
+            print(f"[SafeerControl] Safeer OS se ni odprl: {e}")
+            if self.link is not None:
+                self.link._odziv("brezPovezave", {"os": False})
+            return
+        if self.link is not None and self.link.okno is not None:
+            # S pladnjem se okno umakne tja; brez njega (zagon iz menija) ga le pomanjsamo, da ne izgine.
+            if getattr(self, "pladenj", None) is not None:
+                self.link.okno.hide()
+            else:
+                self.link.okno.iconify()
 
     def pokazi_okno(self) -> None:
         if self.link is None:
@@ -650,6 +680,7 @@ class SafeerControl(Gtk.Application):
             okno.connect("destroy", zaprto)
             self.add_window(okno)
             self.gledalec = okno
+            self._vnos_nastavitve_odprte = False
             okno.show_all()
             if self.link is not None:
                 self.link.ob_odzivu_vnosa = self._odziv_vnosa
@@ -675,8 +706,12 @@ class SafeerControl(Gtk.Application):
         if odziv.get("ok"):
             self.gledalec.set_title("Safeer Control — zaslon")
         elif odziv.get("koda") == "vnos_ni_vklopljen":
-            self.gledalec.set_title("Safeer Control — zaslon · za upravljanje z misko na tablici vklopi "
-                                    "Nastavitve → Dostopnost → Safeer Vnos")
+            self.gledalec.set_title("Safeer Control — zaslon · na tablici vklopi Safeer Vnos "
+                                    "(Dostopnost → Nameščene aplikacije → Safeer Vnos)")
+            # Uporabniku ni treba iskati: tablica sama odpre nastavitve, ki jih potrebuje (enkrat na okno).
+            if not getattr(self, "_vnos_nastavitve_odprte", False) and self.link is not None:
+                self._vnos_nastavitve_odprte = True
+                self.link.poslji_vnos("input.enable", {})
 
 
 def main() -> int:
