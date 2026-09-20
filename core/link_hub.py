@@ -23,6 +23,7 @@ import ssl
 import struct
 import threading
 import time
+import sys
 import urllib.error
 import urllib.request
 from typing import Callable, Dict, List, Optional, Tuple
@@ -677,6 +678,32 @@ class WsOdjemalec:
 
 
 # ----------------------------------------------------------------------
+# Protocol v1: model naprave v prijavi (cast.register)
+# ----------------------------------------------------------------------
+
+PROTOKOL_V1 = "1.0"
+
+
+def _razlicica_aplikacije() -> str:
+    glavni = sys.modules.get("__main__")
+    return str(getattr(glavni, "APP_VERSION", "") or "")
+
+
+def model_naprave_v1(device_id: str) -> dict:
+    """Polja Protocol v1 v tovoru cast.register: protocol, platform, kind, version (HubUsmerjevalnik.PROTOKOL_V1).
+
+    kind: "control" za Safeer Control (id se konca na -control), sicer "computer" (brskalnik).
+    Prioritete ne posljemo - racunalnik huba (se) ne gosti. Hub 0.2 ta polja prezre.
+    """
+    polja = {"protocol": PROTOKOL_V1, "platform": "linux",
+             "kind": "control" if device_id.endswith("-control") else "computer"}
+    razlicica = _razlicica_aplikacije()
+    if razlicica:
+        polja["version"] = razlicica
+    return polja
+
+
+# ----------------------------------------------------------------------
 # Povezava z Hubom v svoji niti
 # ----------------------------------------------------------------------
 
@@ -766,6 +793,7 @@ class Povezava:
                 "device_id": self.device_id,
                 "name": self.ime,
                 "role": "sender",
+                **model_naprave_v1(self.device_id),
             },
         }
         # Racunalnik sprejema besedilo, datoteke in zaslon; sync samo, ce je vklopljen.
