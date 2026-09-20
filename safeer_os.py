@@ -328,6 +328,18 @@ def naprave_s_programi() -> list:
     return naprave
 
 
+def vse_naprave() -> list:
+    """Vse naprave v Safeer Linku (tudi ta racunalnik) za stran Naprave: id, ime, platforma, vrsta, ta."""
+    izid = _control_naprave("Seznam")
+    return [{"id": n.get("id", ""), "ime": n.get("ime", ""), "platforma": n.get("platforma", ""),
+             "vrsta": n.get("vrsta", ""), "ta": bool(n.get("ta"))} for n in izid.get("naprave") or [] if n.get("id")]
+
+
+def preimenuj_napravo(id_naprave: str, ime: str) -> dict:
+    """Novo ime naprave (tudi tega racunalnika) za vse naprave v Linku; hrani ga sredisce."""
+    return _control_naprave("Preimenuj", str(id_naprave or ""), str(ime or ""))
+
+
 def programi_naprave(id_naprave: str) -> dict:
     """Programi ene naprave v obliki, kot jo ima stran (ikone kot data URL)."""
     izid = _control_naprave("Aplikacije", str(id_naprave or ""))
@@ -828,6 +840,8 @@ class SafeerOS(Gtk.Application):
             "zvokPremakniProgram": lambda: os_zvok.premakni_program(str(a[0]), str(a[1])),
             "zvokNaNapravo": lambda: zvok_na_napravo(str(a[0]) if a else ""),
             "napraveSProgrami": naprave_s_programi,
+            "vseNaprave": vse_naprave,
+            "preimenujNapravo": lambda: preimenuj_napravo(str(a[0]) if a else "", str(a[1]) if len(a) > 1 else ""),
             "programiNaprave": lambda: programi_naprave(str(a[0]) if a else ""),
             "zazeniNaNapravi": lambda: zazeni_na_napravi(str(a[0]) if a else "", str(a[1]) if len(a) > 1 else ""),
             "zvokUstavi": zvok_ustavi,

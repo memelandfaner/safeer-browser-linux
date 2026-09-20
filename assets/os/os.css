@@ -233,6 +233,18 @@ h2 .dodatno + .dodatno { margin-left: 14px; }
   padding: 30px 32px; border-radius: 22px; background: var(--kartica); border: 1px solid var(--rob); max-width: 980px;
 }
 .panel h3 { font-size: 28px; margin: 0 0 10px; display: flex; align-items: center; gap: 14px; }
+/* Naprave v Linku s preimenovanjem */
+#blokSeznamNaprav { margin-top: 18px; }
+.seznam-naprav { list-style: none; margin: 8px 0 0; padding: 0; }
+.seznam-naprav li { display: flex; align-items: center; gap: 14px; padding: 10px 0; border-top: 1px solid var(--rob); }
+.seznam-naprav li:first-child { border-top: 0; }
+.seznam-naprav li > div { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.seznam-naprav li b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seznam-naprav li small { color: var(--medlo); }
+.seznam-naprav li > svg { width: 24px; height: 24px; flex: none; }
+.seznam-naprav .vnosImena { flex: 1; min-width: 0; font: inherit; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--rob); background: rgba(255, 255, 255, .06); color: inherit; }
+.seznam-naprav .vnosImena:focus { outline: none; border-color: var(--zelena); }
+.seznam-naprav .gumb.majhen { height: 38px; padding: 0 14px; font-size: 14px; flex: none; }
 .panel h3 .pika { width: 14px; height: 14px; border-radius: 50%; background: var(--zelena); box-shadow: 0 0 0 6px rgba(84, 214, 165, .15); }
 .panel h3 .pika.siva { background: #6b7780; box-shadow: none; }
 .panel p { color: var(--medlo); font-size: 17px; line-height: 1.5; margin: 0 0 22px; max-width: 760px; }
