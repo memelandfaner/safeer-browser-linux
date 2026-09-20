@@ -537,16 +537,30 @@ def dns_vmesnika(vmesnik: str) -> str:
 
 
 def pravilo_namesceno() -> bool:
+    """Ali smemo nastaviti DNS brez gesla. Mape /etc/polkit-1/rules.d uporabnik ne more brati (0750
+    root:polkitd), zato pravila ne iscemo po datoteki, ampak polkit vprasamo naravnost (pkcheck brez
+    interakcije: 0 = dovoljeno, sicer bi zahteval geslo)."""
     try:
         with open(PRAVILO_POT, encoding="utf-8") as f:
-            return "org.freedesktop.resolve1.set-dns-servers" in f.read()
+            if "org.freedesktop.resolve1.set-dns-servers" in f.read():
+                return True
     except OSError:
+        pass
+    if shutil.which("pkcheck") is None:
         return False
+    koda, _ = _zazeni(["pkcheck", "--action-id", "org.freedesktop.resolve1.set-dns-servers",
+                       "--process", str(os.getpid())], cas=10.0)
+    return koda == 0
+
+
+def _znak_pravila() -> str:
+    return os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")), "safeer-os", "scit-pravilo")
 
 
 def namesti_pravilo() -> bool:
-    """Enkrat, z geslom (pkexec): pravilo polkit, ki skrbniku dovoli nastaviti DNS brez gesla."""
-    if pravilo_namesceno():
+    """Enkrat, z geslom (pkexec): pravilo polkit, ki skrbniku dovoli nastaviti DNS brez gesla.
+    Uspeh si zapomnimo v uporabnikovi mapi (znak), ker same datoteke pravila ne moremo brati."""
+    if os.path.exists(_znak_pravila()) and pravilo_namesceno():
         return True
     if shutil.which("pkexec") is None:
         return False
@@ -556,7 +570,15 @@ def namesti_pravilo() -> bool:
     try:
         os.chmod(zacasna, 0o644)
         koda, _ = _zazeni(["pkexec", "install", "-m", "644", "-o", "root", "-g", "root", zacasna, PRAVILO_POT], cas=180.0)
-        return koda == 0 and pravilo_namesceno()
+        if koda != 0:
+            return False
+        try:
+            os.makedirs(os.path.dirname(_znak_pravila()), mode=0o700, exist_ok=True)
+            with open(_znak_pravila(), "w", encoding="utf-8") as f:
+                f.write(hashlib.sha256(PRAVILO.encode()).hexdigest() + "\n")
+        except OSError:
+            pass
+        return True
     finally:
         try:
             os.unlink(zacasna)
