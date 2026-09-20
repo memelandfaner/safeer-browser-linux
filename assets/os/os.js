@@ -152,10 +152,17 @@
     if (razdelek === "datoteke" && !S.pot) odpriNedavne();
     if (razdelek === "naprave") osveziPovezavo();
     if (razdelek === "nastavitve") narisiNastavitve();
+    if (razdelek === "omrezje") nalozOmrezje(false);
   }
   window.safeerOsPojdi = function (kam) {
     kam = String(kam || "");
-    if (kam.indexOf("iskanje:") === 0) { $("iskanje").value = kam.slice(8); isci(); return; }
+    if (kam.indexOf("iskanje:") === 0) {
+      pojdi("domov");
+      $("iskanje").value = kam.slice(8);
+      $("iskanje").focus();
+      isci();
+      return;
+    }
     if (kam.indexOf("zazeni:") === 0) {
       var p = S.programi.find(function (x) { return x.id === kam.slice(7); });
       if (p) zazeni(p);
@@ -329,7 +336,10 @@
 
   // ------------------------------------------------------------------ odprta okna
   function osveziOkna() {
-    klic("odprtaOkna").then(function (okna) {
+    klic("odprtaOkna").then(narisiOkna, function () {});
+  }
+  function narisiOkna(okna) {
+    {
       okna = okna || [];
       $("blokOkna").hidden = okna.length === 0;
       var vrsta = $("okna");
@@ -347,7 +357,7 @@
         b.addEventListener("click", function () { klic("aktivirajOkno", [o.id]); });
         vrsta.appendChild(b);
       });
-    }, function () {});
+    }
   }
 
   // ------------------------------------------------------------------ datoteke
@@ -560,6 +570,111 @@
   function narisiHitro() { kontrole($("hitro"), true); }
   function odpriHitro() { zapriSloje(); narisiHitro(); $("slojHitro").classList.add("viden"); osveziStanje(); }
 
+  // ------------------------------------------------------------------ omrezje
+  var omrezjeGeslo = "", omrezjePozabi = "", omrezjeZaposleno = false;
+  function signalIkona(n) { return n >= 67 ? 3 : (n >= 34 ? 2 : 1); }
+  function nalozOmrezje(osvezi) {
+    if (osvezi) $("omrezjeStanje").textContent = t("iscemOmrezja");
+    klic("omrezje", [!!osvezi]).then(narisiOmrezje, function () {});
+  }
+  function narisiOmrezje(o) {
+    o = o || { naprave: [], omrezja: [], shranjene: [] };
+    var wifi = o.naprave.filter(function (n) { return n.vrsta === "wifi"; });
+    var trenutne = $("omrezjeTrenutno");
+    trenutne.innerHTML = "";
+    o.naprave.forEach(function (n) {
+      var povezana = n.stanje === "connected";
+      var ime = n.vrsta === "ethernet" ? t("zicna") : "Wi-Fi";
+      var v = el("div", "vrstica", svg(n.vrsta === "ethernet" ? "ethernet" : "wifi") + '<span class="ime">' + ubezi(ime) +
+        (povezana && n.povezava ? " · " + ubezi(n.povezava) : "") + '</span><span class="pod"><i class="pika' + (povezana ? "" : " siva") +
+        '"></i> ' + ubezi(t(povezana ? "povezanKratko" : "niPovezano")) + "</span>");
+      trenutne.appendChild(v);
+    });
+    if (!o.naprave.length) trenutne.appendChild(el("div", "prazno", ubezi(t("brezOmrezja"))));
+    var st = $("stikaloWifiOmrezje");
+    st.hidden = !wifi.length;
+    st.setAttribute("aria-checked", o.wifi_vklopljen ? "true" : "false");
+    $("blokWifi").hidden = !wifi.length || !o.wifi_vklopljen;
+    $("omrezjeStanje").textContent = !wifi.length ? t("niWifi") : (o.wifi_vklopljen ? "" : t("wifiIzklopljen"));
+    var seznam = $("omrezjaSeznam");
+    seznam.innerHTML = "";
+    if (o.wifi_vklopljen && !o.omrezja.length) seznam.appendChild(el("div", "prazno", ubezi(t("niOmrezij"))));
+    o.omrezja.forEach(function (w) {
+      var v = el("div", "vrstica omrezje" + (w.povezano ? " povezano" : ""));
+      v.innerHTML = '<span class="signal s' + signalIkona(w.signal) + '">' + svg("wifi") + "</span>" +
+        '<span class="ime">' + ubezi(w.ime) + (w.zasciteno ? " " + '<svg class="kljucavnica" viewBox="0 0 24 24"><path d="' + IK.zakleni + '"/></svg>' : "") + "</span>";
+      var desno = el("span", "dejanja");
+      if (w.povezano) {
+        desno.appendChild(el("span", "znacka", ubezi(t("povezanKratko"))));
+        var odk = el("button", "gumb", ubezi(t("odklopi")));
+        odk.addEventListener("click", function () {
+          klic("omrezjeOdklopi", [w.ime]).then(function () { setTimeout(function () { nalozOmrezje(false); }, 800); });
+        });
+        desno.appendChild(odk);
+      } else if (omrezjeGeslo === w.ime) {
+        var vnos = el("input", "vnosGesla");
+        vnos.type = "password"; vnos.placeholder = t("vnesiGeslo"); vnos.autocomplete = "off";
+        var pov = el("button", "gumb glavni", ubezi(t("povezi")));
+        var posl = function () {
+          if (omrezjeZaposleno) return;
+          omrezjeZaposleno = true;
+          pov.textContent = t("povezujemSe");
+          klic("omrezjePovezi", [w.ime, vnos.value]).then(function (r) {
+            omrezjeZaposleno = false;
+            if (r && r.ok) { omrezjeGeslo = ""; obvesti(t("povezanKratko") + ": " + w.ime); }
+            else obvesti(t(r && r.napaka === "geslo" ? "napacnoGeslo" : "niUspelo"));
+            nalozOmrezje(false);
+          });
+        };
+        pov.addEventListener("click", posl);
+        vnos.addEventListener("keydown", function (e) { if (e.key === "Enter") posl(); if (e.key === "Escape") { omrezjeGeslo = ""; nalozOmrezje(false); } });
+        desno.appendChild(vnos); desno.appendChild(pov);
+        setTimeout(function () { vnos.focus(); }, 30);
+      } else {
+        var p = el("button", "gumb", ubezi(t("povezi")));
+        p.addEventListener("click", function () {
+          if (w.zasciteno && !w.shranjeno) { omrezjeGeslo = w.ime; narisiOmrezje(o); return; }
+          p.textContent = t("povezujemSe");
+          klic("omrezjePovezi", [w.ime, ""]).then(function (r) {
+            if (r && r.ok) obvesti(t("povezanKratko") + ": " + w.ime);
+            else if (r && r.napaka === "geslo") { omrezjeGeslo = w.ime; }
+            else obvesti(t("niUspelo"));
+            nalozOmrezje(false);
+          });
+        });
+        desno.appendChild(p);
+      }
+      v.appendChild(desno);
+      seznam.appendChild(v);
+    });
+    var sh = $("omrezjaShranjena");
+    sh.innerHTML = "";
+    o.shranjene.forEach(function (c) {
+      var v = el("div", "vrstica", svg(c.vrsta === "wifi" ? "wifi" : "ethernet") + '<span class="ime">' + ubezi(c.ime) + "</span>");
+      var desno = el("span", "dejanja");
+      if (c.aktivna) desno.appendChild(el("span", "znacka", ubezi(t("povezanKratko"))));
+      else {
+        var akt = el("button", "gumb", ubezi(t("povezi")));
+        akt.addEventListener("click", function () {
+          akt.textContent = t("povezujemSe");
+          klic("omrezjeAktiviraj", [c.ime]).then(function (ok) { if (!ok) obvesti(t("niUspelo")); nalozOmrezje(false); });
+        });
+        desno.appendChild(akt);
+      }
+      var poz = el("button", "gumb" + (omrezjePozabi === c.ime ? " opozorilo" : ""), ubezi(t(omrezjePozabi === c.ime ? "potrdiPozabi" : "pozabiOmrezje")));
+      poz.addEventListener("click", function () {
+        if (omrezjePozabi !== c.ime) { omrezjePozabi = c.ime; narisiOmrezje(o); return; }
+        omrezjePozabi = "";
+        klic("omrezjePozabi", [c.ime]).then(function () { nalozOmrezje(false); });
+      });
+      desno.appendChild(poz);
+      v.appendChild(desno);
+      sh.appendChild(v);
+    });
+    $("blokShranjene").hidden = !o.shranjene.length;
+    $("gumbOmrezjeNapredno").hidden = !o.napredno;
+  }
+
   // ------------------------------------------------------------------ nastavitve
   var SKUPINE_NASTAVITEV = [
     ["g_videz", "paleta", ["backgrounds", "themes", "fonts", "effects", "desktop", "panel", "applets", "desklets", "extensions"]],
@@ -594,6 +709,8 @@
     return izhod;
   }
   function odpriNastavitev(n) {
+    // Omrezje ima Safeer OS svojo stran; Mintovo okno ostane pod »Napredno«.
+    if (n.modul === "omrezje") { pojdi("omrezje"); return; }
     obvesti(t("odpiram", { ime: n.ime }));
     klic("nastavitve", [n.modul]).then(function (ok) { if (!ok) obvesti(t("niUspelo")); });
   }
@@ -763,6 +880,8 @@
   // ------------------------------------------------------------------ dogodki iz safeer_os.py
   window.safeerOsDogodek = function (vrsta, podatki) {
     if (vrsta === "stanje") narisiStanje(podatki);
+    if (vrsta === "okna") narisiOkna(podatki);
+    if (vrsta === "pojdi") window.safeerOsPojdi(podatki);
     if (vrsta === "fokus") {
       osveziOkna();
       osveziStanje();
@@ -817,6 +936,18 @@
       klic("zaupanje", [nov]).then(function () { setTimeout(osveziPovezavo, 600); });
     });
     $("gumbNazajVMint").addEventListener("click", odpriMint);
+    $("stikaloWifiOmrezje").addEventListener("click", function () {
+      var b = $("stikaloWifiOmrezje"), nov = b.getAttribute("aria-checked") !== "true";
+      b.setAttribute("aria-checked", nov ? "true" : "false");
+      klic("wifi", [nov]).then(function () { setTimeout(function () { nalozOmrezje(true); }, 1500); });
+    });
+    $("gumbOmrezjeOsvezi").addEventListener("click", function () { nalozOmrezje(true); });
+    $("gumbOmrezjeNazaj").addEventListener("click", function () { pojdi("nastavitve"); });
+    $("gumbOmrezjeNapredno").addEventListener("click", function () {
+      obvesti(t("odpiram", { ime: t("napredno") }));
+      klic("nastavitve", ["omrezje"]);
+    });
+    $("stanjeOmrezje").addEventListener("click", function (e) { e.stopPropagation(); zapriSloje(); pojdi("omrezje"); });
     $("mintPreklici").addEventListener("click", zapriSloje);
     $("mintSamoTokrat").addEventListener("click", function () { klic("nazajVMint", [false]); });
     $("mintZaStalno").addEventListener("click", function () { klic("nazajVMint", [true]); });
@@ -865,6 +996,7 @@
   }
 
   function zacni() {
+    if (/[?&]namizje=1/.test(location.search)) document.body.classList.add("namizje");
     prevedi();
     poveziDogodke();
     osveziUro();

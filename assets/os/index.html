@@ -128,6 +128,27 @@
         </div>
       </section>
 
+      <!-- OMREZJE (iz Nastavitev in iz vrstice stanja) -->
+      <section class="razdelek" id="r-omrezje">
+        <button class="gumb nazaj" id="gumbOmrezjeNazaj"><svg data-ikona="nazaj"></svg><span data-t="nastavitve"></span></button>
+        <h1 data-t="o_omrezje"></h1>
+        <p data-t="omrezjeOpis"></p>
+        <h2 data-t="trenutnaPovezava"></h2>
+        <div class="vrstice" id="omrezjeTrenutno"></div>
+        <div class="hitre omrezje-stikala">
+          <button class="stikalo" id="stikaloWifiOmrezje" role="switch" aria-checked="false"><svg data-ikona="wifi"></svg><div><span>Wi-Fi</span><small id="omrezjeStanje"></small></div><i></i></button>
+        </div>
+        <div id="blokWifi" hidden>
+          <h2><span data-t="wifiOmrezja"></span><button class="dodatno" id="gumbOmrezjeOsvezi" data-t="osvezi"></button></h2>
+          <div class="vrstice" id="omrezjaSeznam"></div>
+        </div>
+        <div id="blokShranjene" hidden>
+          <h2 data-t="shranjenePovezave"></h2>
+          <div class="vrstice" id="omrezjaShranjena"></div>
+        </div>
+        <button class="stikalo napredno" id="gumbOmrezjeNapredno" hidden><svg data-ikona="drsniki"></svg><div><span data-t="napredno"></span><small data-t="naprednoPod"></small></div></button>
+      </section>
+
       <!-- NASTAVITVE -->
       <section class="razdelek" id="r-nastavitve">
         <h1 data-t="nastavitve"></h1>
