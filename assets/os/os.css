@@ -469,6 +469,10 @@ div.vrstica { cursor: default; }
 .vrstica.program select { height: 36px; border-radius: 10px; background: rgba(255, 255, 255, .07); color: var(--besedilo); border: 1px solid var(--rob); padding: 0 10px; max-width: 260px; font: inherit; font-size: 14px; }
 .vrstica.program.tiho { opacity: .6; }
 #r-zvok .drobno { color: var(--medlo); margin: -4px 0 12px; max-width: 900px; }
+.stikalo.onemogoceno { opacity: .55; }
+.scit-zadnje { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 2px 8px; font-size: 14px; color: var(--medlo); }
+.scit-zadnje b { width: 100%; font-weight: 600; }
+.scit-zadnje i { font-style: normal; opacity: .65; }
 .zvok-jbl { margin-top: 10px; max-width: 1100px; }
 .zvok-jbl .stikalo { width: 100%; }
 .vrstica .znacka.tece { animation: utrip 1.6s ease-in-out infinite; }

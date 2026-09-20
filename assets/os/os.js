@@ -155,7 +155,7 @@
     $("vsebina").scrollTop = 0;
     if (razdelek === "datoteke" && !S.pot) odpriNedavne();
     if (razdelek === "naprave") osveziPovezavo();
-    if (razdelek === "nastavitve") narisiNastavitve();
+    if (razdelek === "nastavitve") { narisiNastavitve(); nalozScit(); scitZanka(); }
     if (razdelek === "programi") nalozNaprave();
     if (razdelek === "omrezje") nalozOmrezje(false);
     if (razdelek === "zvok") { nalozZvok(); zvokZanka(); if (!jblStanje) nalozJbl(); }
@@ -817,6 +817,52 @@
     }, pod);
     st.querySelector("span").textContent = t("jblStikalo", { ime: j.ime || "JBL" });
     c.appendChild(st);
+  }
+
+  // ---- Scit: filtriranje DNS za ves racunalnik (stikalo in stanje v Nastavitvah) ----
+  var scitStanje = null, scitZaposleno = false, scitCas = null;
+  function nalozScit() {
+    klic("scit").then(function (s) { scitStanje = s; narisiScit(); }, function () {});
+  }
+  function scitZanka() {
+    clearInterval(scitCas);
+    scitCas = setInterval(function () {
+      if (S.razdelek !== "nastavitve") { clearInterval(scitCas); return; }
+      if (!scitZaposleno) nalozScit();
+    }, 5000);
+  }
+  function narisiScit() {
+    var c = $("blokScit");
+    c.innerHTML = "";
+    var s = scitStanje;
+    if (!s) return;
+    var pod;
+    if (scitZaposleno) pod = t("scitPripravljam");
+    else if (!s.mozno) pod = t("scitNiMozno");
+    else if (s.napaka) pod = t("scitNapaka_" + s.napaka);
+    else if (s.vklop && s.tece) pod = s.domen ? t("scitTece", { n: s.blokiranih, p: s.poizvedb, d: s.domen }) : t("scitSeznami");
+    else pod = t("scitOpis");
+    var st = stikalo("scitStikalo", "scit", !!(s.vklop && s.tece) || (scitZaposleno && !s.vklop), function (v) {
+      if (scitZaposleno || !s.mozno) { narisiScit(); return; }
+      scitZaposleno = true;
+      narisiScit();
+      klic("scitVklop", [v]).then(function (r) {
+        scitZaposleno = false;
+        scitStanje = r;
+        if (r && r.napaka) obvesti(t("scitNapaka_" + r.napaka));
+        else obvesti(t(v ? "scitVklopljen" : "scitIzklopljen"));
+        narisiScit();
+      }, function () { scitZaposleno = false; nalozScit(); });
+    }, pod);
+    if (!s.mozno) st.classList.add("onemogoceno");
+    c.appendChild(st);
+    if (s.vklop && s.tece && s.zadnje && s.zadnje.length) {
+      var z = el("div", "scit-zadnje", "<b>" + ubezi(t("scitZadnje")) + "</b>");
+      s.zadnje.slice(0, 6).forEach(function (x) {
+        z.appendChild(el("span", "", ubezi(x.ime) + " <i>" + ubezi(t("scitKat_" + x.kategorija)) + "</i>"));
+      });
+      c.appendChild(z);
+    }
   }
   function nalozZvok() {
     klic("zvok").then(function (z) {

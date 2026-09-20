@@ -345,6 +345,21 @@ class Stran(unittest.TestCase):
         for metoda in set(re.findall(r'klic\("(\w+)"', js)):
             self.assertIn('"%s":' % metoda, py, metoda)
 
+    def test_scit_v_nastavitvah(self):
+        html = _beri("assets", "os", "index.html")
+        js = _beri("assets", "os", "os.js")
+        py = _beri("safeer_os.py")
+        self.assertIn('id="blokScit"', html)
+        self.assertIn('stikalo("scitStikalo", "scit"', js)
+        self.assertIn('klic("scitVklop", [v])', js)
+        for k in ('"scit": self.scit.stanje', '"scitVklop"', "self.scit.zacni_ce_vklopljen()", "self.scit.koncaj()"):
+            self.assertIn(k, py, k)
+        besedila = _beri("assets", "os", "besedila.js")
+        for k in ("scitNapaka_pravilo", "scitNapaka_ni_resolved", "scitNapaka_vrata", "scitNapaka_ni_omrezja"):
+            self.assertIn(k + ":", besedila)
+        for k in ("oglasi", "groznje", "prevare", "malware", "phishing", "botnet"):
+            self.assertIn("scitKat_%s:" % k, besedila)
+
     def test_zvok_desni_klik_in_nastavitev(self):
         vrstica = _beri("assets", "os", "vrstica.js")
         js = _beri("assets", "os", "os.js")
