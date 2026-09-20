@@ -175,9 +175,13 @@ def poisci_hube_mdns(cas: float = 2.0) -> List[dict]:
             ime_h = lastnosti.get(b"name") or lastnosti.get("name") or b""
             if isinstance(ime_h, bytes):
                 ime_h = ime_h.decode("utf-8", "replace")
+            # Izvolitev huba: id in prioriteta iz oglasa (IzvolitevHuba na Androidu).
+            id_h = lastnosti.get(b"id") or lastnosti.get("id") or b""
+            if isinstance(id_h, bytes):
+                id_h = id_h.decode("utf-8", "replace")
             naslov = f"{shema}://{naslovi[0]}:{info.port}{pot}"
             if all(n["naslov"] != naslov for n in najdeno):
-                najdeno.append({"naslov": naslov, "fp": str(fp).lower(), "tls": str(tls) == "1", "ime": str(ime_h)})
+                najdeno.append({"naslov": naslov, "fp": str(fp).lower(), "tls": str(tls) == "1", "ime": str(ime_h), "id": str(id_h)})
 
         def update_service(self, zc, vrsta, ime):
             pass
@@ -260,9 +264,10 @@ def poisci_hub(znani: str = "", odtis: Optional[str] = None) -> Optional[str]:
 
 
 def poisci_hub_z_odtisom(znani: str = "", odtis: Optional[str] = None) -> Optional[dict]:
-    """Kot poisci_hub, a vrne {"naslov", "fp", "isti"}: isti = to je Hub, s katerim smo seznanjeni
+    """Kot poisci_hub, a vrne {"naslov", "fp", "isti", "krog", "id"}: isti = to je Hub, s katerim smo seznanjeni
     (isti naslov, ki se oglasa, ali isti odtis potrdila na drugem naslovu). Med vec Hubi ima
-    prednost tisti z nasim odtisom, nato TLS Hubi po vrsti.
+    prednost tisti z nasim odtisom, nato hub, ki je clan kroga zaupanja (krog=True: njegovo potrdilo
+    nosi kljuc iz kroga, zato mu zaupamo brez seznanitve - prijava gre s podpisom), nato TLS Hubi po vrsti.
     """
     if znani:
         osnova = _osnova(znani)
@@ -274,6 +279,19 @@ def poisci_hub_z_odtisom(znani: str = "", odtis: Optional[str] = None) -> Option
         for h in hubi:
             if h["fp"] == odtis.lower() and je_hub(_osnova(h["naslov"]), odtis=odtis):
                 return {"naslov": h["naslov"], "fp": h["fp"], "isti": True}
+    # Izvoljeni hub (drug clan kroga zaupanja): oglas mDNS ne dobi zaupanja; da ga sele kljuc v
+    # potrdilu, ki se ujema s kljucem tega clana v krogu.
+    try:
+        krog = link_krog.krog()
+    except Exception:
+        krog = None
+    for h in hubi:
+        clan = krog.clan(h.get("id") or "") if (krog and h.get("id")) else None
+        if clan is None:
+            continue
+        videni, kljuc = link_tls.potrdilo_huba(h["naslov"])
+        if videni and kljuc and kljuc == clan["kljuc"] and je_hub(_osnova(h["naslov"]), odtis=videni):
+            return {"naslov": h["naslov"], "fp": videni, "isti": False, "krog": True, "id": h["id"]}
     for h in hubi:
         if je_hub(_osnova(h["naslov"])):
             return {"naslov": h["naslov"], "fp": h["fp"], "isti": False}
