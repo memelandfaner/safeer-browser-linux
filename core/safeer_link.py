@@ -297,10 +297,20 @@ class SafeerLink:
         nastavitve.set_property("enable-developer-extras", False)
         # Stran je nasa in ne potrebuje omrezja; vse gre skozi most.
         nastavitve.set_property("enable-webgl", False)
+        # Pisava je nasa: privzeta velikost in najmanjsa velikost iz sistema oz. brskalnika ne
+        # smeta spremeniti postavitve (stran ima vse velikosti dolocene v link.css).
+        try:
+            nastavitve.set_property("default-font-size", 16)
+            nastavitve.set_property("default-monospace-font-size", 13)
+            nastavitve.set_property("minimum-font-size", 0)
+        except Exception:
+            pass
         pogled.set_background_color(_barva(0x0b, 0x10, 0x17))
+        pogled.set_zoom_level(1.0)
 
         okno = Gtk.Window(title="Safeer Control" if self.control else "Safeer Link")
-        okno.set_default_size(560, 760 if not self.control else 820)
+        # Samostojna aplikacija (Control) ima levi meni z razdelki, zato sirse okno.
+        okno.set_default_size(560 if not self.control else 1000, 760 if not self.control else 720)
         if self.control:
             okno.set_wmclass("safeer-control", "Safeer Control")
             okno.set_icon_name("safeer-control")
@@ -704,6 +714,10 @@ class SafeerLink:
                     "vloga": d.get("role", "receiver"),
                     "zmoznosti": d.get("capabilities") or [],
                     "naslov": d.get("ip") or "",
+                    # Protocol v1 (prazno pri napravah 0.2): platforma, vrsta in katalog aplikacij.
+                    "platforma": d.get("platform") or "",
+                    "vrsta": d.get("kind") or "",
+                    "aplikacije": d.get("apps") if isinstance(d.get("apps"), dict) else {},
                 })
             self.naprave = naprave
             self._odziv("naprave", naprave)

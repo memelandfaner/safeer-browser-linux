@@ -26,6 +26,16 @@
   <button class="zapri" id="gumbZapri" aria-label="Zapri" data-t-naslov="zapri">✕</button>
 </header>
 
+<!-- Samostojna aplikacija (Safeer Control na racunalniku): razdelki v levem meniju namesto enega
+     dolgega zaslona. Telefon in televizor menija ne vidita - tam ostane ena drsna stran. -->
+<nav class="stranski" id="stranskiMeni" hidden aria-label="Razdelki">
+  <button data-razdelek="naprave"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v11H3z M8 20h8 M12 16v4"/></svg><span data-t="povezaneNaprave">Povezane naprave</span></button>
+  <button data-razdelek="daljinec"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z M12 6v.1 M10 11h4 M12 9v4 M10 17h4"/></svg><span data-t="daljinec">Daljinec</span></button>
+  <button data-razdelek="poslji"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12l16-8-6 16-2-7z"/></svg><span data-t="posljiStran">Pošlji to stran</span></button>
+  <button data-razdelek="mape"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h6l2 2h10v11H3z"/></svg><span data-t="mapeNaslov">Datoteke za televizor</span></button>
+  <button data-razdelek="sync"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 0 1 14-5l2 2 M20 12a8 8 0 0 1-14 5l-2-2 M18 3v4h-4 M6 21v-4h4"/></svg><span data-t="sinhronizacija">Sinhronizacija</span></button>
+</nav>
+
 <main>
 
   <!-- Vklop in izklop sta skupaj in na vrhu: kdor odpre Safeer Link, najprej odloca o tem. -->
@@ -135,7 +145,7 @@
     </div>
 
     <!-- Deljenje z izbrano napravo: zaslon, datoteka ali besedilo, nato en gumb. -->
-    <div class="panel" id="panelDeljenje" hidden>
+    <div class="panel" id="panelDeljenje" data-razdelek="naprave" hidden>
       <div class="vrsticaGlave">
         <h2 id="deljenjeNaslov">Deli z napravo</h2>
         <span class="gumbiGlave">
@@ -149,6 +159,11 @@
         <button class="drugotni tanek" id="gumbShraniIme" data-t="shraniIme">Shrani ime</button>
       </div>
       <button class="glavni" id="gumbDaljinec" hidden><svg viewBox="0 0 24 24" aria-hidden="true" style="width:18px;height:18px;margin-right:6px"><path d="M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z M12 6v.1 M10 11h4 M12 9v4 M10 17h4"/></svg><span data-t="daljinec">Daljinec</span></button>
+      <!-- Blizajnica na zaslon: Safeer OS in Safeer brskalnik na televizorju z enim klikom. -->
+      <div class="izbire" id="bliznjiceZaslona" hidden>
+        <button class="izbira" id="gumbOdpriSafeerOs"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v11H3z M8 20h8 M12 16v4"/></svg> <span data-t="odpriSafeerOs">Safeer OS na televizorju</span></button>
+        <button class="izbira" id="gumbOdpriBrskalnik"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z M2 12h20 M12 2c3 3 3 17 0 20 M12 2c-3 3-3 17 0 20"/></svg> <span data-t="odpriBrskalnik">Safeer brskalnik</span></button>
+      </div>
       <p class="pojasnilo drobno" id="opisIzbire" data-t="izberiVsebino">Kaj želiš deliti s to napravo?</p>
       <div class="izbire" id="izbireDeljenja">
         <button class="izbira" data-vrsta="zaslon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 1.5h11a2.5 2.5 0 0 1 2.5 2.5v16a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 20V4a2.5 2.5 0 0 1 2.5-2.5z M8 6h8v9H8z"/></svg> <span data-t="deliZaslon">Zaslon</span></button>
@@ -161,7 +176,7 @@
       <p class="opomba" id="opombaDeljenje"></p>
     </div>
 
-    <div class="panel" id="panelCast" hidden>
+    <div class="panel" id="panelCast" data-razdelek="poslji" hidden>
       <h2 data-t="posljiStran">Pošlji to stran</h2>
       <div class="kartica tesno">
         <p class="oznaka" data-t="odprtoVBrskalniku">Odprto v brskalniku</p>
@@ -193,7 +208,7 @@
       <button class="drugotni tanek" id="gumbDovoliOspredje" data-t="ospredjeDovoli">Dovoli</button>
     </div>
 
-    <div class="panel" id="panelNaprave">
+    <div class="panel" id="panelNaprave" data-razdelek="naprave">
       <div class="vrsticaGlave">
         <h2 data-t="povezaneNaprave">Povezane naprave</h2>
         <button class="drobniGumb" id="gumbOsvezi" data-t="osvezi">Osveži</button>
@@ -207,7 +222,7 @@
     </div>
 
     <!-- Samo Safeer Control: mape na tem racunalniku, ki jih sme videti televizor (Safeer OS). -->
-    <div class="panel" id="panelMape" hidden>
+    <div class="panel" id="panelMape" data-razdelek="mape" hidden>
       <h2 data-t="mapeNaslov">Datoteke za televizor</h2>
       <p class="pojasnilo" data-t="mapeOpis">
         Izbrane mape vidi Safeer OS na televizorju — filmi, glasba in slike se predvajajo naravnost s tega računalnika, samo v domačem omrežju.
@@ -218,7 +233,7 @@
       <button class="drugotni" id="gumbStandardneMape" data-t="mapeStandardne">Deli Videi, Glasba in Slike</button>
     </div>
 
-    <div class="panel" id="panelSync">
+    <div class="panel" id="panelSync" data-razdelek="sync">
       <h2 data-t="sinhronizacija">Sinhronizacija</h2>
       <p class="pojasnilo" data-t="syncOpis">
         Zaznamki potujejo med tvojimi napravami prek domačega Safeer Linka.
