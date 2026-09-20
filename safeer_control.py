@@ -566,10 +566,79 @@ class SafeerControl(Gtk.Application):
             except Exception as e:  # noqa: BLE001
                 print(f"[SafeerControl] Naslova ni bilo mogoče odpreti: {e}")
 
+    # Okno gledalca: dotik, poteg in tipke z miske in tipkovnice gredo na napravo, katere zaslon gledamo
+    # (Safeer Vnos na tablici). Slika je v <img id="zaslon"> z object-fit: contain; koordinate
+    # preracunamo v delez prave slike, da sirina okna ali crni robovi ne zamaknejo dotika.
+    GLEDALEC_VNOS_JS = r"""
+(function () {
+  function poslji(d, p) {
+    try { window.webkit.messageHandlers.safeerVnos.postMessage(JSON.stringify({d: d, p: p})); } catch (e) {}
+  }
+  function delez(img, x, y) {
+    var r = img.getBoundingClientRect();
+    var nw = img.naturalWidth || 1, nh = img.naturalHeight || 1;
+    var m = Math.min(r.width / nw, r.height / nh);
+    var w = nw * m, h = nh * m;
+    var ox = r.left + (r.width - w) / 2, oy = r.top + (r.height - h) / 2;
+    var fx = (x - ox) / w, fy = (y - oy) / h;
+    if (fx < 0 || fy < 0 || fx > 1 || fy > 1) return null;
+    return {x: fx, y: fy};
+  }
+  var zacetek = null, cas = 0, tipkano = "", casovnik = null;
+  document.addEventListener("mousedown", function (e) {
+    var img = document.getElementById("zaslon");
+    if (!img || e.button !== 0) return;
+    zacetek = delez(img, e.clientX, e.clientY); cas = Date.now();
+    e.preventDefault();
+  }, true);
+  document.addEventListener("mouseup", function (e) {
+    var img = document.getElementById("zaslon");
+    if (!img || !zacetek || e.button !== 0) return;
+    var konec = delez(img, e.clientX, e.clientY) || zacetek;
+    var trajanje = Math.max(60, Math.min(1500, Date.now() - cas));
+    if (Math.abs(konec.x - zacetek.x) + Math.abs(konec.y - zacetek.y) > 0.02) {
+      poslji("input.swipe", {x1: zacetek.x, y1: zacetek.y, x2: konec.x, y2: konec.y, ms: trajanje});
+    } else {
+      poslji("input.tap", {x: zacetek.x, y: zacetek.y, ms: trajanje > 450 ? 700 : 60});
+    }
+    zacetek = null;
+  }, true);
+  document.addEventListener("wheel", function (e) {
+    var img = document.getElementById("zaslon");
+    if (!img) return;
+    var t = delez(img, e.clientX, e.clientY);
+    if (!t) return;
+    var dy = e.deltaY > 0 ? -0.25 : 0.25;
+    poslji("input.swipe", {x1: t.x, y1: t.y, x2: t.x, y2: Math.max(0, Math.min(1, t.y + dy)), ms: 250});
+    e.preventDefault();
+  }, {capture: true, passive: false});
+  document.addEventListener("contextmenu", function (e) { e.preventDefault(); poslji("input.key", {key: "back"}); }, true);
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" || e.key === "BrowserBack") { poslji("input.key", {key: "back"}); e.preventDefault(); return; }
+    if (e.key === "Home") { poslji("input.key", {key: "home"}); e.preventDefault(); return; }
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      tipkano += e.key; e.preventDefault();
+      clearTimeout(casovnik);
+      casovnik = setTimeout(function () { if (tipkano) poslji("input.text", {text: tipkano}); tipkano = ""; }, 250);
+    }
+  }, true);
+})();
+"""
+
     def _odpri_gledalca(self, url: str) -> None:
-        """Deljen zaslon druge naprave: stran gledalca s Huba v svojem oknu Controla."""
+        """Deljen zaslon druge naprave: stran gledalca s Huba v svojem oknu Controla. Ce naprava to
+        zna (Safeer Vnos na tablici), jo iz tega okna upravljas z misko in tipkovnico."""
         if self.gledalec is None:
-            pogled = WebKit2.WebView.new_with_context(self.web_context)
+            upravitelj = WebKit2.UserContentManager()
+            upravitelj.register_script_message_handler("safeerVnos")
+            upravitelj.connect("script-message-received::safeerVnos", self._vnos_iz_gledalca)
+            upravitelj.add_script(WebKit2.UserScript(
+                self.GLEDALEC_VNOS_JS,
+                WebKit2.UserContentInjectedFrames.TOP_FRAME,
+                WebKit2.UserScriptInjectionTime.END,
+                None, None,
+            ))
+            pogled = WebKit2.WebView(web_context=self.web_context, user_content_manager=upravitelj)
             nastavitve = pogled.get_settings()
             nastavitve.set_property("enable-developer-extras", False)
             okno = Gtk.Window(title="Safeer Control — zaslon")
@@ -582,9 +651,32 @@ class SafeerControl(Gtk.Application):
             self.add_window(okno)
             self.gledalec = okno
             okno.show_all()
+            if self.link is not None:
+                self.link.ob_odzivu_vnosa = self._odziv_vnosa
         pogled = self.gledalec.get_child()
         pogled.load_uri(url)
         self.gledalec.present()
+
+    def _vnos_iz_gledalca(self, _upravitelj, rezultat) -> None:
+        """Dotik/tipka iz okna gledalca -> ukaz input.* napravi, katere zaslon gledamo."""
+        try:
+            sporocilo = json.loads(rezultat.get_js_value().to_string())
+            dejanje = str(sporocilo.get("d", ""))
+            parametri = sporocilo.get("p") if isinstance(sporocilo.get("p"), dict) else {}
+        except Exception:
+            return
+        if self.link is not None and dejanje.startswith("input."):
+            self.link.poslji_vnos(dejanje, parametri)
+
+    def _odziv_vnosa(self, odziv: dict) -> None:
+        """Naprava vnosa ne sprejme: v naslovu okna povemo, kaj naj uporabnik naredi (enkrat)."""
+        if self.gledalec is None:
+            return
+        if odziv.get("ok"):
+            self.gledalec.set_title("Safeer Control — zaslon")
+        elif odziv.get("koda") == "vnos_ni_vklopljen":
+            self.gledalec.set_title("Safeer Control — zaslon · za upravljanje z misko na tablici vklopi "
+                                    "Nastavitve → Dostopnost → Safeer Vnos")
 
 
 def main() -> int:
