@@ -2149,7 +2149,7 @@
   // Prijavno okno (Safeer Control / Safeer OS na racunalniku)
   // ----------------------------------------------------------------
 
-  var prijava = { qr: false, koda: false, krogNeuspel: false, cakalnik: null };
+  var prijava = { qr: false, koda: false, krogNeuspel: false, cakalnik: null, ponovno: null };
 
   /**
    * Control, ki ni povezan (ne z zetonom ne s krogom zaupanja) in sredisce ne tece tu. Clan kroga
@@ -2241,6 +2241,7 @@
   }
 
   function koncajPrijavo() {
+    if (prijava.ponovno) { clearTimeout(prijava.ponovno); prijava.ponovno = null; }
     if (prijava.qr && most && most.prekiniQr) most.prekiniQr();
     prijava.qr = false;
     prijava.koda = false;
@@ -2268,6 +2269,12 @@
     }
     besedilo("opombaQr", t(n === "hub_star" ? "prijavaHubStar" : n === "prevec_prijav" ? "prijavaPrevec" : "prijavaNiHuba"));
     pokazi("gumbQrZnova", true);
+    // Safeer Linka (se) ni: iscemo naprej sami, vsakih 8 s - ko ga uporabnik vklopi na televizorju ali
+    // telefonu, se koda pokaze brez klika. Gumb »Poišči znova« ostane za nestrpne.
+    if (n === "ni_huba" && jePrijavnoOkno()) {
+      if (prijava.ponovno) clearTimeout(prijava.ponovno);
+      prijava.ponovno = setTimeout(function () { prijava.ponovno = null; if (jePrijavnoOkno()) zacniPrijavo(); }, 8000);
+    }
   }
 
   /** Klik v polje za kodo: sredisce pokaze kodo (seznanitev s kodo, SPAKE2). */

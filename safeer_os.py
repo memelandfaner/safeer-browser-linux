@@ -117,6 +117,23 @@ def _podatki_controla() -> dict:
         return {}
 
 
+_hubi_cache: dict = {"cas": 0.0, "hubi": []}
+
+
+def hubi_v_omrezju(cas: float = 1.5) -> list:
+    """Safeer Linki (sredisca), ki se oglasajo v domacem omrezju (mDNS): [{"ime", "naslov"}]. Rezultat velja
+    10 s, da Naprave ne iscejo ob vsakem izrisu. Brez knjiznice zeroconf je seznam prazen."""
+    if time.time() - _hubi_cache["cas"] < 10:
+        return list(_hubi_cache["hubi"])
+    try:
+        from core import link_hub
+        hubi = [{"ime": h.get("ime") or h["naslov"], "naslov": h["naslov"]} for h in link_hub.poisci_hube_mdns(cas)]
+    except Exception:
+        hubi = []
+    _hubi_cache.update(cas=time.time(), hubi=hubi)
+    return list(hubi)
+
+
 def stanje_povezave() -> dict:
     """Ali je racunalnik (Safeer Control) v Safeer Linku: povezan / brez (izbral) / nov.
 
@@ -138,7 +155,11 @@ def stanje_povezave() -> dict:
         stanje = "brez"
     else:
         stanje = "nov"
-    return {"stanje": stanje, "control": bool(_ukaz_controla()), "zaupana": link_seja.zaupana(p)}
+    izid = {"stanje": stanje, "control": bool(_ukaz_controla()), "zaupana": link_seja.zaupana(p), "hubi": []}
+    if stanje != "povezan":
+        # Nepovezan racunalnik: Naprave povedo, ali je v omrezju Safeer Link (in kateri), ali ga ni.
+        izid["hubi"] = hubi_v_omrezju()
+    return izid
 
 
 CONTROL_ID = "io.github.memelandfaner.SafeerControl"
@@ -484,9 +505,8 @@ class SafeerOS(Gtk.Application):
                 # Kdor odpre Safeer OS, ga dobi tudi ob naslednji prijavi; izklop je v Nastavitvah,
                 # v »Nazaj v Linux Mint« in v Mintovih Zagonskih programih.
                 self.shramba.set("samozagon", nastavi_samozagon(True))
-            if stanje_povezave()["stanje"] == "nov":
-                # Prvi zagon brez Safeer Linka: prijavno okno (QR / koda / brez povezave naprav).
-                GLib.timeout_add(1200, lambda: (self._prijava(), False)[1])
+            # Brez prijavnega okna ob zagonu: Safeer OS dela takoj, naprave uporabnik poveze v Napravah,
+            # kadar hoce (tam vidi, ali je v omrezju Safeer Link, in dobi navodila, ce ga ni).
 
     def _nov_pogled(self, stran: str) -> WebKit2.WebView:
         """WebKit z mostom do tega procesa; odgovori gredo nazaj v isti pogled."""
