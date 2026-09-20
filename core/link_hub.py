@@ -554,6 +554,72 @@ def vzemi_vstopnico_s_podpisom(ws_naslov: str, device_id: str, odtis: str, ime: 
     return (vstopnica if isinstance(vstopnica, str) and vstopnica else None), koda
 
 
+def seja_s_podpisom(ws_naslov: str, device_id: str, odtis: str, ime: str = "") -> Optional[str]:
+    """Sejni zeton za HTTP (vabilo, odhod) za napravo v krogu zaupanja, ki nima zetona seznanitve."""
+    osnova = _osnova(ws_naslov)
+    koda, izziv = _zahteva(osnova + "/cast/auth/challenge", {"device_id": device_id}, odtis=odtis)
+    nonce = str(izziv.get("nonce", "") or "") if koda == 200 else ""
+    if not nonce:
+        return None
+    try:
+        podpis = link_krog.podpisi(link_krog.podatki_za_podpis(str(izziv.get("fp", "") or "") or odtis, nonce, device_id))
+    except Exception:
+        return None
+    koda, odgovor = _zahteva(osnova + "/cast/auth/ticket", {"device_id": device_id, "nonce": nonce, "signature": podpis,
+                                                            "name": ime or "", "platform": "linux"}, odtis=odtis)
+    seja = odgovor.get("session_token") if koda == 200 else None
+    return seja if isinstance(seja, str) and seja else None
+
+
+def povabi(ws_naslov: str, zeton: str, odtis: str, preklici: str = "") -> dict:
+    """»Poveži novo napravo«: sredisce ustvari enkratno kodo za pridruzitev (kot jo pokaze na svojem zaslonu).
+    Vrne {"qr_id", "povezava", "velja"} ali {"napaka": "hub_star" | "ni_huba" | "ni_seznanjena"}.
+
+    Povezava je ista kot na televizorju: https://safeer.si/p#j=<id>&s=<skrivnost>&f=<odtis>&a=<naslov:vrata>
+    - skrivnost je za #, zato je streznik strani nikoli ne vidi; telefon se pripne na odtis."""
+    koda, odgovor = _zahteva(_osnova(ws_naslov) + "/cast/pair/qr/invite", {"qr_id": preklici}, zeton=zeton, odtis=odtis)
+    if koda in (404, 405):
+        return {"napaka": "hub_star"}
+    if koda in (401, 403):
+        return {"napaka": "ni_seznanjena"}
+    if koda != 200:
+        return {"napaka": "ni_huba"}
+    qr_id, skrivnost = str(odgovor.get("qr_id") or ""), str(odgovor.get("secret") or "")
+    fp = str(odgovor.get("fp") or odtis or "").lower()
+    if not qr_id or not skrivnost:
+        return {"napaka": "ni_huba"}
+    u = urlparse(ws_naslov)
+    naslov = "%s:%d" % (u.hostname, u.port or 443)
+    return {"qr_id": qr_id, "velja": int(odgovor.get("expires_in_seconds") or 300),
+            "povezava": "https://safeer.si/p#j=%s&s=%s&f=%s&a=%s" % (qr_id, skrivnost, fp, naslov)}
+
+
+def stanje_vabila(ws_naslov: str, zeton: str, odtis: str, qr_id: str) -> dict:
+    """{"caka": bool, "pridruzen": ime ali ""} - ali se je z vabilom ze kdo pridruzil."""
+    koda, odgovor = _zahteva(_osnova(ws_naslov) + "/cast/pair/qr/invite/status", {"qr_id": qr_id},
+                             zeton=zeton, odtis=odtis, timeout=4.0)
+    if koda != 200:
+        return {"caka": False, "pridruzen": "", "napaka": koda}
+    return {"caka": bool(odgovor.get("pending")),
+            "pridruzen": str(odgovor.get("name") or "") if odgovor.get("joined") else ""}
+
+
+def preklici_vabilo(ws_naslov: str, zeton: str, odtis: str, qr_id: str) -> None:
+    try:
+        _zahteva(_osnova(ws_naslov) + "/cast/pair/qr/invite/cancel", {"qr_id": qr_id}, zeton=zeton, odtis=odtis, timeout=3.0)
+    except Exception:
+        pass
+
+
+def odidi(ws_naslov: str, zeton: str, odtis: str) -> bool:
+    """Ta naprava zapusti Safeer Link: sredisce pozabi njen zeton in jo umakne iz kroga zaupanja."""
+    try:
+        koda, _ = _zahteva(_osnova(ws_naslov) + "/cast/devices/leave", {}, zeton=zeton, odtis=odtis, timeout=4.0)
+    except Exception:
+        return False
+    return koda == 200
+
+
 def vpisi_v_krog(ws_naslov: str, zeton: str, odtis: str, ime: str) -> bool:
     """Z veljavnim zetonom vpise kljuc te naprave v krog zaupanja huba (enkrat; potem gre s podpisom)."""
     try:

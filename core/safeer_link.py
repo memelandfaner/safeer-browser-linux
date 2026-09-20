@@ -69,6 +69,8 @@ MOST_JS = """
     prekiniQr: function () { poslji("prekiniQr"); },
     nadaljujBrezPovezave: function () { poslji("nadaljujBrezPovezave"); },
     nastaviZaupanje: function (vklop) { poslji("nastaviZaupanje", [!!vklop]); },
+    zacniVabilo: function () { poslji("zacniVabilo"); },
+    prekiniVabilo: function () { poslji("prekiniVabilo"); },
     poveziNaprave: function () { poslji("poveziNaprave"); },
     poveziSe: function () { poslji("poveziSe"); },
     posljiTrenutno: function (id) { poslji("posljiTrenutno", [id]); },
@@ -167,11 +169,23 @@ class SafeerLink:
         # »Zaupaj temu racunalniku« v prijavnem oknu (core/link_seja.py): privzeto ne - racunalnik lahko
         # uporablja vec ljudi, zato povezava brez zaupanja velja samo do konca te prijave.
         self._zaupaj_ob_prijavi = False
+        # »Poveži novo napravo«: odprto vabilo in rod (nova koda ali preklic ga povecata).
+        self._vabilo: Optional[dict] = None
+        self._vabilo_rod = 0
+        # Klic ob uspesni prijavi (Safeer Control: prijavno okno iz Safeer OS se zapre in vrne v Safeer OS).
+        self.ob_seznanitvi: Optional[Callable[[], None]] = None
+        # Koda za stran, ko se nalozi (npr. Safeer OS odpre »Poveži novo napravo«).
+        self.ob_nalozitvi_js = ""
         # Nova prijava v racunalnik: kar je veljalo samo za prejsnjo (nezaupana povezava, »brez
-        # povezave«), odpade - prijavno okno se pokaze znova.
+        # povezave«), odpade - prijavno okno se pokaze znova. Nezaupan racunalnik ob tem zapusti tudi
+        # sredisce, da njegov zeton ne ostane veljaven.
         try:
+            prej = dict(self.nastavitve.podatki)
             if link_seja.pocisti(self.nastavitve.podatki):
                 self.nastavitve.shrani()
+                if prej.get("control_token") and not self.nastavitve.get("control_token") and prej.get("hub_url"):
+                    self._v_ozadju(lambda: link_hub.odidi(str(prej["hub_url"]), str(prej["control_token"]),
+                                                          str(prej.get("hub_fp") or "")))
         except Exception as e:  # noqa: BLE001
             print(f"[SafeerLink] Seje ni bilo mogoče preveriti: {e}")
 
@@ -444,6 +458,9 @@ class SafeerLink:
         # Stran je svoje prvo stanje prebrala ze ob DOMContentLoaded (pred tem vstavkom): povemo ji,
         # naj ga prebere znova, sicer do prvega dogodka kaze »ni nastavljeno«.
         self._odziv("stanje", None)
+        if self.ob_nalozitvi_js:
+            koda, self.ob_nalozitvi_js = self.ob_nalozitvi_js, ""
+            GLib.timeout_add(300, lambda: (self._js(koda), False)[1])
         # Ce Huba se ne poznamo, ga poiscemo sami -- uporabniku ni treba nicesar vedeti.
         if not self._hub():
             self._v_ozadju(self._poisci_hub)
@@ -509,6 +526,8 @@ class SafeerLink:
             "prekiniQr": lambda: self._prekini_qr(),
             "nadaljujBrezPovezave": lambda: self._nadaljuj_brez_povezave(),
             "nastaviZaupanje": lambda: self.nastavi_zaupanje(bool(argumenti[0]) if argumenti else False),
+            "zacniVabilo": lambda: self._v_ozadju(self._zacni_vabilo),
+            "prekiniVabilo": lambda: self._prekini_vabilo(),
             "poveziNaprave": lambda: self._povezi_naprave(),
             "poveziSe": lambda: self._v_ozadju(self._povezi),
             "posljiTrenutno": lambda: self._poslji_trenutno(*argumenti[:1]),
@@ -585,6 +604,15 @@ class SafeerLink:
         Namenoma ne posegamo v druge naprave -- to je uporabnikova odlocitev za
         napravo, ki jo drzi v roki. Ostale se odstrani v Safeer Controlu.
         """
+        # Najprej sredisce: pozabi zeton te naprave in jo umakne iz kroga zaupanja (starejse sredisce
+        # tega ne zna - potem ostane samo krajevno pozabljanje, kot doslej).
+        naslov, odtis = self._hub(), self._odtis() or ""
+        zeton = self._zeton_http() if naslov else None
+        if naslov and zeton:
+            try:
+                link_hub.odidi(naslov, zeton, odtis)
+            except Exception:
+                pass
         povezava = self.povezava
         self.povezava = None
         if povezava is not None:
@@ -592,8 +620,17 @@ class SafeerLink:
                 povezava.zapri()
             except Exception:
                 pass
+        # Tudi krajevno: nas kljuc ni vec v krogu, sicer bi se naprava prijavila s podpisom.
+        try:
+            k = link_krog.krog()
+            kljuc = link_krog.javni_kljuc_b64()
+            for i, c in list(k.clani.items()):
+                if c.get("kljuc") == kljuc:
+                    k.umakni(i, self._id(), time.time() + 0.001)
+        except Exception:
+            pass
         for kljuc in ("control_token", "hub_url", "hub_fp", "seznanitve", "sync_bookmarks",
-                      "sync_bookmarks_version"):
+                      "sync_bookmarks_version", "zaupana", "seja_prijave"):
             try:
                 self.nastavitve.podatki.pop(kljuc, None)
             except Exception:
@@ -697,6 +734,8 @@ class SafeerLink:
         self._zapomni_seznanitev()
         self.nastavitve.shrani()
         self._odziv("seznanitev", True)
+        if self.ob_seznanitvi is not None:
+            GLib.idle_add(lambda: (self.ob_seznanitvi(), False)[1])
         self._povezi()
 
     def _prekini_seznanitev(self) -> None:
@@ -756,6 +795,8 @@ class SafeerLink:
                 self._zapomni_seznanitev()
                 self.nastavitve.shrani()
                 self._odziv("seznanitev", True)
+                if self.ob_seznanitvi is not None:
+                    GLib.idle_add(lambda: (self.ob_seznanitvi(), False)[1])
                 self._povezi()
                 return
             if razlog == "qr_ne_obstaja":
@@ -769,6 +810,59 @@ class SafeerLink:
         naslov = self._hub()
         if stara and naslov:
             self._v_ozadju(lambda: link_hub.preklici_qr(naslov, stara, self._id()))
+
+    def _zeton_http(self) -> Optional[str]:
+        """Zeton za HTTP klice sredisca: zeton seznanitve ali sejni zeton s podpisom (krog zaupanja)."""
+        if self._zeton():
+            return self._zeton()
+        if self._v_krogu():
+            return link_hub.seja_s_podpisom(self._hub(), self._id(), self._odtis() or "", self._ime())
+        return None
+
+    def _zacni_vabilo(self) -> None:
+        """QR koda, s katero se nov telefon ali tablica pridruzi Safeer Linku (kot na televizorju).
+        Koda se obnovi pred potekom; ko se kdo pridruzi, stran pokaze »povezan«."""
+        self._vabilo_rod += 1
+        rod = self._vabilo_rod
+        naslov, odtis = self._hub(), self._odtis() or ""
+        zeton = self._zeton_http() if naslov else None
+        if not naslov or not zeton:
+            self._odziv("vabilo", {"napaka": "ni_seznanjena"})
+            return
+        stara = self._vabilo
+        vabilo = link_hub.povabi(naslov, zeton, odtis, (stara or {}).get("qr_id", ""))
+        if rod != self._vabilo_rod:
+            if vabilo.get("qr_id"):
+                link_hub.preklici_vabilo(naslov, zeton, odtis, vabilo["qr_id"])
+            return
+        if vabilo.get("napaka"):
+            self._odziv("vabilo", vabilo)
+            return
+        self._vabilo = vabilo
+        self._odziv("vabilo", {"svg": link_hub.qr_svg(vabilo["povezava"]), "velja": vabilo["velja"]})
+        konec = time.time() + max(30, int(vabilo["velja"]) - 20)
+        while rod == self._vabilo_rod:
+            time.sleep(2.0)
+            if rod != self._vabilo_rod:
+                return
+            if time.time() > konec:
+                self._v_ozadju(self._zacni_vabilo)
+                return
+            st = link_hub.stanje_vabila(naslov, zeton, odtis, vabilo["qr_id"])
+            if st.get("pridruzen"):
+                self._vabilo = None
+                self._odziv("vabilo", {"pridruzen": st["pridruzen"]})
+                return
+            if not st.get("caka") and not st.get("napaka"):
+                self._v_ozadju(self._zacni_vabilo)       # preklicana ali potekla: takoj nova
+                return
+
+    def _prekini_vabilo(self) -> None:
+        self._vabilo_rod += 1
+        stara, self._vabilo = self._vabilo, None
+        if stara and self._hub():
+            naslov, odtis = self._hub(), self._odtis() or ""
+            self._v_ozadju(lambda: link_hub.preklici_vabilo(naslov, self._zeton_http() or "", odtis, stara["qr_id"]))
 
     def _povezi_naprave(self) -> None:
         """»Poveži naprave« po izbiri »brez povezave«: spet prijavno okno (QR, koda)."""

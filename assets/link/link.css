@@ -650,3 +650,6 @@ button.povezavaGumb:focus-visible { outline: 2px solid var(--zelena); outline-of
 .brezPovezaveKartica { max-width: 460px; width: 100%; margin-top: 28px; }
 .brezPovezaveKartica button.glavni { margin-top: 18px; width: 100%; }
 .brezPovezaveKartica button.drugotni { width: 100%; cursor: pointer; }
+
+.vabilo { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+.vabilo .qrOkvir[hidden] { display: none; }
