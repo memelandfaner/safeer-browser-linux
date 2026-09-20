@@ -42,7 +42,7 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("WebKit2", "4.1")
 from gi.repository import Gdk, Gio, GLib, Gtk, WebKit2  # noqa: E402
 
-from core import os_datoteke, os_omrezje, os_programi, os_sistem, os_zvok  # noqa: E402
+from core import os_datoteke, os_jbl, os_omrezje, os_programi, os_sistem, os_zvok  # noqa: E402
 
 APP_ID = "io.github.memelandfaner.SafeerOS"
 RAZLICICA = "0.1.0"
@@ -210,11 +210,31 @@ def control_dejanje(ime: str, parameter: Optional["GLib.Variant"] = None) -> boo
 
 
 def zvok_na_napravo(id_naprave: str) -> bool:
-    """»Predvajaj na«: Safeer Control preusmeri zvok racunalnika na napravo v Linku (core/link_zvok.py)."""
+    """»Predvajaj na«: Safeer Control preusmeri zvok racunalnika na napravo v Linku (core/link_zvok.py).
+
+    Ce je racunalnik doslej igral na zvocno vrstico JBL po Bluetoothu in gre zvok zdaj na televizor, ki
+    ima to vrstico na HDMI eARC, vrstico preklopimo na vhod TV (dodatek JBL, core/os_jbl.py)."""
     id_naprave = str(id_naprave or "")
-    if id_naprave not in {n["id"] for n in os_zvok.link_naprave()["naprave"]}:
+    naprava = next((n for n in os_zvok.link_naprave()["naprave"] if n["id"] == id_naprave), None)
+    if naprava is None:
         return False
-    return control_dejanje("zvok-na-napravo", GLib.Variant("s", id_naprave))
+    prej = os_zvok._privzeto()[0]
+    ok = control_dejanje("zvok-na-napravo", GLib.Variant("s", id_naprave))
+    if ok and naprava.get("platforma") == "tv" and os_jbl.je_vrstica(prej):
+        os_jbl.preklopi("tv")
+    return ok
+
+
+def zvok_ustavi() -> bool:
+    """Zvok nazaj na racunalnik; ce je spet na vrstici JBL po Bluetoothu, jo preklopimo na Bluetooth."""
+    ok = control_dejanje("zvok-ustavi")
+    for _ in range(30):
+        if not os_zvok.link_naprave()["zvok"]["naprava"]:
+            break
+        time.sleep(0.1)
+    if ok and os_jbl.je_vrstica(os_zvok._privzeto()[0]):
+        os_jbl.preklopi("bluetooth")
+    return ok
 
 
 def zvok_izhod(ime: str) -> bool:
@@ -226,7 +246,10 @@ def zvok_izhod(ime: str) -> bool:
             if not os_zvok.link_naprave()["zvok"]["naprava"]:
                 break
             time.sleep(0.1)
-    return os_zvok.nastavi_izhod(ime)
+    ok = os_zvok.nastavi_izhod(ime)
+    if ok and os_jbl.je_vrstica(ime):
+        os_jbl.preklopi("bluetooth")
+    return ok
 
 
 SAMOZAGON = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
@@ -694,7 +717,9 @@ class SafeerOS(Gtk.Application):
             "zvokUtisajProgram": lambda: os_zvok.utisaj_program(str(a[0]), bool(a[1])),
             "zvokPremakniProgram": lambda: os_zvok.premakni_program(str(a[0]), str(a[1])),
             "zvokNaNapravo": lambda: zvok_na_napravo(str(a[0]) if a else ""),
-            "zvokUstavi": lambda: control_dejanje("zvok-ustavi"),
+            "zvokUstavi": zvok_ustavi,
+            "jbl": lambda: os_jbl.stanje(True),
+            "jblVklop": lambda: os_jbl.vklopi(bool(a[0]) if a else False),
         }
         if metoda in glavna:
             try:
