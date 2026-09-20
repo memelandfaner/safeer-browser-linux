@@ -415,3 +415,21 @@ button.glava-plosce:hover svg { color: var(--zelena); }
 #slojMint h3 { margin: 4px 0 10px; font-size: 22px; }
 #slojMint .drobno { font-size: 15px; margin-bottom: 18px; }
 #slojMint .gumbi { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+
+/* Namizni nacin: spodaj je Safeerjeva vrstica, noga s tipkami ni potrebna. */
+body.namizje #noga { display: none; }
+/* Omrezje */
+.gumb.nazaj { margin: 6px 0 4px; height: 38px; }
+.omrezje-stikala { margin-top: 16px; max-width: 1100px; }
+.vrstica.omrezje .signal svg { color: var(--medlo); }
+.vrstica.omrezje .signal.s3 svg, .vrstica.omrezje.povezano .signal svg { color: var(--zelena); }
+.vrstica.omrezje .signal.s1 svg { opacity: .55; }
+.vrstica .dejanja { display: flex; align-items: center; gap: 8px; flex: none; }
+.vrstica .dejanja .gumb { height: 36px; padding: 0 14px; font-size: 14px; }
+.vrstica .dejanja .gumb.opozorilo { border-color: var(--rdeca); color: #ffb3b3; }
+.vrstica .znacka { color: var(--zelena); font-size: 13px; padding: 4px 10px; border: 1px solid rgba(84, 214, 165, .4); border-radius: 12px; }
+.vrstica .kljucavnica { width: 15px; height: 15px; color: var(--medlo); vertical-align: -2px; }
+.vnosGesla { height: 36px; width: 220px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--rob); background: rgba(255,255,255,.06); outline: 0; -webkit-user-select: text; user-select: text; }
+.vnosGesla:focus { border-color: var(--zelena); }
+.stikalo.napredno { margin-top: 24px; max-width: 540px; }
+div.vrstica { cursor: default; }

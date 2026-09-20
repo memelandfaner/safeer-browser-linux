@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from core import os_datoteke, os_programi, os_sistem
+from core import os_datoteke, os_omrezje, os_programi, os_sistem
 
 KOREN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -101,6 +101,53 @@ class Sistem(unittest.TestCase):
             self.assertFalse(os_sistem.napajanje("rm"))
         self.assertEqual(pognani, [["cinnamon-settings", "themes"], ["mintupdate"],
                                    ["cinnamon-screensaver-command", "--lock"]])
+
+
+class Omrezje(unittest.TestCase):
+    IZPISI = {
+        ("-t", "-f", "DEVICE,TYPE,STATE,CONNECTION", "device"):
+            "enp1s0:ethernet:connected:Žična povezava 1\nwlp2s0:wifi:disconnected:\ndocker0:bridge:connected (externally):docker0\n"
+            "enp9:ethernet:unmanaged:\n",
+        ("radio", "wifi"): "enabled\n",
+        ("-t", "-f", "NAME,TYPE,DEVICE,ACTIVE", "connection", "show"):
+            "Žična povezava 1:802-3-ethernet:enp1s0:yes\nDom\\: zgoraj:802-11-wireless::no\ndocker0:bridge:docker0:yes\n",
+    }
+
+    def _nmcli(self, argumenti, cas=6.0):
+        self.klici.append(argumenti)
+        if argumenti[:3] == ["-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY"]:
+            return 0, "*:Dom\\: zgoraj:40:WPA2\n:Dom\\: zgoraj:80:WPA2\n:Kavarna:55:--\n::30:WPA2\n:Sosed:70:WPA2\n", ""
+        if argumenti[:3] == ["device", "wifi", "connect"]:
+            return (0, "", "") if argumenti[-1] == "pravo" else (4, "", "Error: Secrets were required, but not provided.")
+        return 0, self.IZPISI.get(tuple(argumenti), ""), ""
+
+    def setUp(self):
+        self.klici = []
+        self.popravek = mock.patch.object(os_omrezje, "_nmcli", self._nmcli)
+        self.popravek.start()
+
+    def tearDown(self):
+        self.popravek.stop()
+
+    def test_stanje(self):
+        st = os_omrezje.stanje()
+        self.assertEqual([n["vrsta"] for n in st["naprave"]], ["ethernet", "wifi"], "brez mostov in neupravljanih")
+        self.assertTrue(st["wifi_vklopljen"])
+        imena = [o["ime"] for o in st["omrezja"]]
+        self.assertEqual(imena, ["Dom: zgoraj", "Sosed", "Kavarna"], "povezano najprej, nato po signalu; brez skritih")
+        dom = st["omrezja"][0]
+        self.assertTrue(dom["povezano"] and dom["shranjeno"] and dom["zasciteno"])
+        self.assertFalse(st["omrezja"][2]["zasciteno"])
+        self.assertEqual([p["ime"] for p in st["shranjene"]], ["Žična povezava 1", "Dom: zgoraj"])
+
+    def test_povezi_in_pozabi(self):
+        self.assertEqual(os_omrezje.povezi("Sosed", "narobe"), {"ok": False, "napaka": "geslo"})
+        self.assertEqual(os_omrezje.povezi("Sosed", "pravo"), {"ok": True, "napaka": ""})
+        self.assertIn(["device", "wifi", "connect", "Sosed", "password", "pravo"], self.klici)
+        self.assertFalse(os_omrezje.pozabi("docker0"), "samo wifi/ethernet s seznama")
+        self.assertFalse(os_omrezje.pozabi("--help"))
+        self.assertTrue(os_omrezje.pozabi("Dom: zgoraj"))
+        self.assertIn(["connection", "delete", "id", "Dom: zgoraj"], self.klici)
 
 
 class Datoteke(unittest.TestCase):

@@ -42,7 +42,7 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("WebKit2", "4.1")
 from gi.repository import Gdk, Gio, GLib, Gtk, WebKit2  # noqa: E402
 
-from core import os_datoteke, os_programi, os_sistem  # noqa: E402
+from core import os_datoteke, os_omrezje, os_programi, os_sistem  # noqa: E402
 
 APP_ID = "io.github.memelandfaner.SafeerOS"
 RAZLICICA = "0.1.0"
@@ -215,6 +215,65 @@ def nastavi_samozagon(vklop: bool) -> bool:
         return False
 
 
+# ---------------------------------------------------------------------- Mintov pult
+#: Visina Safeerjeve vrstice spodaj (tocke GDK). Programi se z najvecjim oknom ustavijo nad njo.
+VISINA_VRSTICE = 64
+#: Mintov pult ne izbrisemo (Cinnamon bi takoj vprasal »Nimate dodanih pultov«), ampak ga samodejno
+#: skrijemo in mu nastavimo zelo dolg zamik prikaza - ostane, a se ne pokaze.
+_PULT_KLJUCI = ("panels-autohide", "panels-show-delay")
+SKRIT_ZAMIK_MS = 86_400_000
+
+
+def _gsettings(*argumenti) -> Optional[str]:
+    try:
+        r = subprocess.run(["gsettings"] + list(argumenti), capture_output=True, text=True, timeout=4)
+        return r.stdout.strip() if r.returncode == 0 else None
+    except Exception:
+        return None
+
+
+def _seznam(vrednost: Optional[str]) -> list:
+    """GVariant 'as' (npr. "['1:0:bottom']" ali "@as []") v Pythonov seznam nizov."""
+    import ast
+    v = (vrednost or "").strip()
+    if v.startswith("@as"):
+        v = v[3:].strip()
+    try:
+        s = ast.literal_eval(v)
+        return [str(x) for x in s] if isinstance(s, (list, tuple)) else []
+    except Exception:
+        return []
+
+
+def _gv(seznam: list) -> str:
+    return "[" + ", ".join("'%s'" % x.replace("'", "") for x in seznam) + "]"
+
+
+def skrij_mintov_pult(shramba) -> None:
+    """V namiznem nacinu je spodaj Safeerjeva vrstica, zato se Mintov pult ne kaze. Prvotne vrednosti
+    si zapomnimo v os.json (samo, ce jih ze nismo), da jih »Nazaj v Linux Mint« - ali naslednji
+    zagon po sesutju - vrne."""
+    idji = [p.split(":")[0] for p in _seznam(_gsettings("get", "org.cinnamon", "panels-enabled"))]
+    if not idji:
+        return
+    if not shramba.get("mintov_pult"):
+        shramba.set("mintov_pult", {k: _gsettings("get", "org.cinnamon", k) for k in _PULT_KLJUCI})
+    _gsettings("set", "org.cinnamon", "panels-autohide", _gv(["%s:true" % i for i in idji]))
+    _gsettings("set", "org.cinnamon", "panels-show-delay", _gv(["%s:%d" % (i, SKRIT_ZAMIK_MS) for i in idji]))
+
+
+def vrni_mintov_pult(shramba) -> None:
+    prej = shramba.get("mintov_pult")
+    if not isinstance(prej, dict):
+        return
+    ok = True
+    for kljuc in _PULT_KLJUCI:
+        if prej.get(kljuc) is not None and _gsettings("set", "org.cinnamon", kljuc, prej[kljuc]) is None:
+            ok = False
+    if ok:
+        shramba.set("mintov_pult", None)
+
+
 def _ukaz_controla() -> Optional[list]:
     from shutil import which
     pot = which("safeer-control")
@@ -239,15 +298,28 @@ class SafeerOS(Gtk.Application):
         self._ikone: dict = {}
         self._wnck = None
         self._prvic = True
+        #: Namizni nacin: Safeer OS je namizje (spodaj, programi nad njim) s svojo vrstico namesto
+        #: Mintovega pulta. Sicer navadno okno (--okno, posnetki).
+        self.namizje = not v_oknu and not posnetek and bool(self.shramba.get("celozaslonsko", True))
+        self.vrstica: Optional[Gtk.Window] = None
+        self.pogledi: list = []
+        self._okna_zamik = 0
+        self._koncano = False
 
     # ------------------------------------------------------------------ okno
     def do_activate(self) -> None:
         if self.okno is not None:
-            self.okno.deiconify()
-            self.okno.present()
-            self._dogodek("fokus", None)
+            self._domov()
             return
         self._ustvari_okno()
+        if self.namizje:
+            self._ustvari_vrstico()
+            skrij_mintov_pult(self.shramba)
+        koncaj = Gio.SimpleAction.new("koncaj", None)
+        koncaj.connect("activate", lambda *a: self._koncaj())
+        self.add_action(koncaj)
+        for signal in (15, 1, 2):     # SIGTERM (odjava), SIGHUP, SIGINT: Mintov pult vrnemo
+            GLib.unix_signal_add(GLib.PRIORITY_HIGH, signal, lambda *a: (self._koncaj(), False)[1])
         if self._prvic and not self.posnetek:
             self._prvic = False
             if self.shramba.get("samozagon") is None:
@@ -256,16 +328,17 @@ class SafeerOS(Gtk.Application):
                 self.shramba.set("samozagon", nastavi_samozagon(True))
             if stanje_povezave()["stanje"] == "nov":
                 # Prvi zagon brez Safeer Linka: prijavno okno (QR / koda / brez povezave naprav).
-                GLib.timeout_add(1200, lambda: (self._odpri_control(), False)[1])
+                GLib.timeout_add(1200, lambda: (self._prijava(), False)[1])
 
-    def _ustvari_okno(self) -> None:
+    def _nov_pogled(self, stran: str) -> WebKit2.WebView:
+        """WebKit z mostom do tega procesa; odgovori gredo nazaj v isti pogled."""
         upravitelj = WebKit2.UserContentManager()
         upravitelj.register_script_message_handler("safeerOs")
-        upravitelj.connect("script-message-received::safeerOs", self._na_sporocilo)
         upravitelj.add_script(WebKit2.UserScript(
             MOST_JS, WebKit2.UserContentInjectedFrames.TOP_FRAME,
             WebKit2.UserScriptInjectionTime.START, None, None))
         pogled = WebKit2.WebView.new_with_user_content_manager(upravitelj)
+        upravitelj.connect("script-message-received::safeerOs", lambda _u, r: self._na_sporocilo(pogled, r))
         n = pogled.get_settings()
         n.set_property("enable-developer-extras", bool(os.environ.get("SAFEER_OS_RAZVOJ")))
         n.set_property("enable-webgl", False)
@@ -279,38 +352,140 @@ class SafeerOS(Gtk.Application):
         pogled.set_background_color(barva)
         pogled.connect("decide-policy", self._na_politiko)
         pogled.connect("context-menu", lambda *a: True)   # brez »Reload / Inspect« v preobleki
+        self._koren_strani = "file://" + os.path.join(KOREN, "assets", "os")
+        pogled.load_uri(self._koren_strani + "/" + stran)
+        self.pogledi.append(pogled)
+        return pogled
 
+    def _zaslon(self):
+        try:
+            d = Gdk.Display.get_default()
+            return d.get_primary_monitor() or d.get_monitor(0)
+        except Exception:
+            return None
+
+    def _ustvari_okno(self) -> None:
+        pogled = self._nov_pogled("index.html" + ("?namizje=1" if self.namizje else ""))
         okno = Gtk.ApplicationWindow(application=self, title="Safeer OS")
         okno.set_wmclass("safeer-os", "Safeer OS")
         okno.set_icon_name("safeer-browser")
-        zaslon = None
-        try:
-            zaslon = Gdk.Display.get_default().get_primary_monitor() or Gdk.Display.get_default().get_monitor(0)
-        except Exception:
-            pass
+        zaslon = self._zaslon()
         if self.posnetek and os.environ.get("SAFEER_OS_OKNO"):
             sirina, visina = (int(x) for x in os.environ["SAFEER_OS_OKNO"].split("x"))
             okno.set_default_size(sirina, visina)
-        elif self.v_oknu or not self.shramba.get("celozaslonsko", True):
+        elif self.posnetek:
+            okno.set_decorated(False)
+            okno.fullscreen()
+        elif not self.namizje:
             g = zaslon.get_workarea() if zaslon else None
             okno.set_default_size(min(1440, int(g.width * 0.9)) if g else 1280,
                                   min(900, int(g.height * 0.9)) if g else 800)
             okno.set_position(Gtk.WindowPosition.CENTER)
         else:
+            # Namizje: okno je ozadje - vedno pod programi, ni ga v preklopniku oken in ga »Pokaži
+            # namizje« ne pomanjsa. Spodaj pusti prostor za Safeerjevo vrstico.
+            g = zaslon.get_geometry() if zaslon else None
+            okno.set_type_hint(Gdk.WindowTypeHint.DESKTOP)
             okno.set_decorated(False)
-            okno.fullscreen()
+            okno.set_skip_taskbar_hint(True)
+            okno.set_skip_pager_hint(True)
+            if g is not None:
+                okno.move(g.x, g.y)
+                okno.set_default_size(g.width, g.height - VISINA_VRSTICE)
+                okno.set_size_request(g.width, g.height - VISINA_VRSTICE)
         okno.add(pogled)
         okno.connect("key-press-event", self._na_tipko)
         okno.connect("focus-in-event", lambda *a: (self._dogodek("fokus", None), False)[1])
-        okno.connect("destroy", lambda *a: self.quit())
+        okno.connect("destroy", lambda *a: self._koncaj())
         self.okno, self.pogled = okno, pogled
-
-        self._koren_strani = "file://" + os.path.join(KOREN, "assets", "os")
-        pogled.load_uri(self._koren_strani + "/index.html")
         if self.posnetek:
             pogled.connect("load-changed", self._za_posnetek)
         okno.show_all()
         GLib.timeout_add_seconds(10, self._periodicno)
+
+    def _ustvari_vrstico(self) -> None:
+        """Safeerjeva vrstica spodaj (namesto Mintovega pulta): Domov, odprti programi, stanje, ura.
+        Okno vrste DOCK z rezervacijo prostora (_NET_WM_STRUT), da programi z najvecjim oknom ostanejo nad njo."""
+        zaslon = self._zaslon()
+        g = zaslon.get_geometry() if zaslon else None
+        vrstica = Gtk.Window(title="Safeer OS vrstica")
+        vrstica.set_wmclass("safeer-os-vrstica", "Safeer OS")
+        vrstica.set_type_hint(Gdk.WindowTypeHint.DOCK)
+        vrstica.set_decorated(False)
+        vrstica.set_skip_taskbar_hint(True)
+        vrstica.set_skip_pager_hint(True)
+        vrstica.stick()
+        vrstica.set_keep_above(True)
+        if g is not None:
+            vrstica.move(g.x, g.y + g.height - VISINA_VRSTICE)
+            vrstica.set_size_request(g.width, VISINA_VRSTICE)
+        vrstica.add(self._nov_pogled("vrstica.html"))
+        vrstica.connect("realize", lambda w: GLib.timeout_add(200, lambda: (self._rezerviraj(w, g), False)[1]))
+        self.add_window(vrstica)
+        vrstica.show_all()
+        self.vrstica = vrstica
+        self._spremljaj_okna()
+
+    def _rezerviraj(self, vrstica, g) -> None:
+        """Rezervira spodnji rob zaslona za vrstico (xprop; GTK 3 tega sam ne zna)."""
+        try:
+            gi.require_version("GdkX11", "3.0")
+            from gi.repository import GdkX11  # noqa: F401
+            xid = vrstica.get_window().get_xid()
+            m = vrstica.get_scale_factor() or 1
+            zaslon_h = Gdk.Screen.get_default().get_height() * m
+            spodaj = (zaslon_h - (g.y + g.height) * m) + VISINA_VRSTICE * m
+            x0, x1 = g.x * m, (g.x + g.width) * m - 1
+            vrednost = "0,0,0,%d,0,0,0,0,0,0,%d,%d" % (spodaj, x0, x1)
+            subprocess.run(["xprop", "-id", str(xid), "-f", "_NET_WM_STRUT_PARTIAL", "32cccccccccccc",
+                            "-set", "_NET_WM_STRUT_PARTIAL", vrednost], timeout=4)
+            subprocess.run(["xprop", "-id", str(xid), "-f", "_NET_WM_STRUT", "32cccc",
+                            "-set", "_NET_WM_STRUT", "0,0,0,%d" % spodaj], timeout=4)
+        except Exception as e:  # noqa: BLE001
+            print("[SafeerOS] rezervacija vrstice:", e)
+
+    def _spremljaj_okna(self) -> None:
+        """Vrstica in Domov vidita odprte programe sproti (odprtje, zaprtje, aktivno okno)."""
+        zaslon = self._zaslon_wnck()
+        if zaslon is None:
+            return
+
+        def sprememba(*_a):
+            if self._okna_zamik:
+                return
+            def poslji():
+                self._okna_zamik = 0
+                self._dogodek("okna", self._odprta_okna())
+                return False
+            self._okna_zamik = GLib.timeout_add(250, poslji)
+        for signal in ("window-opened", "window-closed", "active-window-changed"):
+            zaslon.connect(signal, sprememba)
+
+    def _domov(self, razdelek: str = "") -> bool:
+        """Gumb Domov v vrstici (ali ponoven zagon Safeer OS iz menija): programe pomanjsamo, pred nami je
+        Safeer OS."""
+        zaslon = self._zaslon_wnck()
+        if zaslon is not None and self.namizje:
+            cas = Gtk.get_current_event_time() or int(GLib.get_monotonic_time() / 1000)
+            for o in self._okna_programov():
+                if not o.is_minimized():
+                    o.minimize()
+        if self.okno is not None:
+            self.okno.deiconify()
+            self.okno.present()
+        self._dogodek("fokus", None)
+        if razdelek:
+            self._dogodek("pojdi", razdelek)
+        return True
+
+    def _koncaj(self) -> None:
+        """Konec Safeer OS (izhod, odjava, »Nazaj v Linux Mint«): Mintov pult se vrne."""
+        if self._koncano:
+            return
+        self._koncano = True
+        if self.namizje:
+            vrni_mintov_pult(self.shramba)
+        self.quit()
 
     def _na_politiko(self, _pogled, odlocitev, vrsta) -> bool:
         """Pogled sme prikazati samo stran Safeer OS (most ne sme k tuji strani)."""
@@ -330,28 +505,29 @@ class SafeerOS(Gtk.Application):
             return True
 
     def _na_tipko(self, _okno, dogodek) -> bool:
-        # F11: celozaslonsko / v oknu (obicajna bliznjica, deluje tudi, ko se kaj zatakne).
-        if dogodek.keyval == Gdk.KEY_F11:
-            self._celozaslonsko(not self.shramba.get("celozaslonsko", True))
+        # F11: namizni nacin / okno (obicajna bliznjica, deluje tudi, ko se kaj zatakne).
+        if dogodek.keyval == Gdk.KEY_F11 and not self.posnetek:
+            self._celozaslonsko(not self.namizje)
             return True
         return False
 
     def _celozaslonsko(self, vklop: bool) -> bool:
+        """Namizni nacin vklopi/izklopi; Safeer OS se zazene znova v izbranem nacinu."""
         self.shramba.set("celozaslonsko", bool(vklop))
-        if self.okno is None:
+        if bool(vklop) == self.namizje or self.v_oknu:
             return vklop
-        if vklop:
-            self.okno.set_decorated(False)
-            self.okno.fullscreen()
-        else:
-            self.okno.unfullscreen()
-            self.okno.set_decorated(True)
+
+        def znova():
+            if self.namizje:
+                vrni_mintov_pult(self.shramba)
+            os.execv(sys.executable, [sys.executable, os.path.abspath(__file__)])
+        GLib.timeout_add(200, lambda: (znova(), False)[1])
         return vklop
 
     def _periodicno(self) -> bool:
         if self.okno is None:
             return False
-        if self.okno.is_active():
+        if self.okno.is_active() or (self.vrstica is not None):
             threading.Thread(target=lambda: self._dogodek("stanje", os_sistem.stanje()), daemon=True).start()
         return True
 
@@ -382,17 +558,17 @@ class SafeerOS(Gtk.Application):
         return False
 
     # ------------------------------------------------------------------ most
-    def _js(self, koda: str) -> None:
-        if self.pogled is not None:
+    def _js(self, koda: str, pogled=None) -> None:
+        for p in ([pogled] if pogled is not None else list(self.pogledi)):
             try:
-                self.pogled.run_javascript(koda, None, None, None)
+                p.run_javascript(koda, None, None, None)
             except Exception:
                 pass
 
-    def _odgovori(self, id_, ok: bool, podatki) -> None:
+    def _odgovori(self, pogled, id_, ok: bool, podatki) -> None:
         def naredi():
             self._js("window.__safeerOsOdgovor(%d, %s, %s);" % (
-                int(id_), "true" if ok else "false", json.dumps(podatki, ensure_ascii=True)))
+                int(id_), "true" if ok else "false", json.dumps(podatki, ensure_ascii=True)), pogled)
             return False
         GLib.idle_add(naredi)
 
@@ -403,7 +579,7 @@ class SafeerOS(Gtk.Application):
             return False
         GLib.idle_add(naredi)
 
-    def _na_sporocilo(self, _upravitelj, rezultat) -> None:
+    def _na_sporocilo(self, pogled, rezultat) -> None:
         try:
             s = json.loads(rezultat.get_js_value().to_string())
             id_, metoda, a = int(s.get("id", 0)), str(s.get("m", "")), list(s.get("a") or [])
@@ -422,6 +598,9 @@ class SafeerOS(Gtk.Application):
             "namizje": self._namizje,
             "celozaslonsko": lambda: self._celozaslonsko(bool(a[0]) if a else True),
             "control": lambda: self._odpri_control(),
+            "prijava": lambda: self._prijava(),
+            "domov": lambda: self._domov(str(a[0]) if a else ""),
+            "preklopiOkno": lambda: self._okno_dejanje(a[0] if a else 0, "preklopi"),
             "shraniSpletne": lambda: self._shrani_spletne(a[0] if a else []),
             "samozagon": lambda: self._samozagon(bool(a[0])) if a else je_samozagon(),
             "nazajVMint": lambda: self._nazaj_v_mint(bool(a[0]) if a else False),
@@ -444,23 +623,28 @@ class SafeerOS(Gtk.Application):
             "iskanjeSplet": lambda: self._splet(_iskalnik() + GLib.uri_escape_string(str(a[0] if a else ""), None, False)),
             "povezava": stanje_povezave,
             "zaupanje": lambda: nastavi_zaupanje(bool(a[0]) if a else False),
+            "omrezje": lambda: os_omrezje.stanje(bool(a[0]) if a else False),
+            "omrezjePovezi": lambda: os_omrezje.povezi(str(a[0]) if a else "", str(a[1]) if len(a) > 1 else ""),
+            "omrezjeOdklopi": lambda: os_omrezje.odklopi(str(a[0]) if a else ""),
+            "omrezjeAktiviraj": lambda: os_omrezje.aktiviraj(str(a[0]) if a else ""),
+            "omrezjePozabi": lambda: os_omrezje.pozabi(str(a[0]) if a else ""),
         }
         if metoda in glavna:
             try:
-                self._odgovori(id_, True, glavna[metoda]())
+                self._odgovori(pogled, id_, True, glavna[metoda]())
             except Exception as e:  # noqa: BLE001
                 print("[SafeerOS]", metoda, e)
-                self._odgovori(id_, False, str(e))
+                self._odgovori(pogled, id_, False, str(e))
         elif metoda in ozadje:
             def delo():
                 try:
-                    self._odgovori(id_, True, ozadje[metoda]())
+                    self._odgovori(pogled, id_, True, ozadje[metoda]())
                 except Exception as e:  # noqa: BLE001
                     print("[SafeerOS]", metoda, e)
-                    self._odgovori(id_, False, str(e))
+                    self._odgovori(pogled, id_, False, str(e))
             threading.Thread(target=delo, daemon=True).start()
         else:
-            self._odgovori(id_, False, "neznano")
+            self._odgovori(pogled, id_, False, "neznano")
 
     # ------------------------------------------------------------------ dejanja
     def _zacetek(self) -> dict:
@@ -473,6 +657,7 @@ class SafeerOS(Gtk.Application):
             "razpolozljivo": os_sistem.razpolozljivo(),
             "mape": os_datoteke.uporabniske_mape(),
             "celozaslonsko": bool(self.shramba.get("celozaslonsko", True)) and not self.v_oknu,
+            "namizje": self.namizje,
             "spletne": self.shramba.get("spletne", None),
             "razlicica": RAZLICICA,
             "sistem": _ime_sistema(),
@@ -491,7 +676,7 @@ class SafeerOS(Gtk.Application):
         prijavi. Nazaj se uporabnik vrne iz menija (Safeer OS)."""
         if za_stalno:
             self._samozagon(False)
-        GLib.timeout_add(250, lambda: (self.okno.destroy() if self.okno else self.quit(), False)[1])
+        GLib.timeout_add(250, lambda: (self._koncaj(), False)[1])
         return True
 
     def _shrani_spletne(self, seznam) -> list:
@@ -554,30 +739,45 @@ class SafeerOS(Gtk.Application):
                 self._wnck = False
         return self._wnck or None
 
+    def _okna_programov(self) -> list:
+        """Okna programov (Wnck), brez oken Safeer OS in brez pomoznih (plosce, namizja, pojavna okna)."""
+        zaslon = self._zaslon_wnck()
+        if zaslon is None:
+            return []
+        from gi.repository import Wnck
+        zaslon.force_update()
+        nasa = set()
+        for w in (self.okno, self.vrstica):
+            try:
+                if w is not None and w.get_window() is not None:
+                    nasa.add(w.get_window().get_xid())
+            except Exception:
+                pass
+        return [o for o in (zaslon.get_windows_stacked() or [])
+                if o.get_window_type() == Wnck.WindowType.NORMAL and not o.is_skip_tasklist() and o.get_xid() not in nasa]
+
     def _odprta_okna(self) -> list:
         zaslon = self._zaslon_wnck()
         if zaslon is None:
             return []
         try:
-            from gi.repository import Wnck
-            zaslon.force_update()
-            moj = self.okno.get_window().get_xid() if self.okno and self.okno.get_window() else 0
+            aktivno = zaslon.get_active_window()
+            aktivni_xid = aktivno.get_xid() if aktivno is not None else 0
             izhod = []
-            for o in zaslon.get_windows_stacked() or []:
-                if o.get_window_type() != Wnck.WindowType.NORMAL or o.is_skip_tasklist() or o.get_xid() == moj:
-                    continue
+            for o in self._okna_programov():
                 ikona = ""
                 try:
                     pb = o.get_icon()
                     if pb is not None:
                         pot = os.path.join(os_programi.MAPA_IKON, "okno-%d.png" % o.get_xid())
                         os.makedirs(os_programi.MAPA_IKON, exist_ok=True)
-                        pb.savev(pot, "png", [], [])
-                        ikona = "file://" + pot + "?t=%d" % int(time.time())
+                        if not os.path.isfile(pot):
+                            pb.savev(pot, "png", [], [])
+                        ikona = "file://" + pot
                 except Exception:
                     pass
                 izhod.append({"id": o.get_xid(), "ime": o.get_name(), "program": (o.get_class_group_name() or ""),
-                              "ikona": ikona, "pomanjsano": o.is_minimized()})
+                              "ikona": ikona, "pomanjsano": o.is_minimized(), "aktivno": o.get_xid() == aktivni_xid})
             izhod.reverse()      # najnovejse zgoraj
             return izhod
         except Exception as e:  # noqa: BLE001
@@ -593,6 +793,8 @@ class SafeerOS(Gtk.Application):
             if o.get_xid() == int(xid):
                 if dejanje == "zapri":
                     o.close(cas)
+                elif dejanje == "preklopi" and o.is_active() and not o.is_minimized():
+                    o.minimize()          # kot opravilna vrstica: klik na aktivni program ga pomanjsa
                 else:
                     o.activate(cas)
                 return True
@@ -616,6 +818,10 @@ class SafeerOS(Gtk.Application):
                 except Exception:
                     continue
         return False
+
+    def _prijava(self) -> bool:
+        """Prijavno okno Safeer Linka (QR / koda / brez povezave) - zanj skrbi Safeer Control."""
+        return self._odpri_control()
 
     def _odpri_control(self) -> bool:
         """Safeer Control: prijavno okno (QR / koda) ali seznam naprav, ce je racunalnik ze povezan."""
