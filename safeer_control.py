@@ -388,6 +388,7 @@ class SafeerControl(Gtk.Application):
       <method name="Seznam"><arg type="s" name="json" direction="out"/></method>
       <method name="Aplikacije"><arg type="s" name="naprava" direction="in"/><arg type="s" name="json" direction="out"/></method>
       <method name="Zazeni"><arg type="s" name="naprava" direction="in"/><arg type="s" name="app" direction="in"/><arg type="s" name="json" direction="out"/></method>
+      <method name="Pretoci"><arg type="s" name="naprava" direction="in"/><arg type="s" name="app" direction="in"/><arg type="s" name="json" direction="out"/></method>
       <method name="Preimenuj"><arg type="s" name="naprava" direction="in"/><arg type="s" name="ime" direction="in"/><arg type="s" name="json" direction="out"/></method>
     </interface></node>"""
 
@@ -446,6 +447,15 @@ class SafeerControl(Gtk.Application):
             return {"ok": True, "items": vsi, "enabled": bool((r.get("data") or {}).get("enabled", True))}
         if metoda == "Zazeni":
             return link.ukaz_pocakaj(str(a[0]) if a else "", "apps.launch", {"app": str(a[1]) if len(a) > 1 else ""})
+        if metoda == "Pretoci":
+            # »Odpri tukaj«: naprava vprasa za deljenje zaslona, deli ga temu racunalniku in odpre program;
+            # okno gledalca se odpre samo, ko pride share.screen. Starejsa naprava stream prezre in program
+            # le odpre pri sebi - to pove "tu": False.
+            r = link.ukaz_pocakaj(str(a[0]) if a else "", "apps.launch",
+                                  {"app": str(a[1]) if len(a) > 1 else "", "stream": True})
+            d = r.get("data") if isinstance(r.get("data"), dict) else {}
+            return {"ok": bool(r.get("ok")), "tu": d.get("stream") == "pending", "koda": r.get("koda", ""),
+                    "message": r.get("message", "")}
         return {"ok": False, "message": "neznana metoda"}
 
     def _pripravi_link(self) -> None:

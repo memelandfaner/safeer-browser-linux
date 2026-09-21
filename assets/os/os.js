@@ -218,12 +218,27 @@
       setTimeout(narisiDomov, 400);
     }, function () { obvesti(t("niUspelo")); });
   }
+  // Program naprave v oknu na tem racunalniku: naprava vprasa za deljenje zaslona, nato ga upravljas z misko.
+  function odpriTukaj(p) {
+    var n = S.naprave.find(function (x) { return x.id === p.naprava; }) || { ime: "" };
+    obvesti(t("potrdiNaNapravi", { ime: p.ime, naprava: n.ime }));
+    klic("odpriTukaj", [p.naprava, p.id]).then(function (r) {
+      if (!r || !r.ok) obvesti(t("niUspelo"));
+      else if (!r.tu) obvesti(t("napravaNePretaka", { ime: p.ime, naprava: n.ime }));
+    }, function () { obvesti(t("niUspelo")); });
+  }
   function ploscicaPrograma(p, zPripenjanjem, naDomacem) {
     var b = el("button", "ploscica");
     b.title = p.opis || p.ime;
     b.appendChild(slikaAliCrka(p.ikona, p.ime));
     b.appendChild(el("span", "ime", ubezi(p.ime)));
     b.addEventListener("click", function () { zazeni(p); });
+    if (p.naprava) {
+      var tu = el("span", "pripni", svg("namizje"));
+      tu.title = t("odpriTukaj");
+      tu.addEventListener("click", function (e) { e.stopPropagation(); odpriTukaj(p); });
+      b.appendChild(tu);
+    }
     if (zPripenjanjem) {
       var pr = el("span", "pripni" + (p.pripet ? " pripet" : "") + (naDomacem ? " levo" : ""), svg("zvezda"));
       pr.title = p.pripet ? t("odpni") : t("pripni");
