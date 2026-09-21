@@ -22,12 +22,16 @@ engine, no background updater.
 **Local threat shield.** Botnet C2, malware distribution and phishing hosts from abuse.ch
 (Feodo Tracker, URLhaus, ThreatFox) and Phishing Army, matched locally in O(k) against a
 reverse-domain trie. Nothing about your browsing is sent anywhere to make that decision.
+The list arrives as an Ed25519-signed feed after the first start; until it has been
+downloaded, only a small built-in fallback list applies.
 
 **Ads and trackers blocked**, third-party cookies blocked, tracking parameters stripped from
 links, no telemetry. DuckDuckGo is the default search engine.
 
 **Encrypted DNS** over HTTPS with working HTTP/2, and no silent fallback to plaintext DNS when
-it fails.
+it fails. Providers reached by name (Quad9, AdGuard) have their own server address looked up
+once through the system resolver; Cloudflare and Google are reached by IP. Lookups are IPv4
+(A records) for now.
 
 **Background playback.** Music and podcasts keep playing when you switch tabs, at a CPU cost
 low enough that a laptop stays quiet.
@@ -71,11 +75,17 @@ flatpak install ./Safeer-Browser-<version>-x86_64.flatpak
 
 Or double-click the `.deb` in your file manager.
 
+The AppImage and Flatpak are built for x86_64 only. The `.deb` is architecture-independent
+(Python on the system's GTK and WebKit2GTK), but it is not tested on ARM64 for every release.
+
 Verify what you downloaded against `SHA256SUMS` from the same release:
 
 ```bash
 sha256sum -c --ignore-missing SHA256SUMS
 ```
+
+The checksums catch a damaged download. They are not signed yet, so they do not protect
+against someone who can replace files in the release itself.
 
 **Safeer Control** — the companion desktop app that pairs this computer with a Safeer phone or
 television over your own network — ships as `safeer-control_<version>_all.deb` in the same
@@ -100,10 +110,12 @@ Tests:
 python3 -m unittest discover -s tests
 ```
 
-## No per-site recipes
+## Few per-site recipes
 
-Safeer contains no adaptation written for one named website. What it does, it does by what a
-page *is*, not by who publishes it.
+Almost everything Safeer does, it does by what a page *is*, not by who publishes it. The
+exceptions are named here: YouTube and YouTube Music get an ad-skipping script and a script
+that stops the "Continue watching?" pause, and a few sign-in and Cloudflare challenge pages
+are exempt from filtering so they keep working.
 
 ## Fork it
 
