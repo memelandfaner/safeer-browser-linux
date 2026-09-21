@@ -8,8 +8,8 @@ tako ukaz deluje ne glede na to, katere tipke program pricakuje. Kjer MPRIS ni, 
 Istim vmesnikom preberemo stanje (naslov, cas, predvaja/pavza), da ga televizor pokaze v svojem
 pasu za predvajanje: program da vsebino, Safeer pa upravljanje, prilagojeno daljincu.
 
-Upravljamo samo predvajalnik, ki tece na locenem zaslonu (njegov proces je potomec swaya), nikoli
-glasbe, ki jo uporabnik za racunalnikom predvaja na svojem namizju.
+Upravljamo samo predvajalnik, ki tece na locenem zaslonu (v okolju ima WAYLAND_DISPLAY swaya ali je
+potomec swaya), nikoli glasbe, ki jo uporabnik za racunalnikom predvaja na svojem namizju.
 """
 
 from __future__ import annotations
@@ -72,6 +72,21 @@ def stars(pid: int) -> int:
         return 0
 
 
+def okolje(pid: int) -> Dict[str, str]:
+    """Okolje procesa iz /proc (prazno, ce ga ne moremo prebrati)."""
+    try:
+        with open("/proc/%d/environ" % pid, "rb") as f:
+            vsebina = f.read()
+    except OSError:
+        return {}
+    o: Dict[str, str] = {}
+    for kv in vsebina.split(b"\0"):
+        if b"=" in kv:
+            k, v = kv.decode("utf-8", "replace").split("=", 1)
+            o[k] = v
+    return o
+
+
 def stanje_iz_lastnosti(lastnosti: Dict) -> dict:
     """Stanje za pas na televizorju iz lastnosti MPRIS (slovar, kot ga vrne GetAll)."""
     meta = lastnosti.get("Metadata") or {}
@@ -97,10 +112,15 @@ def stanje_iz_lastnosti(lastnosti: Dict) -> dict:
 
 
 class Mpris:
-    """Predvajalnik na locenem zaslonu prek D-Bus. `koren` vrne pid swaya (0 = ni locenega zaslona)."""
+    """Predvajalnik na locenem zaslonu prek D-Bus.
 
-    def __init__(self, koren: Callable[[], int]) -> None:
+    `koren` vrne pid swaya (0 = ni locenega zaslona), `wayland` ime njegove vticnice Wayland. Sway
+    programe zazene z dvojnim razcepom (niso njegovi potomci), zato proces prepoznamo predvsem po
+    WAYLAND_DISPLAY v njegovem okolju - to ima samo program na locenem zaslonu."""
+
+    def __init__(self, koren: Callable[[], int], wayland: Callable[[], str] = lambda: "") -> None:
         self._koren = koren
+        self._wayland = wayland
         self._vodilo = None
 
     # ------------------------------------------------------------------ D-Bus
@@ -133,9 +153,11 @@ class Mpris:
         koren = self._koren()
         if not koren:
             return None
+        wayland = self._wayland()
         try:
             for ime in self._imena():
-                if je_potomec(self._pid(ime), koren, stars):
+                pid = self._pid(ime)
+                if (wayland and okolje(pid).get("WAYLAND_DISPLAY") == wayland) or je_potomec(pid, koren, stars):
                     return ime
         except Exception:
             return None

@@ -394,6 +394,12 @@ class Zaslon:
             self._povezan = False
             try:
                 if odjemalec is not None:
+                    # Najprej shutdown: druge niti (zvok, vnos) drzijo vticnico in sam close televizorju
+                    # ne bi poslal konca - ta bi gledal zamrznjeno sliko.
+                    try:
+                        odjemalec.shutdown(socket.SHUT_RDWR)
+                    except (OSError, ValueError):
+                        pass
                     odjemalec.close()
             except Exception:
                 pass
