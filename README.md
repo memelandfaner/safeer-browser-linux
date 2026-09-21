@@ -50,13 +50,13 @@ you want it.
 
 ## Install
 
-[![Release](https://img.shields.io/badge/Release-v1.0.44-2dd4bf?style=flat-square)](../../releases/tag/v1.0.44)
+[![Release](https://img.shields.io/badge/Release-v1.0.45-2dd4bf?style=flat-square)](../../releases/tag/v1.0.45)
 
-Latest release: **v1.0.44** — [release notes and downloads](../../releases/tag/v1.0.44)
+Latest release: **v1.0.45** — [release notes and downloads](../../releases/tag/v1.0.45)
 
 ```bash
 # Debian, Ubuntu, Linux Mint
-sudo apt install ./safeer-browser_1.0.44_all.deb
+sudo apt install ./safeer-browser_1.0.45_all.deb
 ```
 
 
