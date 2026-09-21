@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import subprocess
 import threading
 import time
@@ -182,8 +183,57 @@ def identiteta() -> tuple:
     return link_hub.id_naprave() + "-control", "Safeer Control (" + ime + ")"
 
 
+# Control ob prijavi tece kot uporabniska storitev systemd (prehodna, prek systemd-run): ob sesutju ali
+# zastoju (nadzornik, WATCHDOG=1 iz glavne zanke GTK) ga systemd znova zazene, izpis gre v dnevnik
+# (journalctl _SYSTEMD_USER_UNIT=safeer-control.service), pomnilnik je omejen. Koncaj (izhod 0) ga ne
+# obudi, konec seje ga ustavi (PartOf). Preverjeno na Mint 22.3 / systemd 255.
+STORITEV = "safeer-control"
+NADZORNIK_S = 60
+LASTNOSTI_STORITVE = (
+    "Restart=on-failure", "RestartSec=2s", "RestartSteps=4", "RestartMaxDelaySec=60s",
+    "StartLimitBurst=6", "StartLimitIntervalSec=300", f"WatchdogSec={NADZORNIK_S}s", "NotifyAccess=main",
+    "MemoryHigh=25%", "PartOf=graphical-session.target", "After=graphical-session.target",
+)
+
+
+def ukaz_storitve(ukaz: str) -> str:
+    """Ukaz za vnos Exec= v .desktop: Control kot storitev, ce je systemd-run na voljo, sicer kot prej.
+    V .desktop je % posebni znak, zato ga podvojimo."""
+    if not shutil_which("systemd-run"):
+        return ukaz
+    lastnosti = " ".join("-p " + l for l in LASTNOSTI_STORITVE)
+    return (f"systemd-run --user --quiet --no-block --collect --unit={STORITEV} --service-type=notify "
+            f"{lastnosti} --setenv=PYTHONUNBUFFERED=1 {ukaz}").replace("%", "%%")
+
+
+def sd_obvesti(sporocilo: str) -> bool:
+    """Protokol sd_notify brez knjiznice: en datagram na vticnico iz $NOTIFY_SOCKET."""
+    naslov = os.environ.get("NOTIFY_SOCKET", "")
+    if not naslov or naslov[0] not in "/@":
+        return False
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as s:
+            s.sendto(sporocilo.encode(), "\0" + naslov[1:] if naslov[0] == "@" else naslov)
+        return True
+    except OSError:
+        return False
+
+
+def nadzornik_ms() -> int:
+    """Razmik med WATCHDOG=1 (polovica roka, ki ga da systemd); 0, ce nadzornika ni ali ni za nas."""
+    try:
+        usec = int(os.environ.get("WATCHDOG_USEC", "0"))
+        pid = os.environ.get("WATCHDOG_PID", "")
+        if usec <= 0 or (pid and int(pid) != os.getpid()):
+            return 0
+        return max(1000, usec // 2000)
+    except ValueError:
+        return 0
+
+
 class Samozagon:
-    """Zagon ob prijavi: vnos v ~/.config/autostart (XDG), ki pozene `safeer-control --ozadje`."""
+    """Zagon ob prijavi: vnos v ~/.config/autostart (XDG), ki pozene `safeer-control --ozadje`
+    (kot storitev systemd, glej ukaz_storitve)."""
 
     @staticmethod
     def je_vklopljen() -> bool:
@@ -208,7 +258,7 @@ class Samozagon:
             with open(SAMOZAGON_POT, "w", encoding="utf-8") as d:
                 d.write("[Desktop Entry]\nType=Application\nName=Safeer Control\n"
                         "Comment=Safeer Link v ozadju (daljinec, deljenje) / Safeer Link in the background\n"
-                        f"Exec={ukaz}\nIcon=safeer-control\nTerminal=false\nNoDisplay=true\n"
+                        f"Exec={ukaz_storitve(ukaz)}\nIcon=safeer-control\nTerminal=false\nNoDisplay=true\n"
                         "X-GNOME-Autostart-enabled=true\nX-GNOME-Autostart-Delay=8\n")
         except Exception as e:  # noqa: BLE001
             print(f"[SafeerControl] Samozagona ni bilo mogoče nastaviti: {e}")
@@ -364,6 +414,18 @@ class SafeerControl(Gtk.Application):
 
     def do_startup(self) -> None:
         Gtk.Application.do_startup(self)
+        # Storitev systemd: pripravljen, nato utrip iz glavne zanke; ce se GTK zatakne, utrip izostane.
+        if sd_obvesti("READY=1"):
+            razmik = nadzornik_ms()
+            if razmik:
+                GLib.timeout_add(razmik, lambda: sd_obvesti("WATCHDOG=1") or True)
+        # Starejsi vnos za zagon ob prijavi (brez storitve) posodobimo enkrat.
+        try:
+            if Samozagon.je_vklopljen() and shutil_which("systemd-run") and \
+                    "systemd-run" not in open(SAMOZAGON_POT, encoding="utf-8").read():
+                Samozagon.nastavi(True)
+        except OSError:
+            pass
         # Safeer OS (stikalo »Zaupaj temu računalniku«) klice to dejanje prek D-Bus (org.gtk.Actions).
         zaupanje = Gio.SimpleAction.new("zaupanje", GLib.VariantType.new("b"))
         zaupanje.connect("activate", self._na_zaupanje)
