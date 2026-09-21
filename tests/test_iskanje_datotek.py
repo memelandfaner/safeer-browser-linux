@@ -65,6 +65,27 @@ class IskanjeVMapah(unittest.TestCase):
         self.assertEqual(link_datoteke.DeljeneMape([]).isci("time"), [])
 
 
+class VesRacunalnik(unittest.TestCase):
+    def test_mape_z_mediji_ob_vesem_racunalniku(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as doma:
+            doma = os.path.realpath(doma)
+            glasba = os.path.join(doma, "Glasba")
+            _datoteka(glasba, "Pink Floyd/Time.mp3")
+            _datoteka(doma, "Zasebno/Pink Floyd Time.mp3")   # ne v mapi z mediji
+            os.makedirs(os.path.join(doma, ".config"))
+            with open(os.path.join(doma, ".config", "user-dirs.dirs"), "w") as d:
+                d.write('XDG_MUSIC_DIR="$HOME/Glasba"\n')
+            with mock.patch.dict(os.environ, {"HOME": doma}):
+                brez = link_datoteke.DeljeneMape([]).isci("pink floyd time")
+                mape = link_datoteke.DeljeneMape([], ves_disk=True)
+                z = mape.isci("pink floyd time")
+            self.assertEqual(brez, [])
+            self.assertEqual([v["name"] for v in z], ["Time.mp3"])
+            self.assertEqual(z[0]["id"], "disk:" + os.path.join(glasba, "Pink Floyd", "Time.mp3"))
+            self.assertIsNotNone(mape.razresi(z[0]["id"]))  # streznik datoteko res da
+
+
 class UkazFilesSearch(unittest.TestCase):
     def test_ukaz_poklice_iskanje_in_vrne_zadetke(self):
         klici = []
