@@ -62,6 +62,23 @@ def _besede(s: str) -> List[str]:
     return [b for b in "".join(c if c.isalnum() else " " for c in s).split() if b]
 
 
+def _xdg_mape_medijev() -> List[str]:
+    """Uporabnikove mape Glasba, Videoposnetki in Prejemi (~/.config/user-dirs.dirs, kot jih ima Mint)."""
+    doma = os.path.expanduser("~")
+    mape = {"XDG_MUSIC_DIR": "Music", "XDG_VIDEOS_DIR": "Videos", "XDG_DOWNLOAD_DIR": "Downloads"}
+    najdene = {}
+    try:
+        with open(os.path.join(doma, ".config", "user-dirs.dirs"), encoding="utf-8") as d:
+            for vrstica in d:
+                k, _, v = vrstica.strip().partition("=")
+                if k in mape:
+                    najdene[k] = v.strip().strip('"').replace("$HOME", doma)
+    except OSError:
+        pass
+    poti = [najdene.get(k) or os.path.join(doma, privzeto) for k, privzeto in mape.items()]
+    return [os.path.realpath(p) for p in poti if os.path.isdir(p) and os.path.realpath(p) != doma]
+
+
 def _ujema(beseda: str, besede: List[str]) -> bool:
     return any(b == beseda or (len(beseda) >= 3 and b.startswith(beseda)) for b in besede)
 
@@ -194,12 +211,16 @@ class DeljeneMape:
         Najboljsi najprej: besede v imenu datoteke stejejo vec kot besede v imenih map.
         """
         iscem = [b for b in _besede(str(poizvedba or ""))]
-        if not iscem or not self.poti:
+        # Ves racunalnik za TV: poleg deljenih map se uporabnikove mape z mediji (ne cel disk - prepocasno).
+        korenine = [(i, k) for i, k in enumerate(self.poti)]
+        if self.ves_disk:
+            korenine += [(-1, k) for k in _xdg_mape_medijev() if not any(k == p or k.startswith(p + os.sep) for p in self.poti)]
+        if not iscem or not korenine:
             return []
         konec = time.monotonic() + rok_s
         pregledanih = 0
         zadetki = []
-        for i, koren in enumerate(self.poti):
+        for i, koren in korenine:
             for mapa, podmape, datoteke in os.walk(koren, followlinks=False):
                 podmape[:] = [d for d in podmape if not d.startswith(".")]
                 rel_mapa = os.path.relpath(mapa, koren)
@@ -227,7 +248,7 @@ class DeljeneMape:
                     except OSError:
                         continue
                     zadetki.append((-ocena, ime.lower(), {
-                        "id": f"share:{i}:{rel}", "name": ime, "type": vrsta, "size": velikost,
+                        "id": f"share:{i}:{rel}" if i >= 0 else "disk:" + os.path.realpath(cela), "name": ime, "type": vrsta, "size": velikost,
                         "mime": mimetypes.guess_type(ime)[0] or "application/octet-stream", "path": rel_mapa}))
                 else:
                     continue
@@ -598,7 +619,7 @@ class Datoteke:
 
     def isci(self, poizvedba: str, id_naprave: str, hub_url: str = "") -> dict:
         """Odgovor na `files.search`: ista oblika kot `files.list` (items, shared, server)."""
-        if not self.mape.poti:
+        if not self.mape.poti and not self.mape.ves_disk:
             return {"items": [], "shared": False}
         o: dict = {"items": self.mape.isci(poizvedba), "shared": True}
         if o["items"]:
