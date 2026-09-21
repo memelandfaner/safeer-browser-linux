@@ -25,6 +25,8 @@ import socket
 import ssl
 import subprocess
 import threading
+import time
+import unicodedata
 import urllib.parse
 from typing import Dict, List, Optional, Tuple
 
@@ -51,6 +53,17 @@ def vrsta_datoteke(ime: str) -> str:
         if k in koncnice:
             return vrsta
     return "file"
+
+
+def _besede(s: str) -> List[str]:
+    """Besede za iskanje: male crke brez sumnikov in locil (»Čudežna_Šola« -> ["cudezna", "sola"])."""
+    s = unicodedata.normalize("NFD", s.lower())
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    return [b for b in "".join(c if c.isalnum() else " " for c in s).split() if b]
+
+
+def _ujema(beseda: str, besede: List[str]) -> bool:
+    return any(b == beseda or (len(beseda) >= 3 and b.startswith(beseda)) for b in besede)
 
 
 def _skrita(pot: str) -> bool:
@@ -171,6 +184,56 @@ class DeljeneMape:
         # Mape najprej, potem datoteke; najvec NAJVEC_VNOSOV.
         vnosi.sort(key=lambda v: (v["type"] != "folder", v["name"].lower()))
         return vnosi[:NAJVEC_VNOSOV]
+
+    def isci(self, poizvedba: str, najvec: int = 30, rok_s: float = 3.0, najvec_pregledanih: int = 60000) -> List[dict]:
+        """Glasba in videi v deljenih mapah, v katerih poti (mape + ime) so vse besede poizvedbe.
+
+        Enotno iskanje Safeer Media (`files.search`): televizor isce »Pink Floyd Time« in najde
+        `Glasba/Pink Floyd/04 - Time.flac`. Samo deljene mape (ne ves disk), brez skritih map in
+        povezav ven; omejeno s casom in stevilom pregledanih datotek, da racunalnik ne obremeni.
+        Najboljsi najprej: besede v imenu datoteke stejejo vec kot besede v imenih map.
+        """
+        iscem = [b for b in _besede(str(poizvedba or ""))]
+        if not iscem or not self.poti:
+            return []
+        konec = time.monotonic() + rok_s
+        pregledanih = 0
+        zadetki = []
+        for i, koren in enumerate(self.poti):
+            for mapa, podmape, datoteke in os.walk(koren, followlinks=False):
+                podmape[:] = [d for d in podmape if not d.startswith(".")]
+                rel_mapa = os.path.relpath(mapa, koren)
+                rel_mapa = "" if rel_mapa == "." else rel_mapa.replace(os.sep, "/")
+                besede_mape = _besede(rel_mapa)
+                for ime in datoteke:
+                    pregledanih += 1
+                    if pregledanih > najvec_pregledanih or time.monotonic() > konec:
+                        break
+                    if ime.startswith("."):
+                        continue
+                    vrsta = vrsta_datoteke(ime)
+                    if vrsta not in ("audio", "video"):
+                        continue
+                    besede_imena = _besede(os.path.splitext(ime)[0])
+                    if not all(_ujema(b, besede_imena) or _ujema(b, besede_mape) for b in iscem):
+                        continue
+                    cela = os.path.join(mapa, ime)
+                    rel = os.path.relpath(os.path.realpath(cela), koren).replace(os.sep, "/")
+                    if rel.startswith("..") or _skrita(rel):
+                        continue  # simbolna povezava ven iz deljene mape ali v skrito mapo
+                    ocena = sum(1.0 if _ujema(b, besede_imena) else 0.8 for b in iscem)
+                    try:
+                        velikost = os.path.getsize(cela)
+                    except OSError:
+                        continue
+                    zadetki.append((-ocena, ime.lower(), {
+                        "id": f"share:{i}:{rel}", "name": ime, "type": vrsta, "size": velikost,
+                        "mime": mimetypes.guess_type(ime)[0] or "application/octet-stream", "path": rel_mapa}))
+                else:
+                    continue
+                break
+        zadetki.sort(key=lambda z: (z[0], z[1]))
+        return [z[2] for z in zadetki[:najvec]]
 
     def _seznam_diska(self, pot: str) -> Optional[List[dict]]:
         """Vsebina mape kjerkoli na racunalniku (oznake `disk:`). Skrite datoteke ostanejo skrite,
@@ -530,14 +593,25 @@ class Datoteke:
         # `edit`: naprava sme datoteke te mape brisati (v Smeti), preimenovati, premakniti in vrteti slike (POST /d/<id>).
         o: dict = {"items": vnosi, "folder": oznaka if oznaka != "root" else "", "shared": True, "edit": oznaka not in ("", "root")}
         if any(v.get("type") != "folder" for v in vnosi):
-            self.streznik.zazeni()
-            naslov = naslov_do_huba(hub_url) if hub_url else krajevni_naslov()
-            o["server"] = {
-                "base_url": self.streznik.osnova(naslov),
-                "fp": self.streznik.odtis,
-                "token": self.streznik.zeton_za(id_naprave or "naprava"),
-            }
+            return _odgovor_z_streznikom(self, o, id_naprave, hub_url)
         return o
+
+    def isci(self, poizvedba: str, id_naprave: str, hub_url: str = "") -> dict:
+        """Odgovor na `files.search`: ista oblika kot `files.list` (items, shared, server)."""
+        if not self.mape.poti:
+            return {"items": [], "shared": False}
+        o: dict = {"items": self.mape.isci(poizvedba), "shared": True}
+        if o["items"]:
+            return _odgovor_z_streznikom(self, o, id_naprave, hub_url)
+        return o
+
+
+def _odgovor_z_streznikom(datoteke: "Datoteke", o: dict, id_naprave: str, hub_url: str) -> dict:
+    datoteke.streznik.zazeni()
+    naslov = naslov_do_huba(hub_url) if hub_url else krajevni_naslov()
+    o["server"] = {"base_url": datoteke.streznik.osnova(naslov), "fp": datoteke.streznik.odtis,
+                   "token": datoteke.streznik.zeton_za(id_naprave or "naprava")}
+    return o
 
 
 def krajevni_naslov() -> str:
