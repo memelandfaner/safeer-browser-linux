@@ -110,13 +110,6 @@ Tests:
 python3 -m unittest discover -s tests
 ```
 
-## Few per-site recipes
-
-Almost everything Safeer does, it does by what a page *is*, not by who publishes it. The
-exceptions are named here: YouTube and YouTube Music get an ad-skipping script and a script
-that stops the "Continue watching?" pause, and a few sign-in and Cloudflare challenge pages
-are exempt from filtering so they keep working.
-
 ## Fork it
 
 Whoever controls the browser sets the rules of the web. This project is Apache-2.0 so that you
