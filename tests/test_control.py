@@ -97,6 +97,57 @@ class ControlPaket(unittest.TestCase):
         self.assertIn("dodajDeljenoMapo: function", most)
 
 
+
+class ControlStoritev(unittest.TestCase):
+    """Zagon ob prijavi kot storitev systemd z nadzornikom (sd_notify brez knjiznice)."""
+
+    def setUp(self):
+        try:
+            import safeer_control as sc
+        except ImportError as e:
+            self.skipTest(f"GTK ni na voljo: {e}")
+        self.sc = sc
+
+    def test_exec_je_storitev_z_nadzornikom(self):
+        from unittest import mock
+        with mock.patch.object(self.sc, "shutil_which", return_value="/usr/bin/systemd-run"):
+            exec_ = self.sc.ukaz_storitve("safeer-control --ozadje")
+        self.assertTrue(exec_.startswith("systemd-run --user "))
+        for del_ in ("--unit=safeer-control", "--service-type=notify", "-p Restart=on-failure",
+                     "-p WatchdogSec=60s", "-p PartOf=graphical-session.target", "--no-block"):
+            self.assertIn(del_, exec_)
+        self.assertIn("MemoryHigh=25%%", exec_)  # v .desktop je % posebni znak
+        self.assertTrue(exec_.endswith("safeer-control --ozadje"))
+        with mock.patch.object(self.sc, "shutil_which", return_value=None):
+            self.assertEqual(self.sc.ukaz_storitve("x --ozadje"), "x --ozadje")
+
+    def test_sd_obvesti_poslje_datagram(self):
+        import socket
+        with tempfile.TemporaryDirectory() as mapa:
+            pot = os.path.join(mapa, "notify")
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+            s.bind(pot)
+            s.settimeout(2)
+            try:
+                from unittest import mock
+                with mock.patch.dict(os.environ, {"NOTIFY_SOCKET": pot}):
+                    self.assertTrue(self.sc.sd_obvesti("WATCHDOG=1"))
+                self.assertEqual(s.recv(100), b"WATCHDOG=1")
+            finally:
+                s.close()
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertFalse(self.sc.sd_obvesti("READY=1"))
+
+    def test_nadzornik_razmik(self):
+        from unittest import mock
+        with mock.patch.dict(os.environ, {"WATCHDOG_USEC": "60000000", "WATCHDOG_PID": str(os.getpid())}):
+            self.assertEqual(self.sc.nadzornik_ms(), 30000)
+        with mock.patch.dict(os.environ, {"WATCHDOG_USEC": "60000000", "WATCHDOG_PID": "1"}):
+            self.assertEqual(self.sc.nadzornik_ms(), 0)
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(self.sc.nadzornik_ms(), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
 
