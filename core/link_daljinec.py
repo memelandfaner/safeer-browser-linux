@@ -95,7 +95,7 @@ def izvedi(app, dejanje: str, parametri: dict, odpri_naslov: Callable[[str], Non
 
 
 DEJANJA_CONTROL = ["open_url", "volume", "status"]
-DEJANJA_DATOTEKE = ["files.list", "files.open"]
+DEJANJA_DATOTEKE = ["files.list", "files.open", "files.search"]
 DEJANJA_PROGRAMI = ["apps.list", "apps.launch", "apps.close", "apps.running"]
 DEJANJA_HOST = ["host.info"]
 DEJANJA_ZASLON = ["screen.start", "screen.stop", "screen.status"]
@@ -123,6 +123,13 @@ def izvedi_control(dejanje: str, parametri: dict, odpri_naslov: Callable[[str], 
                 koncaj(izid(True, "Na računalniku ni izbrane nobene mape", podatki))
             else:
                 koncaj(izid(True, f"{len(podatki['items'])} vnosov", podatki))
+        elif d == "files.search":
+            # Enotno iskanje Safeer Media: glasba in videi deljenih map, ki ustrezajo poizvedbi.
+            if datoteke is None:
+                koncaj(izid(False, "Deljenje datotek tu ni na voljo", koda="ni_na_racunalniku"))
+                return
+            podatki = datoteke.isci(str(parametri.get("q", "") or "")[:200], posiljatelj, hub_url)
+            koncaj(izid(True, f"{len(podatki['items'])} zadetkov", podatki))
         elif d == "files.open":
             # Datoteko odpre racunalnik s svojim programom; televizor jo nato vidi prek zaslona.
             if datoteke is None:
