@@ -671,7 +671,8 @@ class DrugiZaslon:
         self.vnos = SwayVnos(self)
         from core.link_mediji import Mpris
         #: Predvajalnik na tem zaslonu prek MPRIS (samo procesi, ki so potomci tega swaya).
-        self.mediji = Mpris(lambda: self._sway.pid if self.tece() else 0)
+        self.mediji = Mpris(lambda: self._sway.pid if self.tece() else 0,
+                            lambda: self._wayland if self.tece() else "")
         from core.link_fokus import Fokus
         self.fokus = Fokus(self)
 

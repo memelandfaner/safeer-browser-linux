@@ -88,11 +88,22 @@ class LazniMpris(Mpris):
 
 class IzbiraPredvajalnika(unittest.TestCase):
     def setUp(self):
-        self._stars = link_mediji.stars
+        self._stars, self._okolje = link_mediji.stars, link_mediji.okolje
         link_mediji.stars = lambda p: {50: 40, 40: 30, 60: 1}.get(p, 0)
+        link_mediji.okolje = lambda p: {}
 
     def tearDown(self):
-        link_mediji.stars = self._stars
+        link_mediji.stars, link_mediji.okolje = self._stars, self._okolje
+
+    def test_po_waylandu_tudi_brez_prednika(self):
+        """Sway programe zazene z dvojnim razcepom: prepoznamo jih po WAYLAND_DISPLAY."""
+        link_mediji.stars = lambda p: 1
+        link_mediji.okolje = lambda p: {"WAYLAND_DISPLAY": "wayland-9" if p == 50 else "wayland-0"}
+        m = LazniMpris()
+        m._wayland = lambda: "wayland-9"
+        self.assertEqual(m.predvajalnik(), "org.mpris.MediaPlayer2.vlc")
+        m._wayland = lambda: "wayland-7"
+        self.assertIsNone(m.predvajalnik())
 
     def test_samo_predvajalnik_locenega_zaslona(self):
         m = LazniMpris()
