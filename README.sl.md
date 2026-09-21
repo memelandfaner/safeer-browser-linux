@@ -109,13 +109,6 @@ Testi:
 python3 -m unittest discover -s tests
 ```
 
-## Malo receptov za posamezne strani
-
-Skoraj vse, kar Safeer zna, zna po tem, KAJ stran je, in ne po tem, kdo jo objavlja. Izjeme so
-naštete tu: YouTube in YouTube Music imata skripto za preskok oglasov in skripto, ki ustavi
-premor »Nadaljujem gledanje?«, nekaj strani za prijavo in preverjanje Cloudflare pa je izvzetih
-iz filtriranja, da delujejo.
-
 ## Vzemi in predelaj
 
 Kdor obvladuje brskalnik, določa pravila spleta. Projekt je pod Apache-2.0 prav zato, da ga
