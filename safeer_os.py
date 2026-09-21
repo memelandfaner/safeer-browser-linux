@@ -375,6 +375,12 @@ def zazeni_na_napravi(id_naprave: str, app: str) -> bool:
     return bool(_control_naprave("Zazeni", str(id_naprave or ""), str(app or "")).get("ok"))
 
 
+def odpri_tukaj(id_naprave: str, app: str) -> dict:
+    """Program naprave v oknu na tem racunalniku (z misko in tipkovnico): {"ok", "tu"}."""
+    izid = _control_naprave("Pretoci", str(id_naprave or ""), str(app or ""))
+    return {"ok": bool(izid.get("ok")), "tu": bool(izid.get("tu")), "koda": str(izid.get("koda") or "")}
+
+
 SAMOZAGON = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
                          "autostart", "safeer-os.desktop")
 
@@ -918,6 +924,7 @@ class SafeerOS(Gtk.Application):
             "preimenujNapravo": lambda: preimenuj_napravo(str(a[0]) if a else "", str(a[1]) if len(a) > 1 else ""),
             "programiNaprave": lambda: programi_naprave(str(a[0]) if a else ""),
             "zazeniNaNapravi": lambda: zazeni_na_napravi(str(a[0]) if a else "", str(a[1]) if len(a) > 1 else ""),
+            "odpriTukaj": lambda: odpri_tukaj(str(a[0]) if a else "", str(a[1]) if len(a) > 1 else ""),
             "zvokUstavi": zvok_ustavi,
             "jbl": lambda: os_jbl.stanje(True),
             "jblVklop": lambda: os_jbl.vklopi(bool(a[0]) if a else False),
