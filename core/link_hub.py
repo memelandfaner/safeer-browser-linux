@@ -1226,6 +1226,14 @@ class Povezava:
                     except Exception:
                         pass
                     continue
+                if isinstance(sporocilo, dict) and sporocilo.get("type") == "pair.code":
+                    # Nova naprava se pridruzuje Linku: kodo pokaze tudi ta racunalnik (obvestilo).
+                    tovor = sporocilo.get("payload") if isinstance(sporocilo.get("payload"), dict) else {}
+                    koda = str(tovor.get("code") or "")
+                    if len(koda) == 6 and koda.isdigit():
+                        from core.link_hub_streznik import _obvestilo_kode
+                        _obvestilo_kode(str(tovor.get("name") or "")[:64], koda)
+                    continue
                 if self.ob_sporocilu:
                     self.ob_sporocilu(sporocilo)
         except Exception:
