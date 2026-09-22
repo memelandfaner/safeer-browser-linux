@@ -45,7 +45,7 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("WebKit2", "4.1")
 from gi.repository import Gio, GLib, Gtk, WebKit2  # noqa: E402
 
-from core import link_datoteke, link_deljenje, link_hub, link_programi, link_sway, link_tls, link_zaslon, link_zvok  # noqa: E402
+from core import link_datoteke, link_deljenje, link_hub, link_programi, link_sway, link_tls, link_zaslon, link_zvok, link_handoff  # noqa: E402
 from core import os_stabilnost  # noqa: E402
 from core.safeer_link import SafeerLink  # noqa: E402
 
@@ -453,6 +453,7 @@ class SafeerControl(Gtk.Application):
       <method name="Zazeni"><arg type="s" name="naprava" direction="in"/><arg type="s" name="app" direction="in"/><arg type="s" name="json" direction="out"/></method>
       <method name="Pretoci"><arg type="s" name="naprava" direction="in"/><arg type="s" name="app" direction="in"/><arg type="s" name="json" direction="out"/></method>
       <method name="Preimenuj"><arg type="s" name="naprava" direction="in"/><arg type="s" name="ime" direction="in"/><arg type="s" name="json" direction="out"/></method>
+      <method name="Handoff"><arg type="s" name="naprava" direction="in"/><arg type="s" name="url" direction="in"/><arg type="s" name="naslov" direction="in"/><arg type="s" name="polozaj" direction="in"/><arg type="s" name="json" direction="out"/></method>
     </interface></node>"""
 
     def _izvozi_naprave(self) -> None:
@@ -492,6 +493,12 @@ class SafeerControl(Gtk.Application):
             ok, novo, n = link_deljenje.preimenuj_napravo(link._hub(), link._zeton() or "", link._odtis() or "",
                                                           str(a[0]) if a else "", str(a[1]) if len(a) > 1 else "")
             return {"ok": bool(ok), "ime": novo, "message": "" if ok else n.get("sporocilo", "")}
+        if metoda == "Handoff":
+            try: polozaj=float(a[3]) if len(a)>3 else 0.0
+            except (TypeError,ValueError): polozaj=0.0
+            msg=link_handoff.message(str(a[0]) if a else "", {"url":str(a[1]) if len(a)>1 else "", "title":str(a[2]) if len(a)>2 else "", "position":polozaj})
+            if not msg or not link.povezava: return {"ok":False,"koda":"ni_povezave"}
+            return {"ok":bool(link.povezava.poslji(msg))}
         if metoda == "Aplikacije":
             id_naprave = str(a[0]) if a else ""
             # Po kosih (racunalnik daje najvec 60 z ikonami na sporocilo); Android vrne vse naenkrat.

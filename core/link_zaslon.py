@@ -238,6 +238,20 @@ class Zaslon:
         s["vnosov"] = self._vnosov
         return s
 
+    def oddaljeni_vnos(self, dogodek: dict) -> bool:
+        """Vnos druge zaupanja vredne Safeer naprave v trenutno deljeno sejo.
+
+        Namenjeno opcijskemu telefonu-kontrolerju: telefon ne prevzame seje in ne
+        spreminja Continuity/Workspace stanja. Dogodek je sprejet samo, ko zaslon
+        dejansko tece, in gre skozi isti strogi allow-list kot vnos gledalca.
+        """
+        if not self.stanje().get("tece") or not isinstance(dogodek, dict):
+            return False
+        ok = bool(self._vnos.izvedi(dogodek))
+        if ok:
+            self._vnosov += 1
+        return ok
+
     # ------------------------------------------------------------------ zagon
 
     def nastavi(self, vklopljeno: bool) -> None:
@@ -646,6 +660,20 @@ class Zaslon:
         if vrsta == "plosek_os":
             return self._plosek.os(str(dogodek.get("os", "") or ""), dogodek.get("vrednost"))
         return False
+
+    def oddaljeni_plosek(self, dogodek: dict) -> bool:
+        """Opcijski telefonski gamepad uporablja isti uinput kot TV seja.
+
+        Ne zaganja seje in ne spreminja Continuity/Workspace stanja. Dogodek je dovoljen
+        samo, ko oddaljena seja ze tece; zato telefon nikoli ne prevzame racunalnika sam.
+        """
+        if not self.stanje().get("tece"):
+            return False
+        return self._plosek_dogodek(dogodek)
+
+    def sprosti_oddaljeni_plosek(self) -> None:
+        """Ob preklopu nazaj na navadni daljinec spusti gumbe in osi."""
+        self._plosek.sprosti_vse()
 
     def ustavi(self) -> None:
         """Konca zajem in zapre vrata; zeton takoj ne velja vec."""

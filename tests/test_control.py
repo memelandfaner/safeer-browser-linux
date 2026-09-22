@@ -44,10 +44,14 @@ class ControlUkazi(unittest.TestCase):
         self.assertEqual(len(odprti), 1)
 
     def test_kar_rabi_brskalnik_vrne_razumljivo_napako(self):
-        for dejanje in ("key", "scroll", "screenshot", "restart", "clear_cache"):
+        for dejanje in ("scroll", "screenshot", "restart", "clear_cache"):
             i = self._izvedi(dejanje, {"key": "ok"})
             self.assertFalse(i["ok"], dejanje)
             self.assertEqual(i["code"], "ni_v_ospredju")
+        # Tipke gredo v oddaljeno sejo zaslona (RC1); brez nje razumljiva napaka ni_seje.
+        i = self._izvedi("key", {"key": "ok"})
+        self.assertFalse(i["ok"])
+        self.assertEqual(i["code"], "ni_seje")
         self.assertEqual(self._izvedi("nekaj")["code"], "neznano_dejanje")
 
 

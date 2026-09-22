@@ -43,7 +43,7 @@ gi.require_version("WebKit2", "4.1")
 from gi.repository import Gdk, Gio, GLib, Gtk, WebKit2  # noqa: E402
 
 from core import (os_datoteke, os_jbl, os_okna, os_omrezje, os_programi, os_scit, os_sistem,  # noqa: E402
-                  os_stabilnost, os_zvok)
+                  os_stabilnost, os_zvok, os_media)
 
 APP_ID = "io.github.memelandfaner.SafeerOS"
 
@@ -345,6 +345,12 @@ def vse_naprave() -> list:
     return [{"id": n.get("id", ""), "ime": n.get("ime", ""), "platforma": n.get("platforma", ""),
              "vrsta": n.get("vrsta", ""), "ta": bool(n.get("ta"))} for n in izid.get("naprave") or [] if n.get("id")]
 
+
+def media_naprave() -> list:
+    return [n for n in vse_naprave() if not n.get("ta")]
+
+def media_nadaljuj_na(id_naprave: str, url: str, naslov: str, polozaj=0) -> dict:
+    return _control_naprave("Handoff", str(id_naprave or ""), str(url or ""), str(naslov or ""), str(polozaj or 0))
 
 def preimenuj_napravo(id_naprave: str, ime: str) -> dict:
     """Novo ime naprave (tudi tega racunalnika) za vse naprave v Linku; hrani ga sredisce."""
@@ -930,6 +936,12 @@ class SafeerOS(Gtk.Application):
             "jblVklop": lambda: os_jbl.vklopi(bool(a[0]) if a else False),
             "scit": self.scit.stanje,
             "scitVklop": lambda: self.scit.nastavi(bool(a[0]) if a else False),
+            "mediaKatalog": os_media.katalog,
+            "mediaOdpri": lambda: os_media.odpri(str(a[0]) if a else ""),
+            "mediaStanje": os_media.stanje,
+            "mediaUkaz": lambda: os_media.ukaz(str(a[0]) if a else ""),
+            "mediaNaprave": media_naprave,
+            "mediaNadaljujNa": lambda: media_nadaljuj_na(str(a[0]) if a else "", str(a[1]) if len(a)>1 else "", str(a[2]) if len(a)>2 else "", a[3] if len(a)>3 else 0),
         }
         if metoda in glavna:
             try:

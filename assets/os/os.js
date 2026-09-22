@@ -159,6 +159,7 @@
     if (razdelek === "programi") nalozNaprave();
     if (razdelek === "omrezje") nalozOmrezje(false);
     if (razdelek === "zvok") { nalozZvok(); zvokZanka(); if (!jblStanje) nalozJbl(); }
+    if (razdelek === "media") naloziMedia();
   }
   window.safeerOsPojdi = function (kam) {
     kam = String(kam || "");
@@ -1488,4 +1489,61 @@
     }, function () {});
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", zacni); else zacni();
+  // ------------------------------------------------------------------ Safeer Media
+  // Glasba in video iz map Glasba/Video tega racunalnika, predvajalnik (MPRIS) in "Nadaljuj na".
+  var media = { katalog: [], filter: "vse", url: "" };
+  function narisiMedia() {
+    var m = $("mediaMreza"); if (!m) return; m.innerHTML = "";
+    var list = media.katalog.filter(function (x) { return media.filter === "vse" || x.vrsta === media.filter; });
+    $("mediaPrazno").hidden = !!list.length;
+    list.slice(0, 120).forEach(function (x) {
+      var b = el("button", "ploscica media-kartica", svg(x.vrsta === "video" ? "video" : "glasba") +
+        "<div><b>" + ubezi(x.naslov) + '</b><span class="media-tip">' + ubezi(x.vrsta) + "</span></div>");
+      b.onclick = function () { klic("mediaOdpri", [x.pot]); };
+      m.appendChild(b);
+    });
+    var v = $("mediaViri"); v.innerHTML = "";
+    (S.spletne || PRIVZETE_SPLETNE).forEach(function (x) {
+      var b = el("button", "ploscica media-kartica", svg("splet") + "<div><b>" + ubezi(x.ime) + '</b><span class="media-tip">splet</span></div>');
+      b.onclick = function () { klic("splet", [x.url]); };
+      v.appendChild(b);
+    });
+  }
+  function mediaStanje() {
+    if (S.razdelek !== "media" || document.hidden) return;
+    klic("mediaStanje").then(function (x) {
+      x = x || {};
+      var z = $("mediaZdaj"); z.hidden = !x.na_voljo; if (!x.na_voljo) return;
+      $("mediaZdajNaslov").textContent = x.naslov || "Predvajanje";
+      $("mediaZdajIzvajalec").textContent = x.izvajalec || "";
+      if ((x.url || "") === media.url) return;          // gumbe "Nadaljuj na" rišemo le ob novem viru
+      media.url = x.url || "";
+      var h = $("mediaHandoff"); h.innerHTML = "";
+      if (media.url) klic("mediaNaprave").then(function (ns) {
+        (ns || []).forEach(function (n) {
+          var b = el("button", "", "Nadaljuj na " + ubezi(n.ime || n.id));
+          b.onclick = function () { klic("mediaNadaljujNa", [n.id, media.url, x.naslov || "", x.polozaj || 0]); };
+          h.appendChild(b);
+        });
+      }, function () {});
+    }, function () {});
+  }
+  function naloziMedia() {
+    media.url = "\u0000";
+    klic("mediaKatalog").then(function (x) { media.katalog = (x && x.vnosi) || []; narisiMedia(); }, function () {});
+    mediaStanje();
+  }
+  document.querySelectorAll("[data-media-filter]").forEach(function (b) {
+    b.onclick = function () {
+      media.filter = b.getAttribute("data-media-filter");
+      document.querySelectorAll("[data-media-filter]").forEach(function (q) { q.classList.toggle("izbran", q === b); });
+      narisiMedia();
+    };
+  });
+  [["mediaNazaj", "nazaj"], ["mediaPlay", "predvajaj_pavza"], ["mediaNaprej", "naprej"], ["mediaStop", "ustavi"]].forEach(function (p) {
+    var b = $(p[0]); if (b) b.onclick = function () { klic("mediaUkaz", [p[1]]).then(mediaStanje, function () {}); };
+  });
+  setInterval(mediaStanje, 2000);
+
 })();
+
