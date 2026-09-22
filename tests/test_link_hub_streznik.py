@@ -6,6 +6,7 @@ pazimo na sondo prijave, ki jo uporablja Safeer Control: prijavljena naprava mor
 od mrtve in se po potrebi vrne.
 """
 import json
+import time
 import unittest
 from unittest import mock
 
@@ -258,6 +259,54 @@ class NapravaIzKljuca(unittest.TestCase):
             tv = json.loads(hub.seznam_json())["devices"][0]
         self.assertEqual(tv["name"], "Dnevna soba")
         self.assertNotEqual(tv["own_name"], "Dnevna soba")
+
+
+class ImenaVKrogu(unittest.TestCase):
+    def setUp(self):
+        self.kljuc = link_krog.javni_kljuc_b64()
+        self.krog = link_krog.Krog()
+        self.krog.dodaj("tv-1", self.kljuc, "Safeer TV", "tv", "hub", dodano=100.0)
+
+    def test_preimenuj_ne_premakne_dodano(self):
+        self.assertTrue(self.krog.preimenuj("tv-1", "Dnevna soba"))
+        c = self.krog.clan("tv-1")
+        self.assertEqual((c["ime"], c["dodano"]), ("Dnevna soba", 100.0))
+
+    def test_enako_ime_brez_casa_se_potrdi(self):
+        self.assertTrue(self.krog.preimenuj("tv-1", "Safeer TV"))
+        self.assertGreater(self.krog.clan("tv-1")["imenovano"], 0)
+        self.assertFalse(self.krog.preimenuj("tv-1", "Safeer TV"))
+
+    def test_novejsi_vpis_ohrani_ime(self):
+        self.krog.preimenuj("tv-1", "Dnevna soba")
+        self.krog.zdruzi({"clani": {"tv-1": {"kljuc": self.kljuc, "ime": "Safeer TV", "dodano": 200.0}}})
+        self.assertEqual(self.krog.clan("tv-1")["ime"], "Dnevna soba")
+
+    def test_imena_brez_novih_clanov_in_tujih_kljucev(self):
+        tuj = {"clani": {"novi": {"kljuc": self.kljuc, "ime": "X", "imenovano": time.time()},
+                         "tv-1": {"kljuc": "MFkw" + "A" * 80, "ime": "Ugrabljen", "imenovano": time.time()}}}
+        self.assertFalse(self.krog.zdruzi_imena(tuj))
+        self.assertIsNone(self.krog.clan("novi"))
+        self.assertEqual(self.krog.clan("tv-1")["ime"], "Safeer TV")
+
+    def test_umaknjena_se_ne_vrne(self):
+        self.krog.umakni("tv-1", "hub", ob=time.time())
+        self.assertFalse(self.krog.zdruzi_imena({"clani": {"tv-1": {"kljuc": self.kljuc, "ime": "Obujen",
+                                                                   "imenovano": time.time() + 5}}}))
+        self.assertIsNone(self.krog.clan("tv-1"))
+
+    def test_hub_sprejme_trust_names(self):
+        hub = link_hub_streznik.Hub(odtis="ab" * 32)
+        tv, fon = LaznaPovezava(), LaznaPovezava()
+        hub.obdelaj(tv, _prijava("tv-1", vloga="receiver"))
+        hub.obdelaj(fon, _prijava("fon-1", vloga="sender"))
+        ponudba = {"clani": {"tv-1": {"kljuc": self.kljuc, "ime": "Spalnica", "imenovano": time.time()}}}
+        with mock.patch.object(link_krog, "krog", return_value=self.krog):
+            odgovor = json.loads(hub.obdelaj(fon, json.dumps({"id": "t1", "type": "trust.names", "payload": ponudba})))
+            seznam = json.loads(hub.seznam_json())["devices"]
+        self.assertEqual(odgovor["status"], "accepted")
+        self.assertEqual([d["name"] for d in seznam if d["id"] == "tv-1"], ["Spalnica"])
+        self.assertTrue(tv.zadnje("trust.update"), "vsi dobijo nov krog")
 
 
 class Zdravje(unittest.TestCase):

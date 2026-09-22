@@ -1036,6 +1036,12 @@ class Povezava:
         except Exception:
             odjemalec.zapri()
             return False
+        # Imena naprav iz nasega kroga (dana na drugem hubu): hub vzame samo imena znanih clanov.
+        try:
+            odjemalec.poslji(json.dumps({"id": str(int(time.time() * 1000)), "type": "trust.names",
+                                         "payload": link_krog.krog().json()}))
+        except Exception:
+            pass
 
         self.odjemalec = odjemalec
         self.tece = True

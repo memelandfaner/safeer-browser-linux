@@ -194,8 +194,10 @@ class Krog:
         with self._zaklep:
             return {
                 "v": 1,
-                "clani": {i: {"kljuc": c["kljuc"], "ime": c["ime"], "platforma": c["platforma"],
-                              "dodano": c["dodano"], "dodal": c["dodal"]} for i, c in sorted(self.clani.items())},
+                "clani": {i: dict({"kljuc": c["kljuc"], "ime": c["ime"], "platforma": c["platforma"],
+                                   "dodano": c["dodano"], "dodal": c["dodal"]},
+                                  **({"imenovano": c["imenovano"]} if c.get("imenovano") else {}))
+                            for i, c in sorted(self.clani.items())},
                 "umiki": {i: {"umaknjeno": u["umaknjeno"], "umaknil": u["umaknil"]} for i, u in sorted(self.umiki.items())},
             }
 
@@ -215,6 +217,50 @@ class Krog:
         if not self.je_clan(device_id):
             return False
         return self.zdruzi({"umiki": {device_id: {"umaknjeno": ob if ob is not None else time.time(), "umaknil": kdo}}})
+
+    def preimenuj(self, device_id: str, ime: str, ob: Optional[float] = None) -> bool:
+        """Uporabnik je napravo poimenoval: samo ime in cas imena, dodano ostane (preimenovanje ne obudi umaknjene)."""
+        cisto = (ime or "").strip()[:64]
+        ob = time.time() if ob is None else ob
+        with self._zaklep:
+            c = self.clani.get(device_id)
+            if (not cisto or not c or not self._veljaven(c) or ob <= c.get("imenovano", 0.0)
+                    or (c["ime"] == cisto and c.get("imenovano"))):
+                return False
+            c["ime"], c["imenovano"] = cisto, ob
+            self._shrani()
+        return True
+
+    def zdruzi_imena(self, tuj) -> bool:
+        """Imena, ki jih ponudi naprava (trust.names): samo ime znanih, neumaknjenih clanov z ISTIM kljucem in
+        samo novejse. Nov clan, drug kljuc ali umik po tej poti ne pride (KrogZaupanja.zdruziImena)."""
+        if isinstance(tuj, str):
+            try:
+                tuj = json.loads(tuj)
+            except Exception:
+                return False
+        clani = (tuj or {}).get("clani") if isinstance(tuj, dict) else None
+        if not isinstance(clani, dict):
+            return False
+        meja = time.time() + 86400
+        spremenjeno = False
+        with self._zaklep:
+            for i, z in clani.items():
+                c = self.clani.get(i)
+                if not isinstance(z, dict) or not c or not self._veljaven(c):
+                    continue
+                try:
+                    ob = float(z.get("imenovano") or 0.0)
+                except (TypeError, ValueError):
+                    continue
+                ime = str(z.get("ime") or "").strip()[:64]
+                if str(z.get("kljuc") or "") != c["kljuc"] or not ime or ob <= c.get("imenovano", 0.0) or ob > meja:
+                    continue
+                c["ime"], c["imenovano"] = ime, ob
+                spremenjeno = True
+            if spremenjeno:
+                self._shrani()
+        return spremenjeno
 
     def zdruzi(self, tuj, shrani: bool = True) -> bool:
         """Zdruzi tuj krog (dict ali JSON niz). Vrne True, ce se je nas krog spremenil."""
@@ -245,16 +291,29 @@ class Krog:
                     dodano = float(c.get("dodano") or 0.0)
                 except (TypeError, ValueError):
                     dodano = 0.0
+                try:
+                    imenovano = float(c.get("imenovano") or 0.0)
+                except (TypeError, ValueError):
+                    imenovano = 0.0
                 nov = {"id": i, "kljuc": str(c["kljuc"]), "ime": str(c.get("ime") or i),
                        "platforma": str(c.get("platforma") or ""), "dodano": dodano,
-                       "dodal": str(c.get("dodal") or "")}
+                       "dodal": str(c.get("dodal") or ""), "imenovano": imenovano}
                 obstojeci = self.clani.get(i)
                 if (obstojeci is None or obstojeci["dodano"] < dodano
                         or (obstojeci["dodano"] == dodano and obstojeci["kljuc"] != nov["kljuc"]
                             and obstojeci["kljuc"] < nov["kljuc"])):
+                    # Novejsi vnos iste naprave ne izgubi imena, ki ga je dal uporabnik (KrogZaupanja.zdruzi).
+                    if obstojeci is not None and obstojeci["kljuc"] == nov["kljuc"] \
+                            and obstojeci.get("imenovano", 0.0) > imenovano:
+                        nov["ime"], nov["imenovano"] = obstojeci["ime"], obstojeci["imenovano"]
                     self.clani[i] = nov
                     spremenjeno = True
-                elif obstojeci["kljuc"] == nov["kljuc"] and obstojeci["dodano"] == dodano and obstojeci["ime"] != nov["ime"]:
+                elif obstojeci["kljuc"] == nov["kljuc"] and imenovano > obstojeci.get("imenovano", 0.0) and nov["ime"]:
+                    obstojeci["ime"], obstojeci["imenovano"] = nov["ime"], imenovano
+                    spremenjeno = True
+                elif (obstojeci["kljuc"] == nov["kljuc"] and obstojeci["dodano"] == dodano and obstojeci["ime"] != nov["ime"]
+                      and not obstojeci.get("imenovano") and not imenovano):
+                    # Naprava je sama spremenila svoje ime (uporabnik je ni poimenoval): kot doslej.
                     obstojeci["ime"] = nov["ime"]
                     spremenjeno = True
             for i in list(self.umiki):
