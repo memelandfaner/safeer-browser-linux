@@ -1,5 +1,5 @@
 # Safeer Coordination na link.safeer.si (Cloudflare Workers, brezplacen nacrt: 100.000 zahtev/dan).
-# Postavitev: npx wrangler deploy (iz te mape). Dokler SAFEER_GLOBAL_LINK_ENABLED ni "true",
+# Postavitev: npx wrangler deploy (iz te mape). Ce SAFEER_GLOBAL_LINK_ENABLED ni "true",
 # odgovori samo /health.
 name = "safeer-coordination"
 main = "worker.mjs"
@@ -8,7 +8,7 @@ workers_dev = false
 routes = [{ pattern = "link.safeer.si", custom_domain = true }]
 
 [vars]
-SAFEER_GLOBAL_LINK_ENABLED = "false"
+SAFEER_GLOBAL_LINK_ENABLED = "true"
 
 [[durable_objects.bindings]]
 name = "KOORDINACIJA"
