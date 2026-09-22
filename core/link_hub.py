@@ -964,6 +964,7 @@ class Povezava:
         # prezivi tudi zamenjavo huba. Ce hub kroga se ne pozna (starejsi hub: 404) ali nas v
         # njem nima, gre po stari poti z zetonom.
         s_podpisom = False
+        koda = 0
         try:
             # Tudi ce je nas kljuc v krogu pod starim id-jem: hub nov id sam vpise kot alias.
             s_podpisom = self.v_krog and link_krog.lahko_s_podpisom(self.device_id)
@@ -973,6 +974,12 @@ class Povezava:
             vstopnica, koda = vzemi_vstopnico_s_podpisom(self.ws_naslov, self.device_id, self.odtis, self.ime)
             if vstopnica:
                 self.prijava_s_podpisom = True
+        if not vstopnica and not self.zeton:
+            # Brez zetona ni druge poti. Zavrnitev je samo izrecen 401/403 na podpis (hub nas v krogu nima);
+            # neuspel podpis zaradi casa (hub se ravno zaganja, rele zamudi) ni - sicer bi _pozabi_zeton
+            # izbrisal odtis in naprava bi ostala brez povezave, dokler je kdo ne poveze znova.
+            self.zavrnjena = s_podpisom and koda in (401, 403)
+            return False
         if not vstopnica:
             self.prijava_s_podpisom = False
             vstopnica, koda = vzemi_vstopnico_s_kodo(self.ws_naslov, self.zeton, self.odtis)

@@ -706,10 +706,20 @@ class SafeerLink:
             while True:
                 try:
                     g = getattr(self, "_hub_gostitelj", None)
+                    if self._na_releju():
+                        # Prek Global Linka smo na domacem hubu: ne gostimo sami (bila bi dva otoka).
+                        # Ko je v tem omrezju spet kak hub (smo doma), gremo nazaj na LAN.
+                        if not self._samo_rele() and link_hub.poisci_hube_mdns():
+                            print("[SafeerLink] V omrezju je hub; zapuscam Global Link.")
+                            self._zapri_rele()
+                            self._poisci_hub(tiho=True)
+                        time.sleep(90)
+                        continue
+                    self._zapri_rele()
                     # Tudi kadar povezave ni: prej je racunalnik ostal brez huba in brez povezave, ce se
                     # odjemalec ni mogel prijaviti na televizor (npr. v pripravljenosti), ceprav je
                     # racunalnik po prioriteti izvoljeni hub. preveri() odloci po prioriteti (80 > 60 ...).
-                    if self._v_krogu() and not (g is not None and g.gostimo()):
+                    if self._v_krogu() and not self._samo_rele() and not (g is not None and g.gostimo()):
                         self._prevzemi_gostovanje()
                 except Exception as e:  # noqa: BLE001
                     print("[SafeerLink] izvolitev ni uspela:", e)
@@ -738,6 +748,97 @@ class SafeerLink:
         self._odziv("hub", {"najden": True, "naslov": naslov, "gostimo": True})
         return self._povezi() or True
 
+    # ------------------------------------------------------------------ Global Link: odjemalec prek releja
+
+    def _samo_rele(self) -> bool:
+        """Preizkus (nastavitev global_link_preizkus): tudi doma samo prek releja, brez gostovanja."""
+        return self.nastavitve.get("global_link", True) is not False \
+            and self.nastavitve.get("global_link_preizkus", False) is True
+
+    def _na_releju(self) -> bool:
+        r = getattr(self, "_rele", None)
+        return r is not None and self._hub() == "wss://127.0.0.1:%d%s" % (r.vrata, link_hub.POT_WS)
+
+    def _zapri_rele(self) -> None:
+        r = getattr(self, "_rele", None)
+        if r is not None and not self._na_releju():
+            self._rele = None
+            r.zapri()
+
+    def _poskusi_rele(self) -> bool:
+        """Domaci hub prek link.safeer.si, ko ga v LAN ni: clan kroga, ki gosti, nas spusti skozi.
+        TLS (pripet odtis, kljuc iz kroga) in prijava s podpisom tečeta skozi rele nespremenjena."""
+        if self.nastavitve.get("global_link", True) is False or not self._clan_kroga():
+            return False
+        if self._na_releju():
+            if self._povezan():
+                return True
+            # Rele do huba ze imamo, povezava pa ni uspela (npr. hub se je ravno zagnal): znova poskusimo
+            # samo povezavo, brez novega iskanja. Po treh neuspehih rele opustimo in cez minuto iscemo znova.
+            self._rele_neuspehov = getattr(self, "_rele_neuspehov", 0) + 1
+            if self._rele_neuspehov <= 3:
+                with self._zaklep_povezave:
+                    self._povezi_zaklenjeno()
+                if self._povezan():
+                    self._rele_neuspehov = 0
+                    return True
+                self._razlog_releja(self._hub(), self._odtis() or "")
+                return False
+            r, self._rele = self._rele, None
+            r.zapri()
+        zdaj = time.time()
+        if zdaj - getattr(self, "_rele_poskus", 0.0) < 60.0:
+            return False        # najvec en krog poskusov na minuto (kvota Workerja)
+        self._rele_poskus = zdaj
+        try:
+            from core import link_rele
+            nas = link_rele.id_iz_kljuca(link_krog.javni_kljuc_b64())
+            najden = link_rele.najdi_hub_prek_releja(
+                link_krog.krog().json(), nas, prednost=[str(self.nastavitve.get("hub_rele_id") or "")])
+        except Exception as e:  # noqa: BLE001
+            print("[SafeerLink] Global Link ni uspel:", e)
+            return False
+        if not najden:
+            return False
+        cilj, rele, odtis = najden
+        stari = getattr(self, "_rele", None)
+        self._rele = rele
+        if stari is not None:
+            stari.zapri()
+        naslov = "wss://127.0.0.1:%d%s" % (rele.vrata, link_hub.POT_WS)
+        self.nastavitve.podatki["hub_url"] = naslov
+        self.nastavitve.podatki["hub_fp"] = odtis
+        self.nastavitve.podatki["hub_rele_id"] = cilj
+        self.nastavitve.podatki.pop("control_token", None)
+        self.nastavitve.shrani()
+        print("[SafeerLink] Domaci hub %s prek Global Linka (link.safeer.si)." % cilj)
+        self._odziv("hub", {"najden": True, "naslov": naslov, "rele": True})
+        self._rele_neuspehov = 0
+        with self._zaklep_povezave:
+            self._povezi_zaklenjeno()
+        # True samo ob vzpostavljeni povezavi: sicer iskanje tece naprej in naslednji poskus znova poveze.
+        if not self._povezan():
+            self._razlog_releja(naslov, odtis)
+            # Nihce drug ne bi poskusil znova (ob zagonu iskanje v ozadju se ne tece): iskanje vsakih
+            # nekaj sekund poklice _poskusi_rele, ta pa na obstojecem releju samo znova poveze.
+            self._v_ozadju(self._isci_hub_dokler_ni)
+        return self._povezan()
+
+    def _razlog_releja(self, naslov: str, odtis: str) -> None:
+        """Za dnevnik: zakaj povezava prek releja ni uspela (koda prijave s podpisom)."""
+        try:
+            koda_izziva, _ = link_hub._zahteva(naslov.replace("wss://", "https://").split("/cast/")[0]
+                                               + "/cast/auth/challenge", {"device_id": self._id()}, odtis=odtis)
+        except Exception as e:  # noqa: BLE001
+            koda_izziva = type(e).__name__
+        r = getattr(self, "_rele", None)
+        print("[SafeerLink] Povezava prek Global Linka se ni uspela (izziv: %s, krog: %s, rele: %s); poskusim znova."
+              % (koda_izziva, self._v_krogu(), (r.zadnja_napaka if r is not None else "") or "-"))
+
+    def _povezan(self) -> bool:
+        p = self.povezava
+        return p is not None and bool(p.tece)
+
     def _poisci_tuj_hub(self):
         """Poisci Hub, ki ni nas.
 
@@ -756,9 +857,17 @@ class SafeerLink:
         sekundah dobil stiri sporocila »ni naprav«, ceprav iskanje se tece.
         """
         self._izvolitve()       # izvolitev tece od zagona naprej, ne sele po prvi uspesni povezavi
+        if self._samo_rele():
+            ok = self._poskusi_rele()
+            if not ok and not tiho:
+                self._odziv("hub", {"najden": False, "naslov": ""})
+            return ok
         najden = self._poisci_tuj_hub()
         if not najden:
-            # Huba ni nikjer: ce smo v krogu zaupanja, ga zazenemo sami.
+            # Huba v tem omrezju ni: najprej domaci hub prek Global Linka (kot Android), sele nato
+            # - ce smo v krogu zaupanja - ga zazenemo sami.
+            if self._poskusi_rele():
+                return True
             if self._v_krogu() and self._prevzemi_gostovanje():
                 return True
             if not tiho:

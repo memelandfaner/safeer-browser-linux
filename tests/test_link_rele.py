@@ -36,6 +36,39 @@ class Rele(unittest.TestCase):
         self.assertEqual(link_rele._maskiraj(d, m), bytes(b ^ m[i % 4] for i, b in enumerate(d)))
         self.assertEqual(link_rele._maskiraj(b"", m), b"")
 
+    def test_najdi_hub_prek_releja_zaupa_samo_kljucu_iz_kroga(self):
+        from unittest import mock
+        from core import link_tls
+        k_nas, k_tv, k_tab = (base64.b64encode(os.urandom(91)).decode() for _ in range(3))
+        krog = {"clani": {"a": {"kljuc": k_nas, "dodano": 1}, "b": {"kljuc": k_tv, "dodano": 1},
+                          "c": {"kljuc": k_tab, "dodano": 1}}}
+        nas, tv, tab = (link_rele.id_iz_kljuca(k) for k in (k_nas, k_tv, k_tab))
+        poskusi, zaprti = [], []
+
+        class Rele:
+            def __init__(self, cilj, kljuc=None, podpisi=None):
+                self.cilj, self.vrata = cilj, 1000 + len(poskusi)
+                poskusi.append(cilj)
+
+            def zapri(self):
+                zaprti.append(self.cilj)
+
+        # Tablica se oglasi s tujim kljucem (ne sme dobiti zaupanja), TV s pravim.
+        potrdila = {1000: ("fp-tab", k_nas), 1001: ("fp-tv", k_tv)}
+        link_rele._ODSOTNI.clear()
+        with mock.patch.object(link_rele, "LokalniRele", Rele), \
+                mock.patch.object(link_tls, "potrdilo_huba", lambda n, timeout=0: potrdila.get(int(n.split(":")[2].strip("/")), ("", ""))):
+            cilj, rele, odtis = link_rele.najdi_hub_prek_releja(krog, nas, prednost=[tab], zdaj=100.0)
+            self.assertEqual((cilj, odtis), (tv, "fp-tv"))
+            self.assertEqual(poskusi, [tab, tv])            # prednost najprej, nas nikoli
+            self.assertEqual(zaprti, [tab])
+            # Tablica je minuto odsotna: ne klicemo je znova (kvota Workerja).
+            poskusi.clear()
+            potrdila = {1000: ("fp-tv", k_tv)}
+            self.assertEqual(link_rele.najdi_hub_prek_releja(krog, nas, prednost=[tab], zdaj=130.0)[0], tv)
+            self.assertEqual(poskusi, [tv])
+        link_rele._ODSOTNI.clear()
+
 
 if __name__ == "__main__":
     unittest.main()
