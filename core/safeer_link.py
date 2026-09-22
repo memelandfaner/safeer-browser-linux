@@ -675,6 +675,13 @@ class SafeerLink:
                                                hubi=lambda: [h for h in link_hub.poisci_hube_mdns() if h["tls"]],
                                                clan=self._je_clan_kroga, nas_id=link_hub_streznik.id_za_oglas)
             self._hub_gostitelj = g
+            # Global Link: dokler ta racunalnik gosti hub, je dosegljiv svojim napravam tudi zunaj doma.
+            from core import link_rele
+            self._global_link = link_rele.AgentHuba(
+                vrata=lambda: g.streznik.vrata if g.gostimo() else 0,
+                vklopljen=lambda: self.nastavitve.get("global_link", True) is not False,
+                krog_json=lambda: link_krog.krog().json())
+            self._global_link.zazeni()
         return g
 
     @staticmethod

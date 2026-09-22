@@ -1,7 +1,8 @@
 // Safeer Coordination (Global Mesh): Cloudflare Worker + Durable Object za vsako napravo (SQLite, brezplacen nacrt).
 //
-// Samo metapodatki za srecanje seznanjenih naprav: prisotnost (namigi kandidatov, TTL) in kratki
-// signali (ICE/SDP). Nikoli zasebni kljuci ali uporabniska vsebina; vse je v pomnilniku in potece.
+// Srecanje seznanjenih naprav: prisotnost (TTL), kratki signali in rele. Rele je cev za bajte med
+// napravo in njenim hubom: skozi tece TLS Safeer Linka od konca do konca (odtis kljuca huba), zato rele
+// vidi samo sifrirano vsebino. Nikoli zasebni kljuci; prisotnost v SQLite objekta naprave, signali v pomnilniku.
 //
 // Avtentikacija brez skupne skrivnosti: vsaka zahteva je podpisana s kljucem naprave (ECDSA P-256,
 // isti kljuc kot v krogu zaupanja). Id naprave = "n-" + prvih 16 hex SHA-256(SPKI), kot KrogZaupanja.
@@ -18,6 +19,8 @@ export const SIGNAL_TTL = 60;
 export const NAJVEC_SIGNALOV = 64;
 export const ODMIK_URE = 120;
 const ID = /^n-[0-9a-f]{16}$/;
+const KANAL = /^[0-9a-f]{32}$/;
+export const NAJVEC_KANALOV = 32;
 
 const enc = new TextEncoder();
 const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -125,6 +128,17 @@ export async function usmeri(imenik, request, zdaj = Math.floor(Date.now() / 100
     if (!b || typeof b !== "object" || Array.isArray(b)) return json(400, { error: "bad_json" });
   }
   const pot = `${request.method} ${url.pathname}`;
+  // Rele (WebSocket): hub poslusa in sprejema kanale, naprava iz njegovega kroga se poveze.
+  const rele = { "GET /v1/listen": "poslusaj", "GET /v1/accept": "sprejmi", "GET /v1/connect": "povezi" }[pot];
+  if (rele) {
+    if (request.headers.get("upgrade") !== "websocket") return json(426, { error: "websocket_required" });
+    const kanal = url.searchParams.get("kanal") || "";
+    const cilj = rele === "povezi" ? (url.searchParams.get("to") || "") : me;
+    if (!ID.test(cilj) || (rele !== "poslusaj" && !KANAL.test(kanal))) return json(400, { error: "invalid_relay" });
+    if (cilj === me && rele === "povezi") return json(400, { error: "invalid_relay" });
+    return imenik(cilj).fetch(new Request(`https://do/${rele}?kanal=${kanal}`, {
+      headers: { upgrade: "websocket", "x-safeer-me": me } }));
+  }
   let cilj, dejanje;
   if (pot === "POST /v1/presence") { cilj = me; dejanje = "objavi"; }
   else if (pot === "GET /v1/signals") { cilj = me; dejanje = "prevzemi"; }
@@ -138,18 +152,97 @@ export async function usmeri(imenik, request, zdaj = Math.floor(Date.now() / 100
     method: "POST", body: JSON.stringify({ me, cilj, b, zdaj }), headers: { "content-type": "application/json" } }));
 }
 
-/** Durable Object ene naprave: njena prisotnost in signali, namenjeni njej. */
+/**
+ * Durable Object ene naprave: njena prisotnost (SQLite, prezivi uspavanje), signali zanjo in rele do nje.
+ * Rele uporablja WebSocket Hibernation API: mirujoce povezave ne porabljajo casa objekta.
+ */
 export class Koordinacija {
-  constructor() { this.stanje = new Stanje(); }
+  constructor(ctx) {
+    this.ctx = ctx;
+    this.stanje = new Stanje();
+    this.nalozeno = false;
+    try { ctx.setWebSocketAutoResponse?.(new WebSocketRequestResponsePair("ping", "pong")); } catch {}
+  }
+
+  async prisotnost() {
+    if (!this.nalozeno && this.ctx?.storage) {
+      const r = await this.ctx.storage.get("prisotnost");
+      if (r) this.stanje.prisotnost.set(r.device_id, r);
+      this.nalozeno = true;
+    }
+  }
+
   async fetch(request) {
-    const dejanje = new URL(request.url).pathname.slice(1);
+    const url = new URL(request.url);
+    const dejanje = url.pathname.slice(1);
+    await this.prisotnost();
+    if (request.headers.get("upgrade") === "websocket") {
+      const me = request.headers.get("x-safeer-me") || "";
+      const par = new WebSocketPair();
+      const napaka = this.rele(dejanje, me, url.searchParams.get("kanal") || "", par[1]);
+      if (napaka) return json(napaka[0], napaka[1]);
+      return new Response(null, { status: 101, webSocket: par[0] });
+    }
     const { me, cilj, b, zdaj } = await request.json();
     this.stanje.pocisti(zdaj);
-    if (dejanje === "objavi") return json(...this.stanje.objavi(me, b, zdaj));
+    if (dejanje === "objavi") {
+      const odgovor = this.stanje.objavi(me, b, zdaj);
+      if (odgovor[0] === 200) await this.ctx?.storage?.put("prisotnost", this.stanje.prisotnost.get(me));
+      return json(...odgovor);
+    }
     if (dejanje === "prevzemi") return json(...this.stanje.prevzemi(me));
     if (dejanje === "poisci") return json(...this.stanje.poisci(me, cilj));
     if (dejanje === "poslji") return json(...this.stanje.poslji(me, b, zdaj));
     return json(404, { error: "not_found" });
+  }
+
+  /** Sprejme WebSocket `ws` za dejanje releja; vrne [koda, telo] ob zavrnitvi ali null. */
+  rele(dejanje, me, kanal, ws, zdaj = Math.floor(Date.now() / 1000)) {
+    const ctx = this.ctx;
+    if (dejanje === "poslusaj") {
+      for (const star of ctx.getWebSockets("poslusa")) { try { star.close(1000, "zamenjan"); } catch {} }
+      ctx.acceptWebSocket(ws, ["poslusa"]);
+      return null;
+    }
+    if (dejanje === "povezi") {
+      const r = [...this.stanje.prisotnost.values()][0];
+      // Enak odgovor, ce huba ni ali naprava ni v njegovem krogu: tujec ne izve, ali hub obstaja.
+      if (!r || r.expires_at <= zdaj || !r.allow.includes(me)) return [404, { error: "not_available" }];
+      const poslusa = ctx.getWebSockets("poslusa")[0];
+      if (!poslusa) return [404, { error: "not_available" }];
+      if (ctx.getWebSockets("k:" + kanal).length) return [409, { error: "channel_in_use" }];
+      if (ctx.getWebSockets("c").length >= NAJVEC_KANALOV) return [429, { error: "too_many_channels" }];
+      ctx.acceptWebSocket(ws, ["c", "k:" + kanal]);
+      poslusa.send(JSON.stringify({ type: "incoming", kanal, from: me }));
+      return null;
+    }
+    if (dejanje === "sprejmi") {
+      const odjemalec = ctx.getWebSockets("k:" + kanal).find((w) => ctx.getTags(w).includes("c"));
+      if (!odjemalec || ctx.getWebSockets("k:" + kanal).length !== 1) return [404, { error: "no_channel" }];
+      ctx.acceptWebSocket(ws, ["h", "k:" + kanal]);
+      odjemalec.send("ready");
+      return null;
+    }
+    return [404, { error: "not_found" }];
+  }
+
+  /** Bajti gredo nespremenjeni drugi strani istega kanala (TLS Safeer Linka od konca do konca). */
+  webSocketMessage(ws, sporocilo) {
+    const k = this.ctx.getTags(ws).find((t) => t.startsWith("k:"));
+    if (!k) return;
+    const druga = this.ctx.getWebSockets(k).find((w) => w !== ws);
+    if (druga) { try { druga.send(sporocilo); } catch { this.zapri(k); } }
+  }
+
+  webSocketClose(ws) {
+    const k = this.ctx.getTags(ws).find((t) => t.startsWith("k:"));
+    if (k) this.zapri(k);
+  }
+
+  webSocketError(ws) { this.webSocketClose(ws); }
+
+  zapri(k) {
+    for (const w of this.ctx.getWebSockets(k)) { try { w.close(1000, "konec"); } catch {} }
   }
 }
 
