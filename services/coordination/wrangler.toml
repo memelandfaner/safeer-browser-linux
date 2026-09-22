@@ -1,0 +1,19 @@
+# Safeer Coordination na link.safeer.si (Cloudflare Workers, brezplacen nacrt: 100.000 zahtev/dan).
+# Postavitev: npx wrangler deploy (iz te mape). Dokler SAFEER_GLOBAL_LINK_ENABLED ni "true",
+# odgovori samo /health.
+name = "safeer-coordination"
+main = "worker.mjs"
+compatibility_date = "2025-09-01"
+workers_dev = false
+routes = [{ pattern = "link.safeer.si", custom_domain = true }]
+
+[vars]
+SAFEER_GLOBAL_LINK_ENABLED = "false"
+
+[[durable_objects.bindings]]
+name = "KOORDINACIJA"
+class_name = "Koordinacija"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Koordinacija"]
