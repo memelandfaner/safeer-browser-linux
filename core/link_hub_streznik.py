@@ -721,6 +721,36 @@ def _krajevni_ip() -> str:
             pass
 
 
+def je_pred(a_prio: int, a_id: str, b_prio: int, b_id: str) -> bool:
+    """Izvolitev huba, isto pravilo kot IzvolitevHuba.jePred na Androidu: visja prioriteta, pri enaki
+    manjsi id. Vsaka naprava tako izracuna istega zmagovalca brez pogovora."""
+    if a_id == b_id:
+        return False
+    if a_prio != b_prio:
+        return a_prio > b_prio
+    return a_id < b_id
+
+
+def boljsi_hub(hubi: List[dict], nas_id: str, nas_odtis: str = "", prioriteta: int = PRIORITETA_LINUX,
+               clan: Optional[Callable[[str], bool]] = None) -> Optional[dict]:
+    """Oglasen hub clana kroga zaupanja, ki je pri izvolitvi pred nami (ali None: gostimo mi).
+
+    Nas lastni oglas (isti id ali odtis) in oglasi zunaj kroga ne stejejo - tuj oglas nima glasu.
+    """
+    naj = None
+    for h in hubi:
+        hid = str(h.get("id") or "")
+        if not hid or hid == nas_id or (nas_odtis and str(h.get("fp") or "").lower() == nas_odtis.lower()):
+            continue
+        if clan is not None and not clan(hid):
+            continue
+        if naj is None or je_pred(int(h.get("prio") or 0), hid, int(naj.get("prio") or 0), str(naj["id"])):
+            naj = h
+    if naj is not None and je_pred(int(naj.get("prio") or 0), str(naj["id"]), prioriteta, nas_id):
+        return naj
+    return None
+
+
 def naj_gostimo(najden_hub: Optional[dict], nas_id: str = "", nas_odtis: str = "") -> bool:
     """Ali naj racunalnik zdaj sam gosti Hub?
 
@@ -770,8 +800,16 @@ class HubGostitelj:
     """
 
     def __init__(self, poisci: Callable[[], Optional[dict]], ime: str = "Safeer Control",
-                 streznik: Optional["HubStreznik"] = None, oglas: Optional["Oglas"] = None) -> None:
+                 streznik: Optional["HubStreznik"] = None, oglas: Optional["Oglas"] = None,
+                 hubi: Optional[Callable[[], List[dict]]] = None,
+                 clan: Optional[Callable[[str], bool]] = None,
+                 nas_id: Optional[Callable[[], str]] = None) -> None:
         self.poisci = poisci
+        # Gateway (izvolitev): vsi oglaseni hubi s prioriteto, clanstvo v krogu in nas id za oglas.
+        # Brez njih (ali ko mDNS ne vidi nobenega huba) velja staro pravilo »samo, kadar drugega ni«.
+        self.hubi = hubi
+        self.clan = clan
+        self.nas_id_fn = nas_id
         self.ime = ime
         self.streznik = streznik or HubStreznik()
         self.oglas = oglas or Oglas()
@@ -787,8 +825,20 @@ class HubGostitelj:
             najden = self.poisci()
         except Exception:
             najden = None
+        try:
+            oglaseni = self.hubi() if self.hubi is not None else []
+        except Exception:
+            oglaseni = []
         with self._zaklep:
-            if naj_gostimo(najden, self.nas_id, self.streznik.odtis if self.streznik.tece() else ""):
+            nas_odtis = self.streznik.odtis if self.streznik.tece() else ""
+            if oglaseni:
+                # Gateway: racunalnik (80) je boljsi koordinator od televizorja (60), tablice (40) in
+                # telefona (20); umaknemo se samo boljsemu clanu kroga (npr. domacemu strezniku, 100).
+                nas_id = self.nas_id or (self.nas_id_fn() if self.nas_id_fn is not None else "")
+                gostimo = boljsi_hub(oglaseni, nas_id, nas_odtis, clan=self.clan) is None
+            else:
+                gostimo = naj_gostimo(najden, self.nas_id, nas_odtis)
+            if gostimo:
                 if self.streznik.tece():
                     return True
                 if not self.streznik.zazeni():

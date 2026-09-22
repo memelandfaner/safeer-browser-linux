@@ -664,9 +664,39 @@ class SafeerLink:
         g = getattr(self, "_hub_gostitelj", None)
         if g is None:
             ime = "Safeer Control (" + link_hub._ime_naprave().split(".")[0] + ")"
-            g = link_hub_streznik.HubGostitelj(poisci=self._poisci_tuj_hub, ime=ime)
+            g = link_hub_streznik.HubGostitelj(poisci=self._poisci_tuj_hub, ime=ime,
+                                               hubi=lambda: [h for h in link_hub.poisci_hube_mdns() if h["tls"]],
+                                               clan=self._clan_kroga, nas_id=link_hub_streznik.id_za_oglas)
             self._hub_gostitelj = g
         return g
+
+    @staticmethod
+    def _clan_kroga(id_naprave: str) -> bool:
+        try:
+            return link_krog.krog().clan(id_naprave) is not None
+        except Exception:
+            return False
+
+    def _izvolitve(self) -> None:
+        """Gateway v0.1: dokler smo odjemalec tujega huba, vsakih 90 s preverimo izvolitev (kot
+        HubKrmilnik na Androidu). Racunalnik v krogu zaupanja je boljsi koordinator od televizorja,
+        tablice in telefona: prevzame, tisti se ob svoji izvolitvi umakne in se poveze nanj."""
+        if getattr(self, "_izvolitve_tecejo", False):
+            return
+        self._izvolitve_tecejo = True
+
+        def zanka() -> None:
+            time.sleep(5)
+            while True:
+                try:
+                    g = getattr(self, "_hub_gostitelj", None)
+                    if self._v_krogu() and not (g is not None and g.gostimo()) and not self._povezave_ni():
+                        self._prevzemi_gostovanje()
+                except Exception as e:  # noqa: BLE001
+                    print("[SafeerLink] izvolitev ni uspela:", e)
+                time.sleep(90)
+
+        threading.Thread(target=zanka, name="safeer-izvolitev", daemon=True).start()
 
     def _prevzemi_gostovanje(self) -> bool:
         """Ce Huba ni nikjer, ga zazenemo sami in se nanj povezemo.
@@ -1038,6 +1068,7 @@ class SafeerLink:
             except Exception:
                 pass
         if povezan:
+            self._izvolitve()
             return
         # Sredisce je ugasnilo ali dobilo nov naslov. Poiscemo drugega - npr. telefon prevzame,
         # ko televizor ugasne. Ce je bila ta naprava z njim ze seznanjena, se poveze brez kode.
