@@ -221,6 +221,17 @@ class Hub:
         except Exception:
             return None
 
+    @staticmethod
+    def ime_v_krogu(device_id: str) -> Optional[str]:
+        """Ime naprave iz kroga zaupanja (skupno vsem hubom), ali None."""
+        try:
+            k = link_krog.krog()
+            clan = k.clan(device_id) or k.clan_za_id(device_id)
+            ime = str((clan or {}).get("ime") or "")
+            return ime if ime and ime != device_id else None
+        except Exception:
+            return None
+
     def seznam_json(self) -> str:
         naprave = []
         for n in self.povezane():
@@ -228,6 +239,11 @@ class Hub:
             naprava = self.naprava_iz_kljuca(n.id)
             if naprava:
                 zapis["device"] = naprava
+                # Ime naprave s kljucem zivi v krogu (dal ga je uporabnik na katerem koli hubu).
+                ime = self.ime_v_krogu(n.id)
+                if ime:
+                    zapis["own_name"] = n.ime
+                    zapis["name"] = ime
             naprave.append(zapis)
         return json.dumps({"type": "cast.devices", "devices": naprave}, ensure_ascii=False)
 

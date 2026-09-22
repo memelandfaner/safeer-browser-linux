@@ -247,6 +247,18 @@ class NapravaIzKljuca(unittest.TestCase):
         self.assertEqual(naprave["pc-x-control"].get("device"), jedro)
         self.assertNotIn("device", naprave["tv-brez"], "brez kljuca v krogu ni naprave")
 
+    def test_ime_iz_kroga(self):
+        """Ime, ki ga je uporabnik dal na drugem hubu (v krogu), velja tudi na tem."""
+        kljuc = link_krog.javni_kljuc_b64()
+        krog = link_krog.Krog()
+        krog.dodaj("tv-1", kljuc, "Dnevna soba", "tv", "hub")
+        hub = link_hub_streznik.Hub(odtis="ab" * 32)
+        hub.obdelaj(LaznaPovezava(), _prijava("tv-1", vloga="receiver"))
+        with mock.patch.object(link_krog, "krog", return_value=krog):
+            tv = json.loads(hub.seznam_json())["devices"][0]
+        self.assertEqual(tv["name"], "Dnevna soba")
+        self.assertNotEqual(tv["own_name"], "Dnevna soba")
+
 
 class Zdravje(unittest.TestCase):
     def test_steje_prejemnike_in_posiljatelje(self):
