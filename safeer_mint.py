@@ -3532,6 +3532,11 @@ class SafeerMintBrowser(Gtk.Window):
     def on_permission_request(self, webview, request):
         """Obravnava zahteve za dostop do kamere, mikrofona ali geolokacije z možnostjo privolitve uporabnika."""
         try:
+            # Zascitena vsebina (DRM: YouTube, Netflix ...) brez vprasanja - uporabnik ve, kaj gleda
+            # (Matej, 22. 9. 2026). Prej je padla v splosno okno »dostop do naprav«.
+            if "MediaKeySystem" in request.__class__.__name__:
+                request.allow()
+                return True
             policy = self.config.get("permissions_policy", "ask")
             if policy == "deny":
                 request.deny()
