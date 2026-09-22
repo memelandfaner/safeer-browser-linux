@@ -40,6 +40,7 @@ if KOREN not in sys.path:
 
 import gi  # noqa: E402
 
+gi.require_version("Gdk", "3.0")
 gi.require_version("Gtk", "3.0")
 gi.require_version("WebKit2", "4.1")
 from gi.repository import Gio, GLib, Gtk, WebKit2  # noqa: E402
