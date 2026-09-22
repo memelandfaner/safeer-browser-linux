@@ -179,3 +179,56 @@ class Zdruzevanje(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PodpisaniVnosi(unittest.TestCase):
+    """Krog, ki ne pride od nasega huba (naprava, rele): nov clan velja samo s podpisom znanega clana."""
+
+    def setUp(self):
+        self.kljuc = link_krog.javni_kljuc_b64()
+        self.jaz = link_krog.id_iz_kljuca(self.kljuc)
+        self.krog = link_krog.Krog()
+        self.krog.dodaj(self.jaz, self.kljuc, "Ta naprava", "linux", self.jaz, dodano=100.0)
+
+    def test_nas_vnos_je_podpisan_in_ga_druga_naprava_sprejme(self):
+        tuj_kljuc = link_krog.javni_kljuc_b64()   # v testu ista naprava; podpisnik je kljuc te naprave
+        self.assertTrue(self.krog.dodaj("telefon", tuj_kljuc, "Telefon", "phone", self.jaz, dodano=200.0))
+        vnos = self.krog.json()["clani"]["telefon"]
+        self.assertIn("podpis", vnos)
+        self.assertTrue(link_krog.preveri_podpis(
+            self.kljuc, link_krog.podatki_clana("telefon", tuj_kljuc, "phone", 200.0, self.jaz), vnos["podpis"]))
+        drugi = link_krog.Krog()
+        drugi.dodaj(self.jaz, self.kljuc, "Ta naprava", "linux", self.jaz, dodano=100.0)
+        self.assertTrue(drugi.zdruzi(self.krog.json(), preveri_podpise=True))
+        self.assertTrue(drugi.je_clan("telefon"))
+
+    def test_nepodpisan_ali_ponarejen_vnos_ne_pride_v_krog(self):
+        tuj = {"clani": {"vsiljivec": {"kljuc": self.kljuc, "ime": "Vsiljivec", "platforma": "linux",
+                                       "dodano": 300.0, "dodal": self.jaz}}}
+        self.assertFalse(self.krog.zdruzi(tuj, preveri_podpise=True))
+        self.assertFalse(self.krog.je_clan("vsiljivec"))
+        # Podpis za drug vnos (prestavljen k drugemu id-ju) ne velja.
+        podpis = link_krog.podpisi(link_krog.podatki_clana("telefon", self.kljuc, "phone", 300.0, self.jaz))
+        tuj["clani"]["vsiljivec"]["podpis"] = podpis
+        self.assertFalse(self.krog.zdruzi(tuj, preveri_podpise=True))
+        self.assertFalse(self.krog.je_clan("vsiljivec"))
+
+    def test_hub_lahko_poslje_krog_brez_podpisov_kot_doslej(self):
+        tuj = {"clani": {"stara-naprava": {"kljuc": self.kljuc, "ime": "Stara", "platforma": "tv",
+                                           "dodano": 300.0, "dodal": "hub"}}}
+        self.assertTrue(self.krog.zdruzi(tuj))
+        self.assertTrue(self.krog.je_clan("stara-naprava"))
+
+    def test_umik_brez_podpisa_ne_umakne_naprave(self):
+        self.krog.dodaj("telefon", self.kljuc, "Telefon", "phone", self.jaz, dodano=200.0)
+        self.assertFalse(self.krog.zdruzi({"umiki": {"telefon": {"umaknjeno": 400.0, "umaknil": "vsiljivec"}}},
+                                          preveri_podpise=True))
+        self.assertTrue(self.krog.je_clan("telefon"))
+        self.krog.umakni("telefon", self.jaz, ob=500.0)
+        umik = self.krog.json()["umiki"]["telefon"]
+        self.assertIn("podpis", umik)
+        drugi = link_krog.Krog()
+        drugi.dodaj(self.jaz, self.kljuc, "Ta naprava", "linux", self.jaz, dodano=100.0)
+        drugi.dodaj("telefon", self.kljuc, "Telefon", "phone", self.jaz, dodano=200.0)
+        self.assertTrue(drugi.zdruzi(self.krog.json(), preveri_podpise=True))
+        self.assertFalse(drugi.je_clan("telefon"))
