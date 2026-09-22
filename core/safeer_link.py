@@ -694,7 +694,7 @@ class SafeerLink:
             return False
 
     def _izvolitve(self) -> None:
-        """Gateway v0.1: dokler smo odjemalec tujega huba, vsakih 90 s preverimo izvolitev (kot
+        """Gateway v0.1: dokler ne gostimo sami, vsakih 90 s preverimo izvolitev (kot
         HubKrmilnik na Androidu). Racunalnik v krogu zaupanja je boljsi koordinator od televizorja,
         tablice in telefona: prevzame, tisti se ob svoji izvolitvi umakne in se poveze nanj."""
         if getattr(self, "_izvolitve_tecejo", False):
@@ -706,7 +706,10 @@ class SafeerLink:
             while True:
                 try:
                     g = getattr(self, "_hub_gostitelj", None)
-                    if self._v_krogu() and not (g is not None and g.gostimo()) and not self._povezave_ni():
+                    # Tudi kadar povezave ni: prej je racunalnik ostal brez huba in brez povezave, ce se
+                    # odjemalec ni mogel prijaviti na televizor (npr. v pripravljenosti), ceprav je
+                    # racunalnik po prioriteti izvoljeni hub. preveri() odloci po prioriteti (80 > 60 ...).
+                    if self._v_krogu() and not (g is not None and g.gostimo()):
                         self._prevzemi_gostovanje()
                 except Exception as e:  # noqa: BLE001
                     print("[SafeerLink] izvolitev ni uspela:", e)
@@ -752,6 +755,7 @@ class SafeerLink:
         `tiho` pomeni, da neuspeha ne javimo strani - med hitrim iskanjem bi uporabnik v treh
         sekundah dobil stiri sporocila »ni naprav«, ceprav iskanje se tece.
         """
+        self._izvolitve()       # izvolitev tece od zagona naprej, ne sele po prvi uspesni povezavi
         najden = self._poisci_tuj_hub()
         if not najden:
             # Huba ni nikjer: ce smo v krogu zaupanja, ga zazenemo sami.
@@ -762,11 +766,16 @@ class SafeerLink:
             return False
         gostitelj = getattr(self, "_hub_gostitelj", None)
         if gostitelj is not None and gostitelj.gostimo() and not najden.get("gostimo"):
-            # Drug Hub je spet tu: nas se umakne, da hisa nima dveh sredisc.
+            # Drug Hub je spet tu: nas se umakne, ce je boljsi (izvolitev po prioriteti).
             try:
                 gostitelj.preveri()
             except Exception:
                 pass
+            if gostitelj.gostimo():
+                # Mi ostajamo izvoljeni (racunalnik 80 > TV 60 ...): nas odjemalec gre na nas hub, ne na
+                # najdenega - ta se nam ob svoji izvolitvi umakne. Prej je racunalnik gostil, njegov
+                # odjemalec pa je visel na televizorju (tudi v pripravljenosti): dve sredisci v hisi.
+                return self._prevzemi_gostovanje()
         naslov, fp = najden["naslov"], najden.get("fp") or ""
         if najden.get("isti"):
             # Isti Hub (isti naslov ali isti odtis na novem naslovu): naslov posodobimo, zeton velja.
