@@ -119,7 +119,8 @@ class Hub:
     sporocilo in kaj dobi posiljatelj nazaj. Tako je preizkusljiva brez vticnikov in TLS.
     """
 
-    def __init__(self, odtis: str = "", nas_id: str = "", ura: Callable[[], float] = _zdaj) -> None:
+    def __init__(self, odtis: str = "", nas_id: str = "", ura: Callable[[], float] = _zdaj,
+                 pot_zetonov: str = "") -> None:
         self.odtis = (odtis or "").lower()
         self.nas_id = nas_id
         self.ura = ura
@@ -128,7 +129,13 @@ class Hub:
         self._izzivi: Dict[str, tuple] = {}        # nonce -> (device_id, cas)
         self._vstopnice: Dict[str, tuple] = {}     # vstopnica -> (device_id, cas)
         self._prijave: Dict[str, dict] = {}        # pair_id -> seznanitev s kodo
+        self._pridruzitve: Dict[str, dict] = {}    # qr_id -> pridruzitev s QR kodo
+        #: "ip:vrata", kot ga naprava potrebuje v QR kodi (nastavi HubStreznik).
+        self.naslov_za_qr = ""
         self._zetoni: Dict[str, tuple] = {}        # zeton -> (device_id, ime, cas)
+        #: Zetoni seznanitve prezivijo ponovni zagon (naprava, ki kljuca se ni vpisala, ne ostane zunaj).
+        self._pot_zetonov = pot_zetonov
+        self._nalozi_zetone()
         self.ob_spremembi: Optional[Callable[[], None]] = None
         #: Nova naprava caka na kodo: (ime naprave, koda) - racunalnik pokaze obvestilo.
         self.ob_kodi: Optional[Callable[[str, str], None]] = None
@@ -206,6 +213,31 @@ class Hub:
         return vstopnica
 
     # ------------------------------------------------------------------ seznanitev s kodo
+
+    def _nalozi_zetone(self) -> None:
+        if not self._pot_zetonov:
+            return
+        try:
+            with open(self._pot_zetonov, encoding="utf-8") as d:
+                for z, v in (json.load(d) or {}).items():
+                    if isinstance(v, list) and len(v) == 3:
+                        self._zetoni[str(z)] = (str(v[0]), str(v[1]), float(v[2]))
+        except Exception:
+            pass
+
+    def _shrani_zetone(self) -> None:
+        """Klice se pod kljucavnico. Datoteka je samo za uporabnika (0600)."""
+        if not self._pot_zetonov:
+            return
+        import os
+        try:
+            os.makedirs(os.path.dirname(self._pot_zetonov), exist_ok=True)
+            zacasna = self._pot_zetonov + ".tmp"
+            with open(os.open(zacasna, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as d:
+                json.dump({z: list(v) for z, v in self._zetoni.items()}, d)
+            os.replace(zacasna, self._pot_zetonov)
+        except Exception:
+            pass
 
     def _pocisti_prijave(self) -> None:
         meja = self.ura() - PIN_VELJA_S
@@ -316,8 +348,57 @@ class Hub:
                 self._zetoni.pop(najstarejsi, None)
             zeton = "saf_pc_" + link_ws.nakljucni(24)
             self._zetoni[zeton] = (device_id, p["ime"], self.ura())
+            self._shrani_zetone()
             self._koncaj_prijavo(pair_id)
             return zeton, None
+
+    # ------------------------------------------------------------------ pridruzitev s QR kodo
+
+    def ustvari_pridruzitev(self) -> tuple:
+        """(qr_id, skrivnost). Hub hrani samo SHA-256 skrivnosti - iz njega je ne more izdati."""
+        import hashlib
+        with self._zaklep:
+            self._pocisti_pridruzitve()
+            while len(self._pridruzitve) >= NAJVEC_CAKAJOCIH:
+                self._pridruzitve.pop(next(iter(self._pridruzitve)), None)
+            qr_id = link_ws.nakljucni(12)
+            skrivnost = link_ws.nakljucni(16)
+            self._pridruzitve[qr_id] = {"odtis": hashlib.sha256(skrivnost.encode()).hexdigest(),
+                                        "nastala": self.ura(), "poskusov": 0}
+        return qr_id, skrivnost
+
+    def _pocisti_pridruzitve(self) -> None:
+        meja = self.ura() - PIN_VELJA_S
+        for k in [k for k, p in self._pridruzitve.items() if p["nastala"] < meja]:
+            self._pridruzitve.pop(k, None)
+
+    def preklici_pridruzitev(self, qr_id: str) -> bool:
+        with self._zaklep:
+            return self._pridruzitve.pop((qr_id or "").strip(), None) is not None
+
+    def pridruzi(self, qr_id: str, skrivnost: str, device_id: str, ime: str) -> tuple:
+        """Naprava s skrivnostjo iz QR: (zeton, napaka). Skrivnost velja enkrat, ugibanje je omejeno."""
+        import hashlib
+        import hmac
+        device_id = (device_id or "").strip()[:NAJVEC_IMENA]
+        if not device_id:
+            return None, "manjka_device_id"
+        with self._zaklep:
+            self._pocisti_pridruzitve()
+            p = self._pridruzitve.get((qr_id or "").strip())
+            if not p:
+                return None, "qr_ne_obstaja"
+            if not hmac.compare_digest(hashlib.sha256((skrivnost or "").encode()).hexdigest(), p["odtis"]):
+                p["poskusov"] += 1
+                if p["poskusov"] >= NAJVEC_POSKUSOV:
+                    self._pridruzitve.pop(qr_id, None)
+                    return None, "prevec_poskusov"
+                return None, "qr_ne_obstaja"
+            self._pridruzitve.pop(qr_id, None)
+            zeton = "saf_pc_" + link_ws.nakljucni(24)
+            self._zetoni[zeton] = (device_id, (ime or device_id).strip()[:NAJVEC_IMENA], self.ura())
+            self._shrani_zetone()
+        return zeton, None
 
     def naprava_zetona(self, zeton: str) -> Optional[tuple]:
         """(device_id, ime) za zeton iz seznanitve, ali None."""
@@ -569,6 +650,26 @@ class Hub:
                 self.objavi_naprave()
             return self._potrditev(id_sporocila, "trust", "accepted")
 
+        if tip == "pair.invite":
+            # Naprava v Linku (televizor, tablica) pokaze QR kodo za novo napravo: sredisce ustvari
+            # skrivnost, naprava jo samo narise. Tako se lahko nova naprava pridruzi na katerikoli napravi.
+            tovor = sporocilo.get("payload") if isinstance(sporocilo.get("payload"), dict) else {}
+            self.preklici_pridruzitev(str(tovor.get("preklici") or ""))
+            qr_id, skrivnost = self.ustvari_pridruzitev()
+            povezava = self.najdi(moj_id)
+            if povezava is not None and povezava.povezava is not None:
+                povezava.povezava.poslji(json.dumps({"id": str(int(self.ura() * 1000)), "type": "pair.invite.ok",
+                                                     "payload": {"qr_id": qr_id, "secret": skrivnost, "fp": self.odtis,
+                                                                 "address": self.naslov_za_qr,
+                                                                 "expires_in_seconds": int(PIN_VELJA_S)}},
+                                                    ensure_ascii=False))
+            return self._potrditev(id_sporocila, "pair", "accepted")
+
+        if tip == "pair.invite.cancel":
+            tovor = sporocilo.get("payload") if isinstance(sporocilo.get("payload"), dict) else {}
+            self.preklici_pridruzitev(str(tovor.get("qr_id") or ""))
+            return self._potrditev(id_sporocila, "pair", "accepted")
+
         if tip == "pair.reject":
             tovor = sporocilo.get("payload")
             self.zavrni_seznanitev(str((tovor if isinstance(tovor, dict) else {}).get("pair_id") or ""))
@@ -681,7 +782,7 @@ class _Obravnava(http.server.BaseHTTPRequestHandler):
             self._napaka(401, "Naprava ni seznanjena.", "naprava_ni_seznanjena")
             return
         if pot in ("/cast/ticket", "/cast/pair/start", "/cast/pair/spake", "/cast/pair/finish",
-                   "/cast/pair/cancel", "/cast/trust/enroll"):
+                   "/cast/pair/cancel", "/cast/trust/enroll", "/cast/pair/qr/join"):
             # Pot obstaja, a ne kot GET. Po tem naprava loci Safeer Hub od poljubnega streznika.
             self._napaka(405, "Ta način za to pot ni dovoljen.", "metoda_ni_dovoljena")
             return
@@ -695,6 +796,14 @@ class _Obravnava(http.server.BaseHTTPRequestHandler):
             return
         if pot == "/cast/auth/challenge":
             telo = self._telo()
+            try:
+                clan = link_krog.krog().clan_za_id(str(telo.get("device_id") or "").strip())
+            except Exception:
+                clan = None
+            if not clan:
+                # Kot HubUsmerjevalnik: 401 pove napravi, da jo vodimo pod drugim id-jem (alias) ali z zetonom.
+                self._napaka(401, "Naprava ni v krogu zaupanja.", "naprava_ni_v_krogu")
+                return
             izziv = self._hub.izziv(str(telo.get("device_id") or ""))
             if izziv is None:
                 self._napaka(429, "Preveč prijav; poskusite čez nekaj minut.", "prevec_prijav")
@@ -732,6 +841,16 @@ class _Obravnava(http.server.BaseHTTPRequestHandler):
                     self._napaka(400, "Manjka ali neveljaven javni ključ.", napaka)
                 return
             self._odgovori(200, odgovor)
+            return
+        if pot == "/cast/pair/qr/join":
+            telo = self._telo()
+            zeton, napaka = self._hub.pridruzi(str(telo.get("qr_id") or ""), str(telo.get("secret") or ""),
+                                               str(telo.get("device_id") or ""), str(telo.get("name") or ""))
+            if zeton is None:
+                koda = 429 if napaka == "prevec_poskusov" else 400 if napaka == "manjka_device_id" else 404
+                self._napaka(koda, "Koda ni veljavna." if koda != 400 else "Manjka device_id.", napaka or "qr_ne_obstaja")
+                return
+            self._odgovori(200, {"approved": True, "token": zeton, "hub_id": IDENTITETA_HUBA, "fp": self._hub.odtis})
             return
         if pot in ("/cast/pair/start", "/cast/pair/spake", "/cast/pair/finish", "/cast/pair/cancel"):
             self._seznanitev(pot, self._telo())
@@ -915,7 +1034,9 @@ class HubStreznik:
                 nas_id = link_krog.id_iz_kljuca(link_krog.javni_kljuc_b64())
             except Exception:
                 pass
-            self.hub = Hub(odtis=self.odtis, nas_id=nas_id)
+            import os
+            self.hub = Hub(odtis=self.odtis, nas_id=nas_id,
+                           pot_zetonov=os.path.join(link_krog._mapa_nastavitev(), "hub-zetoni.json"))
             self.hub.ob_kodi = _obvestilo_kode
             streznik = None
             # Privzeta vrata naprave poznajo tudi brez mDNS; ce so zasedena, vzamemo katerakoli.
@@ -930,6 +1051,11 @@ class HubStreznik:
             streznik.socket = ctx.wrap_socket(streznik.socket, server_side=True)
             streznik.hub = self.hub          # type: ignore[attr-defined]
             self.vrata = streznik.server_address[1]
+            try:
+                self.hub.naslov_za_qr = "%s:%d" % (_krajevni_ip(), self.vrata)
+            except Exception:
+                self.hub.naslov_za_qr = ""
+
             self._streznik = streznik
             self._nit = threading.Thread(target=streznik.serve_forever, name="safeer-hub", daemon=True)
             self._nit.start()
