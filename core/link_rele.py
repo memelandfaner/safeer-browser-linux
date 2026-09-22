@@ -81,6 +81,15 @@ class WsOdjemalec:
     def __init__(self, pot: str, glave: dict, gostitelj: str = GOSTITELJ, rok_s: float = 15.0) -> None:
         surovi = socket.create_connection((gostitelj, 443), timeout=rok_s)
         self.s = ssl.create_default_context().wrap_socket(surovi, server_hostname=gostitelj)
+        try:
+            self._rokovanje(pot, glave, gostitelj)
+        except Exception:
+            self.s.close()
+            raise
+        self.s.settimeout(None)
+        self._pisi = threading.Lock()
+
+    def _rokovanje(self, pot: str, glave: dict, gostitelj: str) -> None:
         kljuc = base64.b64encode(os.urandom(16)).decode()
         zahteva = [f"GET {pot} HTTP/1.1", f"Host: {gostitelj}", f"User-Agent: {UA}", "Upgrade: websocket", "Connection: Upgrade",
                    f"Sec-WebSocket-Key: {kljuc}", "Sec-WebSocket-Version: 13"]
@@ -101,8 +110,6 @@ class WsOdjemalec:
         pricakovano = base64.b64encode(hashlib.sha1((kljuc + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest()).decode()
         if pricakovano.encode() not in glava:
             raise ConnectionError("napacen odgovor rokovanja")
-        self.s.settimeout(None)
-        self._pisi = threading.Lock()
 
     def _beri(self, n: int) -> bytes:
         out = self._ostanek[:n]
@@ -230,12 +237,15 @@ class AgentHuba:
 
     def _kanal(self, kanal: str) -> None:
         pot = f"/v1/accept?kanal={kanal}"
+        tcp = None
         try:
             tcp = socket.create_connection(("127.0.0.1", self.vrata()), timeout=10)
             tcp.settimeout(None)
             ws = WsOdjemalec(pot, podpisane_glave("GET", pot))
         except Exception as e:
             self.dnevnik(f"[Global Link] kanala ni bilo mogoce odpreti: {e}")
+            if tcp is not None:
+                tcp.close()
             return
         cev(ws, tcp)
 
