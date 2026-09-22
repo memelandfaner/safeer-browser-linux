@@ -228,6 +228,26 @@ class PrijavaSPodpisom(unittest.TestCase):
             self.assertIsNone(self.hub.vstopnica_s_podpisom("n-ffffffffffffffff", izziv["nonce"], podpis))
 
 
+class NapravaIzKljuca(unittest.TestCase):
+    """Brskalnik in Control na istem racunalniku (isti kljuc) sta ena naprava: polje device je enako."""
+
+    def test_sorodnika_imata_isto_napravo(self):
+        kljuc = link_krog.javni_kljuc_b64()
+        krog = link_krog.Krog()
+        krog.dodaj("pc-x", kljuc, "Safeer (x)", "linux", "hub")
+        krog.dodaj("pc-x-control", kljuc, "Safeer Control (x)", "linux", "pc-x")
+        hub = link_hub_streznik.Hub(odtis="ab" * 32)
+        hub.obdelaj(LaznaPovezava(), _prijava("pc-x", vloga="sender"))
+        hub.obdelaj(LaznaPovezava(), _prijava("pc-x-control", vloga="sender"))
+        hub.obdelaj(LaznaPovezava(), _prijava("tv-brez", vloga="receiver"))
+        with mock.patch.object(link_krog, "krog", return_value=krog):
+            naprave = {d["id"]: d for d in json.loads(hub.seznam_json())["devices"]}
+        jedro = link_krog.id_iz_kljuca(kljuc)
+        self.assertEqual(naprave["pc-x"].get("device"), jedro)
+        self.assertEqual(naprave["pc-x-control"].get("device"), jedro)
+        self.assertNotIn("device", naprave["tv-brez"], "brez kljuca v krogu ni naprave")
+
+
 class Zdravje(unittest.TestCase):
     def test_steje_prejemnike_in_posiljatelje(self):
         hub = link_hub_streznik.Hub(odtis="ab" * 32)

@@ -208,9 +208,28 @@ class Hub:
                     return i
         return None
 
+    @staticmethod
+    def naprava_iz_kljuca(device_id: str) -> Optional[str]:
+        """Fizicna naprava za id: id iz kljuca (n-<16 hex>) njenega clana v krogu (HubUsmerjevalnik.napravaIzKljuca).
+
+        Brskalnik in Safeer Control na istem racunalniku imata isti kljuc, torej isto napravo; vmesnik ju
+        zdruzi. Naprava brez kljuca v krogu je nima.
+        """
+        try:
+            clan = link_krog.krog().clan_za_id(device_id)
+            return link_krog.id_iz_kljuca(str(clan["kljuc"])) if clan and clan.get("kljuc") else None
+        except Exception:
+            return None
+
     def seznam_json(self) -> str:
-        return json.dumps({"type": "cast.devices",
-                           "devices": [n.json() for n in self.povezane()]}, ensure_ascii=False)
+        naprave = []
+        for n in self.povezane():
+            zapis = n.json()
+            naprava = self.naprava_iz_kljuca(n.id)
+            if naprava:
+                zapis["device"] = naprava
+            naprave.append(zapis)
+        return json.dumps({"type": "cast.devices", "devices": naprave}, ensure_ascii=False)
 
     def objavi_naprave(self) -> None:
         sporocilo = self.seznam_json()

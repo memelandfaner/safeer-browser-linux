@@ -666,12 +666,14 @@ class SafeerLink:
             ime = "Safeer Control (" + link_hub._ime_naprave().split(".")[0] + ")"
             g = link_hub_streznik.HubGostitelj(poisci=self._poisci_tuj_hub, ime=ime,
                                                hubi=lambda: [h for h in link_hub.poisci_hube_mdns() if h["tls"]],
-                                               clan=self._clan_kroga, nas_id=link_hub_streznik.id_za_oglas)
+                                               clan=self._je_clan_kroga, nas_id=link_hub_streznik.id_za_oglas)
             self._hub_gostitelj = g
         return g
 
     @staticmethod
-    def _clan_kroga(id_naprave: str) -> bool:
+    def _je_clan_kroga(id_naprave: str) -> bool:
+        """Ali je naprava z id-jem clan kroga (za izvolitev huba). Drugo ime kot _clan_kroga (ta naprava),
+        sicer ga prekrije in Control ob zagonu pade (22. 9. 2026)."""
         try:
             return link_krog.krog().clan(id_naprave) is not None
         except Exception:
