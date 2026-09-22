@@ -28,6 +28,7 @@ gi.require_version("WebKit2", "4.1")
 from gi.repository import Gdk, Gtk, WebKit2, GLib  # noqa: E402
 
 from core import link_deljenje, link_hub, link_hub_streznik, link_iskanje, link_krog, link_seja, link_tls  # noqa: E402
+from core import link_continuity, link_handoff, link_media_sync, link_multi_vnos, link_workspace  # noqa: E402
 
 
 def secrets_token() -> str:
@@ -81,6 +82,7 @@ MOST_JS = """
     poveziSe: function () { poslji("poveziSe"); },
     posljiTrenutno: function (id) { poslji("posljiTrenutno", [id]); },
     poslji: function (id, url, naslov) { poslji("poslji", [id, url, naslov]); },
+    nadaljujNa: function (id, url, naslov, polozaj) { poslji("nadaljujNa", [id, url, naslov, polozaj || 0]); },
     nadzor: function (id, ukaz, vrednost) { poslji("nadzor", [id, ukaz, vrednost]); },
     ukaz: function (id, dejanje, parametri, ref) { poslji("ukaz", [id, dejanje, String(parametri || "{}"), String(ref || "")]); },
     dodajDeljenoMapo: function () { poslji("dodajDeljenoMapo", []); },
@@ -150,6 +152,9 @@ class SafeerLink:
         self.zvok = None
         # Ukazi drugim napravam, na katere kdo caka (Safeer OS prek D-Bus): ref -> (Event, odgovor).
         self._cakajoci: Dict[str, list] = {}
+        self.continuity = link_continuity.Continuity(lambda: self.povezava, self._prejmi_continuity)
+        self.workspaces = link_workspace.Workspaces(lambda: self.povezava, lambda s: self._odziv("workspace", s))
+        self.media_sync = link_media_sync.MediaSync(lambda: self.povezava, lambda stanje: self._odziv("media-sync", stanje))
 
         self.nastavitve = nastavitve if nastavitve is not None else link_hub.Nastavitve()
         self.povezava: Optional[link_hub.Povezava] = None
@@ -542,6 +547,7 @@ class SafeerLink:
             "poveziSe": lambda: self._v_ozadju(self._povezi),
             "posljiTrenutno": lambda: self._poslji_trenutno(*argumenti[:1]),
             "poslji": lambda: self._poslji(*argumenti[:3]),
+            "nadaljujNa": lambda: self._nadaljuj_na(*argumenti[:4]),
             "nadzor": lambda: self._nadzor(*argumenti[:3]),
             "ukaz": lambda: self._ukaz(*argumenti[:4]),
             "nastaviSinhronizacijo": lambda: self._v_ozadju(
@@ -1134,9 +1140,13 @@ class SafeerLink:
                 "trajanje": telo.get("duration", 0.0),
             })
         elif vrsta == "sync.data":
-            self._prejmi_zaznamke(sporocilo.get("payload") or {})
+            payload = sporocilo.get("payload") or {}
+            if not self.workspaces.receive(payload) and not self.continuity.receive(payload) and not self.media_sync.receive(payload):
+                self._prejmi_zaznamke(payload)
         elif vrsta in ("share.text", "share.file", "share.screen"):
             self._prejmi_deljenje(vrsta, sporocilo)
+        elif vrsta == link_handoff.TYPE:
+            self._prejmi_handoff(sporocilo)
         elif vrsta == "cast.url":
             # Stran s televizorja ali druge naprave: odpremo jo v novem zavihku.
             self._prejmi_stran(sporocilo)
@@ -1145,6 +1155,23 @@ class SafeerLink:
             self._prejmi_ukaz(sporocilo)
         elif vrsta in ("control.result", "control.ack"):
             self._ukaz_odziv(sporocilo)
+
+    def _nadaljuj_na(self, id_naprave: str = "", url: str = "", naslov: str = "", polozaj=0) -> None:
+        msg = link_handoff.message(id_naprave, {"surface":"media","url":url,"title":naslov,"position":polozaj})
+        if not msg or not self.povezava:
+            self._odziv("handoff", {"ok":False,"napaka":"Naprava ali vsebina ni na voljo."}); return
+        try:
+            ok = bool(self.povezava.poslji(msg))
+        except Exception:
+            ok = False
+        self._odziv("handoff", {"ok":ok,"cilj":id_naprave})
+
+    def _prejmi_handoff(self, sporocilo: dict) -> None:
+        payload = link_handoff.clean_payload(sporocilo.get("payload") or {})
+        if not payload: return
+        # Handoff je uporabnikovo izrecno dejanje na izvorni napravi; na Linuxu odpremo URL.
+        self._prejmi_stran({"payload":{"url":payload["url"],"title":payload.get("title", ""),"start_position":payload.get("position",0)}})
+        self._odziv("handoff-prejet", payload)
 
     def _prejmi_ukaz(self, sporocilo: dict) -> None:
         from core import link_daljinec
@@ -1463,6 +1490,30 @@ class SafeerLink:
             "payload": {"action": dejanje, "params": parametri if isinstance(parametri, dict) else {}},
         })
 
+    def poslji_oddaljeni_vnos(self, dejanje: str, parametri: dict) -> bool:
+        """Vnos fizicnih naprav Linuxa v trenutno gledano Android sejo."""
+        cilj = self.gledani_zaslon
+        povezava = self.povezava
+        dovoljeno = dejanje.startswith("input.") or dejanje.startswith("gamepad.")
+        if not cilj or not dovoljeno or povezava is None or not povezava.tece:
+            return False
+        return povezava.poslji({
+            "id": "multi-vnos-" + str(int(time.time() * 1000)), "type": "control.command",
+            "target": cilj, "payload": {"action": dejanje, "params": parametri if isinstance(parametri, dict) else {}},
+        })
+
+    def multi_vnos_vklopi(self) -> bool:
+        """Izrecno ga vklopi uporabnik; nikoli ob samem zagonu streama."""
+        r = getattr(self, "_multi_vnos", None)
+        if r is None:
+            r = link_multi_vnos.MultiInputRouter(self.poslji_oddaljeni_vnos)
+            self._multi_vnos = r
+        return r.vklopi()
+
+    def multi_vnos_izklopi(self) -> None:
+        r = getattr(self, "_multi_vnos", None)
+        if r is not None: r.izklopi()
+
     # ------------------------------------------------------------------
     # Zvok racunalnika na napravi v Linku (Safeer OS: stran Zvok)
     # ------------------------------------------------------------------
@@ -1669,6 +1720,10 @@ class SafeerLink:
                     "icon": str(p.get("mark", "") or "⭐"),
                 })
         return {"items": elementi}
+
+    def _prejmi_continuity(self, stanje: dict) -> None:
+        """Obvesti UI/OS o zadnji seji; UI sam odloca, ali jo uporabnik nadaljuje."""
+        self._odziv("continuity", stanje)
 
     def _prejmi_zaznamke(self, telo: dict) -> None:
         if telo.get("category") != KATEGORIJA_ZAZNAMKI:

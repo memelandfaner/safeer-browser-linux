@@ -31,7 +31,7 @@ Section: utils
 Priority: optional
 Architecture: ${ARCH}
 Depends: safeer-control (>= ${CONTROL_VERSION}), python3, python3-gi, python3-gi-cairo, gir1.2-gtk-3.0, gir1.2-webkit2-4.1, gir1.2-glib-2.0
-Recommends: network-manager, pulseaudio-utils, policykit-1, xdg-utils, gir1.2-wnck-3.0, x11-utils
+Recommends: network-manager, pulseaudio-utils, playerctl, policykit-1, xdg-utils, gir1.2-wnck-3.0, x11-utils
 Maintainer: Safeer <info@safeer.si>
 Homepage: https://safeer.si/os/
 Description: Safeer OS - your computer in your hands, on top of Linux Mint
@@ -72,6 +72,8 @@ exit 0
 EOF2
 chmod 755 "$BUILD_ROOT/DEBIAN/postinst" "$BUILD_ROOT/DEBIAN/postrm"
 find "$BUILD_ROOT" -type d -exec chmod 755 {} +
+# Shared/setgid workspaces can restore SGID on newly created directories; dpkg-deb rejects DEBIAN=2755.
+chmod g-s "$BUILD_ROOT" "$BUILD_ROOT/DEBIAN"
 chmod 755 "$BUILD_ROOT/usr/bin/safeer-os"
 for script in "$BUILD_ROOT/DEBIAN/postinst" "$BUILD_ROOT/DEBIAN/postrm"; do
     if command -v dash >/dev/null 2>&1; then dash -n "$script"; else sh -n "$script"; fi

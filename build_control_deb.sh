@@ -68,6 +68,8 @@ exit 0
 EOF2
 chmod 755 "$BUILD_ROOT/DEBIAN/postinst" "$BUILD_ROOT/DEBIAN/postrm"
 find "$BUILD_ROOT" -type d -exec chmod 755 {} +
+chmod 0755 "$BUILD_ROOT/DEBIAN"
+chmod g-s "$BUILD_ROOT/DEBIAN" 2>/dev/null || true
 chmod 755 "$BUILD_ROOT/usr/bin/safeer-control"
 for script in "$BUILD_ROOT/DEBIAN/postinst" "$BUILD_ROOT/DEBIAN/postrm"; do
     if command -v dash >/dev/null 2>&1; then dash -n "$script"; else sh -n "$script"; fi

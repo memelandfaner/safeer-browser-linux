@@ -94,7 +94,8 @@ def izvedi(app, dejanje: str, parametri: dict, odpri_naslov: Callable[[str], Non
         koncaj(izid(False, f"Ukaz ni uspel: {e}"))
 
 
-DEJANJA_CONTROL = ["open_url", "volume", "status"]
+DEJANJA_CONTROL = ["open_url", "volume", "status", "key", "key_down", "key_up",
+                   "gamepad.button", "gamepad.axis", "gamepad.release"]
 DEJANJA_DATOTEKE = ["files.list", "files.open", "files.search"]
 DEJANJA_PROGRAMI = ["apps.list", "apps.launch", "apps.close", "apps.running"]
 DEJANJA_HOST = ["host.info"]
@@ -220,6 +221,56 @@ def izvedi_control(dejanje: str, parametri: dict, odpri_naslov: Callable[[str], 
                 koncaj(izid(True, "Program se zapira", {"closed": koliko}))
             else:
                 koncaj(izid(False, "Ta program ne teče", koda="ne_tece"))
+        elif d in ("gamepad.button", "gamepad.axis", "gamepad.release"):
+            # Gamepad je samo dodaten nacin istega telefonskega daljinca. Ne odpira seje,
+            # ne prestavlja dela in ob izhodu sprosti vse pritisnjene gumbe/osi.
+            if zaslon is None or not zaslon.stanje().get("tece"):
+                koncaj(izid(False, "Ni aktivne oddaljene seje", koda="ni_seje"))
+                return
+            if d == "gamepad.release":
+                zaslon.sprosti_oddaljeni_plosek()
+                koncaj(izid(True, "Igralni plošček sproščen"))
+                return
+            if d == "gamepad.button":
+                g = str(parametri.get("button", "") or "").strip().lower()
+                dovoljeni = {"a","b","x","y","l1","r1","l2","r2","izbira","zacni","domov","palica_l","palica_r"}
+                if g not in dovoljeni:
+                    koncaj(izid(False, "Gumb ni dovoljen", koda="nedovoljen_gumb")); return
+                dog = {"vrsta":"plosek_gumb", "gumb":g, "dol":bool(parametri.get("down"))}
+            else:
+                o = str(parametri.get("axis", "") or "").strip().lower()
+                dovoljene = {"leva_x","leva_y","desna_x","desna_y","sprozilec_l","sprozilec_r","krizec_x","krizec_y"}
+                if o not in dovoljene:
+                    koncaj(izid(False, "Os ni dovoljena", koda="nedovoljena_os")); return
+                try: v = max(-1.0, min(1.0, float(parametri.get("value", 0))))
+                except (TypeError, ValueError):
+                    koncaj(izid(False, "Neveljavna vrednost osi", koda="napacna_vrednost")); return
+                dog = {"vrsta":"plosek_os", "os":o, "vrednost":v}
+            if zaslon.oddaljeni_plosek(dog):
+                koncaj(izid(True, "Vnos igralnega ploščka poslan", {"controller":"phone-gamepad"}))
+            else:
+                koncaj(izid(False, "Igralni plošček ni na voljo", koda="plosek_ni_na_voljo"))
+        elif d in ("key", "key_down", "key_up"):
+            # Telefon je lahko opcijski kontroler Linux aplikacije, ki jo uporabnik
+            # trenutno gleda na TV. To NI sinhronizacija in ne prevzame nobene naprave.
+            if zaslon is None or not zaslon.stanje().get("tece"):
+                koncaj(izid(False, "Ni aktivne oddaljene seje", koda="ni_seje"))
+                return
+            k = str(parametri.get("key", "") or "").strip().lower()
+            preslikava = {
+                "up":"gor", "down":"dol", "left":"levo", "right":"desno",
+                "ok":"vnasalka", "center":"vnasalka", "back":"ubezna",
+                "play_pause":"predvajaj", "stop":"ustavi",
+            }
+            tipka = preslikava.get(k)
+            if not tipka:
+                koncaj(izid(False, "Tipka ni dovoljena", koda="nedovoljena_tipka"))
+                return
+            vrsta = "tipka" if d == "key" else ("tipka_dol" if d == "key_down" else "tipka_gor")
+            if zaslon.oddaljeni_vnos({"vrsta": vrsta, "tipka": tipka}):
+                koncaj(izid(True, "Vnos poslan", {"controller": "phone-compatible"}))
+            else:
+                koncaj(izid(False, "Vnosa ni bilo mogoče poslati", koda="vnos_ni_na_voljo"))
         elif d == "open_url":
             url = str(parametri.get("url", "")).strip()
             if not (url.startswith("http://") or url.startswith("https://")):
@@ -234,7 +285,9 @@ def izvedi_control(dejanje: str, parametri: dict, odpri_naslov: Callable[[str], 
                  "actions": DEJANJA_CONTROL + DEJANJA_HOST + (DEJANJA_DATOTEKE if datoteke is not None else [])
                             + (DEJANJA_PROGRAMI if programi is not None and programi.vklopljeno else [])
                             + (DEJANJA_ZASLON if zaslon is not None and zaslon.na_voljo().get("dovoljeno") else []),
-                 "keys": [], "title": "Safeer Control"}
+                 "keys": (["up", "down", "left", "right", "ok", "back", "play_pause", "stop"]
+                          if zaslon is not None and zaslon.stanje().get("tece") else []),
+                 "title": "Safeer Control"}
             if datoteke is not None:
                 s["shared_folders"] = len(datoteke.poti())
             try:

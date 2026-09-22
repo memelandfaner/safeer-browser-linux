@@ -490,3 +490,7 @@ div.vrstica { cursor: default; }
 .zvok-jbl .stikalo { width: 100%; }
 .vrstica .znacka.tece { animation: utrip 1.6s ease-in-out infinite; }
 @keyframes utrip { 50% { opacity: .55; } }
+/* Safeer Media */
+.media-zdaj{display:flex;justify-content:space-between;align-items:center;gap:24px;padding:22px;margin:10px 0 22px;background:var(--kartica);border:1px solid var(--obroba);border-radius:18px}.media-zdaj h2{margin:5px 0}.media-zdaj p,.media-zdaj small{color:var(--medlo)}.media-kontrole{display:flex;gap:8px}.media-kontrole button{min-width:48px;height:44px;border-radius:12px}.media-kartica{cursor:pointer}.media-kartica .media-tip{font-size:12px;color:var(--medlo);text-transform:uppercase}
+
+.media-handoff{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.media-handoff button{padding:8px 12px;border-radius:10px}
