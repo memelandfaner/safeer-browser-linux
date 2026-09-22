@@ -2,7 +2,7 @@
 
 Vrstni red je vedno LOCAL -> DIRECT_INTERNET -> RELAY -> OFFLINE: LAN zmaga vedno, internet in rele
 sta izrecna izbira uporabnika, neseznanjena naprava ali naprava brez kljuca ni dosegljiva nikoli.
-Enaka politika je v Kotlinu (tv-browser-2: link/GlobalMesh.kt). Koordinacija: services/coordination.
+Enaka politika je v Kotlinu (tv-browser-2: link/GlobalMesh.kt). Koordinacija: services/coordination (Cloudflare Worker na link.safeer.si).
 """
 from dataclasses import dataclass, field
 from enum import Enum
