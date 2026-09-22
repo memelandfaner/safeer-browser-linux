@@ -380,6 +380,24 @@ class Hub:
                 return None          # odgovorov in potrditev Hub ne potrjuje
             return self._potrditev(id_sporocila, prostor, "accepted")
 
+        if tip == "trust.names":
+            # Naprava ponudi imena iz svojega kroga; hub vzame samo imena znanih clanov z istim kljucem.
+            tovor = sporocilo.get("payload")
+            try:
+                spremenjeno = link_krog.krog().zdruzi_imena(tovor if isinstance(tovor, dict) else {})
+            except Exception:
+                spremenjeno = False
+            if spremenjeno:
+                krog = json.dumps({"type": "trust.update", "payload": link_krog.krog().json()}, ensure_ascii=False)
+                for n in self.povezane():
+                    if n.povezava is not None:
+                        try:
+                            n.povezava.poslji(krog)
+                        except Exception:
+                            pass
+                self.objavi_naprave()
+            return self._potrditev(id_sporocila, "trust", "accepted")
+
         if tip == "apps.announce":
             tovor = sporocilo.get("payload")
             if isinstance(tovor, dict) and isinstance(tovor.get("apps"), dict):
