@@ -496,3 +496,73 @@ class SeznanitevSKodo(unittest.TestCase):
         ura[0] += link_hub_streznik.PIN_VELJA_S + 1
         o = self._odjemalec("123456", zacetek)
         self.assertEqual(hub.spake_korak1(zacetek["pair_id"], "telefon1", o.sporocilo())[2], "prijava_ne_obstaja")
+
+
+class ZetoniPrezivijo(unittest.TestCase):
+    def test_zeton_seznanitve_prezivi_ponovni_zagon(self):
+        import os
+        import tempfile
+        mapa = tempfile.mkdtemp()
+        pot = os.path.join(mapa, "hub-zetoni.json")
+        hub = link_hub_streznik.Hub(odtis="cd" * 32, pot_zetonov=pot)
+        tv = LaznaPovezava()
+        hub.obdelaj(tv, _prijava("tv1"))
+        zacetek = hub.zacni_seznanitev("telefon1", "Telefon")
+        koda = tv.zadnje("pair.code")["payload"]["code"]
+        from core.spake2 import Spake2
+        o = Spake2.odjemalec(koda, "telefon1", zacetek["hub_id"], zacetek["fp"].encode(), zacetek["pair_id"].encode())
+        pa, ca, _ = hub.spake_korak1(zacetek["pair_id"], "telefon1", o.sporocilo())
+        _, cb = o.zakljuci(pa)
+        zeton, _ = hub.spake_korak2(zacetek["pair_id"], "telefon1", cb)
+        self.assertEqual(os.stat(pot).st_mode & 0o777, 0o600)
+        nov = link_hub_streznik.Hub(odtis="cd" * 32, pot_zetonov=pot)
+        self.assertEqual(nov.naprava_zetona(zeton), ("telefon1", "Telefon"))
+
+
+class PridruzitevSQr(unittest.TestCase):
+    """Vsaka naprava v Linku lahko pokaze QR za novo napravo; skrivnost naredi sredisce, hrani samo odtis."""
+
+    def setUp(self):
+        self.hub = link_hub_streznik.Hub(odtis="ef" * 32, nas_id="n-racunalnik")
+        self.hub.naslov_za_qr = "192.168.0.135:8990"
+        self.tv = LaznaPovezava()
+        self.tv.podatki["id"] = "tv1"
+        self.hub.obdelaj(self.tv, _prijava("tv1", "Dnevna soba"))
+
+    def _povabilo(self):
+        self.hub.obdelaj(self.tv, json.dumps({"id": "p1", "type": "pair.invite", "payload": {}}))
+        return self.tv.zadnje("pair.invite.ok")["payload"]
+
+    def test_televizor_dobi_kodo_in_naslov_sredisca(self):
+        p = self._povabilo()
+        self.assertEqual(p["address"], "192.168.0.135:8990")
+        self.assertEqual(p["fp"], "ef" * 32)
+        self.assertGreaterEqual(len(p["secret"]), 16)
+
+    def test_prava_skrivnost_da_zeton_napacna_ne(self):
+        p = self._povabilo()
+        self.assertEqual(self.hub.pridruzi(p["qr_id"], "napacna", "telefon1", "Telefon")[1], "qr_ne_obstaja")
+        zeton, napaka = self.hub.pridruzi(p["qr_id"], p["secret"], "telefon1", "Telefon")
+        self.assertIsNone(napaka)
+        self.assertEqual(self.hub.naprava_zetona(zeton), ("telefon1", "Telefon"))
+        # Koda velja enkrat.
+        self.assertEqual(self.hub.pridruzi(p["qr_id"], p["secret"], "telefon2", "Drug")[1], "qr_ne_obstaja")
+
+    def test_ugibanje_skrivnosti_je_omejeno(self):
+        p = self._povabilo()
+        for _ in range(link_hub_streznik.NAJVEC_POSKUSOV - 1):
+            self.assertEqual(self.hub.pridruzi(p["qr_id"], "x", "telefon1", "T")[1], "qr_ne_obstaja")
+        self.assertEqual(self.hub.pridruzi(p["qr_id"], "x", "telefon1", "T")[1], "prevec_poskusov")
+        self.assertEqual(self.hub.pridruzi(p["qr_id"], p["secret"], "telefon1", "T")[1], "qr_ne_obstaja")
+
+    def test_preklic_kode(self):
+        p = self._povabilo()
+        self.hub.obdelaj(self.tv, json.dumps({"id": "p2", "type": "pair.invite.cancel", "payload": {"qr_id": p["qr_id"]}}))
+        self.assertEqual(self.hub.pridruzi(p["qr_id"], p["secret"], "telefon1", "T")[1], "qr_ne_obstaja")
+
+    def test_koda_potece(self):
+        ura = [500.0]
+        hub = link_hub_streznik.Hub(odtis="ef" * 32, ura=lambda: ura[0])
+        qr_id, skrivnost = hub.ustvari_pridruzitev()
+        ura[0] += link_hub_streznik.PIN_VELJA_S + 1
+        self.assertEqual(hub.pridruzi(qr_id, skrivnost, "telefon1", "T")[1], "qr_ne_obstaja")
