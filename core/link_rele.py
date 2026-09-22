@@ -309,6 +309,7 @@ class LokalniRele:
     def __init__(self, cilj: str, kljuc: Optional[Callable[[], str]] = None,
                  podpisi: Optional[Callable[[bytes], str]] = None) -> None:
         self.cilj, self.kljuc, self.podpisi = cilj, kljuc, podpisi
+        self.zadnja_napaka = ""       # za dnevnik: zakaj zadnji kanal ni uspel (npr. 404, 429)
         self.streznik = socket.create_server(("127.0.0.1", 0))
         self.vrata = self.streznik.getsockname()[1]
         threading.Thread(target=self._sprejemaj, name="safeer-rele-lokalno", daemon=True).start()
@@ -332,7 +333,8 @@ class LokalniRele:
             if op != 0x1 or podatki != b"ready":
                 raise ConnectionError("hub ni sprejel kanala")
             ws.s.settimeout(None)
-        except Exception:
+        except Exception as e:
+            self.zadnja_napaka = str(e)[:120] or type(e).__name__
             if ws is not None:
                 ws.zapri()
             try:
@@ -347,3 +349,42 @@ class LokalniRele:
             self.streznik.close()
         except Exception:
             pass
+
+
+# ------------------------------------------------------------------ odjemalec: kateri hub je doma (prek releja)
+
+# Clani kroga, ki se prek releja niso odzvali kot hub: minuto jih ne klicemo (dnevna kvota Workerja).
+_ODSOTNI: dict = {}
+PREMOR_ODSOTNEGA_S = 60.0
+
+
+def najdi_hub_prek_releja(krog_json: dict, nas_id: str, prednost: Optional[List[str]] = None,
+                          kljuc: Optional[Callable[[], str]] = None,
+                          podpisi: Optional[Callable[[bytes], str]] = None,
+                          rok_s: float = 15.0, zdaj: Optional[float] = None):
+    """Domaci hub, ko ga v LAN ni: po vrsti poskusi clane kroga prek link.safeer.si.
+
+    Worker spusti samo do clana, ki nas ima na seznamu dovoljenih (in samo, ce gosti hub). Zaupanje:
+    hubovo potrdilo mora nositi natanko kljuc tega clana iz kroga. Vrne (id, LokalniRele, odtis) ali None.
+    """
+    from core import link_tls
+    zdaj = time.time() if zdaj is None else zdaj
+    kljuci = {}
+    for c in (krog_json.get("clani") or {}).values():
+        try:
+            kljuci[id_iz_kljuca(c["kljuc"])] = c["kljuc"]
+        except Exception:
+            continue
+    kandidati = dovoljeni_iz_kroga(krog_json, nas_id)
+    naprej = [p for p in (prednost or []) if p in kandidati]
+    for cilj in naprej + [k for k in kandidati if k not in naprej]:
+        if zdaj - _ODSOTNI.get(cilj, 0.0) < PREMOR_ODSOTNEGA_S:
+            continue
+        rele = LokalniRele(cilj, kljuc=kljuc, podpisi=podpisi)
+        odtis, javni = link_tls.potrdilo_huba("wss://127.0.0.1:%d/" % rele.vrata, timeout=rok_s)
+        if odtis and javni and javni == kljuci.get(cilj):
+            _ODSOTNI.pop(cilj, None)
+            return cilj, rele, odtis
+        rele.zapri()
+        _ODSOTNI[cilj] = zdaj
+    return None
