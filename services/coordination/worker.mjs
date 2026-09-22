@@ -1,4 +1,4 @@
-// Safeer Coordination (Global Mesh): Cloudflare Worker + en Durable Object (SQLite, brezplacen nacrt).
+// Safeer Coordination (Global Mesh): Cloudflare Worker + Durable Object za vsako napravo (SQLite, brezplacen nacrt).
 //
 // Samo metapodatki za srecanje seznanjenih naprav: prisotnost (namigi kandidatov, TTL) in kratki
 // signali (ICE/SDP). Nikoli zasebni kljuci ali uporabniska vsebina; vse je v pomnilniku in potece.
@@ -7,13 +7,15 @@
 // isti kljuc kot v krogu zaupanja). Id naprave = "n-" + prvih 16 hex SHA-256(SPKI), kot KrogZaupanja.
 // Glave: X-Safeer-Key (SPKI base64), X-Safeer-Time (unix s), X-Safeer-Signature (DER base64) nad
 //   METODA "\n" POT "\n" CAS "\n" hex(SHA-256(telo))
-// Zasebnost: prisotnost naprave vidi in ji signal poslje samo naprava s seznama `allow`, ki ga
-// objavi naprava sama (njen krog zaupanja). Tujec ne izve niti, ali naprava obstaja.
+// Zasebnost: Global Link je za vsakega uporabnika samo njegov krog zaupanja. Prisotnost naprave vidi in
+// ji signal poslje samo naprava s seznama `allow`, ki ga objavi naprava sama (clani njenega kroga, kot jih
+// je seznanil Safeer Link). Drug uporabnik vidi le svoje naprave; o tujih ne izve niti, ali obstajajo.
+// Vsaka naprava ima svoj Durable Object (ime = id naprave): ni skupnega seznama vseh naprav, ki bi ga
+// lahko kdo bral ali napolnil.
 
 export const TTL_MAX = 120;
 export const SIGNAL_TTL = 60;
 export const NAJVEC_SIGNALOV = 64;
-export const NAJVEC_NAPRAV = 10000;
 export const ODMIK_URE = 120;
 const ID = /^n-[0-9a-f]{16}$/;
 
@@ -77,7 +79,6 @@ export class Stanje {
     if (!allow.every((a) => typeof a === "string" && ID.test(a))) return [400, { error: "invalid_allow" }];
     const ttl = Number.isFinite(Number(b.ttl ?? 60)) ? Math.max(15, Math.min(Math.trunc(Number(b.ttl ?? 60)), TTL_MAX)) : NaN;
     if (Number.isNaN(ttl)) return [400, { error: "invalid_ttl" }];
-    if (!this.prisotnost.has(me) && this.prisotnost.size >= NAJVEC_NAPRAV) return [503, { error: "busy" }];
     this.prisotnost.set(me, { device_id: me, candidate_hints: hints.map((x) => String(x).slice(0, 512)), allow, expires_at: zdaj + ttl });
     return [200, { ok: true, ttl }];
   }
@@ -107,30 +108,49 @@ export class Stanje {
 
 const json = (status, obj) => new Response(JSON.stringify(obj), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 
-export async function obdelaj(stanje, request, zdaj = Math.floor(Date.now() / 1000)) {
+/**
+ * Javni vhod: preveri podpis, nato zahtevo preda Durable Objectu naprave, ki jo zadeva
+ * (lastna prisotnost in signali: moj; iskanje in posiljanje: ciljna naprava). `imenik(ime)` vrne stub.
+ */
+export async function usmeri(imenik, request, zdaj = Math.floor(Date.now() / 1000)) {
   const url = new URL(request.url);
   if (url.pathname === "/health") return json(200, { ok: true, service: "safeer-coordination" });
   const telo = request.method === "POST" ? await request.text() : "";
   if (telo.length > 65536) return json(413, { error: "too_large" });
   const me = await preveri(request.method, url.pathname + url.search, request.headers, telo, zdaj);
   if (!me) return json(401, { error: "unauthorized" });
-  stanje.pocisti(zdaj);
   let b = {};
   if (request.method === "POST") {
     try { b = JSON.parse(telo || "{}"); } catch { return json(400, { error: "bad_json" }); }
     if (!b || typeof b !== "object" || Array.isArray(b)) return json(400, { error: "bad_json" });
   }
   const pot = `${request.method} ${url.pathname}`;
-  if (pot === "POST /v1/presence") return json(...stanje.objavi(me, b, zdaj));
-  if (pot === "GET /v1/presence") return json(...stanje.poisci(me, url.searchParams.get("device_id") || ""));
-  if (pot === "POST /v1/signal") return json(...stanje.poslji(me, b, zdaj));
-  if (pot === "GET /v1/signals") return json(...stanje.prevzemi(me));
-  return json(404, { error: "not_found" });
+  let cilj, dejanje;
+  if (pot === "POST /v1/presence") { cilj = me; dejanje = "objavi"; }
+  else if (pot === "GET /v1/signals") { cilj = me; dejanje = "prevzemi"; }
+  else if (pot === "GET /v1/presence") { cilj = url.searchParams.get("device_id") || ""; dejanje = "poisci"; }
+  else if (pot === "POST /v1/signal") { cilj = String(b.to ?? ""); dejanje = "poslji"; }
+  else return json(404, { error: "not_found" });
+  if (!ID.test(cilj)) return dejanje === "poisci" ? json(200, { presence: null }) : json(400, { error: "invalid_target" });
+  if (dejanje === "poslji" && cilj === me) return json(400, { error: "invalid_signal" });
+  // Notranja zahteva do Durable Objecta; od zunaj ni dosegljiv, zato mu `me` lahko zaupa.
+  return imenik(cilj).fetch(new Request("https://do/" + dejanje, {
+    method: "POST", body: JSON.stringify({ me, cilj, b, zdaj }), headers: { "content-type": "application/json" } }));
 }
 
+/** Durable Object ene naprave: njena prisotnost in signali, namenjeni njej. */
 export class Koordinacija {
   constructor() { this.stanje = new Stanje(); }
-  fetch(request) { return obdelaj(this.stanje, request); }
+  async fetch(request) {
+    const dejanje = new URL(request.url).pathname.slice(1);
+    const { me, cilj, b, zdaj } = await request.json();
+    this.stanje.pocisti(zdaj);
+    if (dejanje === "objavi") return json(...this.stanje.objavi(me, b, zdaj));
+    if (dejanje === "prevzemi") return json(...this.stanje.prevzemi(me));
+    if (dejanje === "poisci") return json(...this.stanje.poisci(me, cilj));
+    if (dejanje === "poslji") return json(...this.stanje.poslji(me, b, zdaj));
+    return json(404, { error: "not_found" });
+  }
 }
 
 export default {
@@ -138,6 +158,6 @@ export default {
     if (env.SAFEER_GLOBAL_LINK_ENABLED !== "true" && new URL(request.url).pathname !== "/health") {
       return json(503, { error: "disabled" });
     }
-    return env.KOORDINACIJA.get(env.KOORDINACIJA.idFromName("glavna")).fetch(request);
+    return usmeri((ime) => env.KOORDINACIJA.get(env.KOORDINACIJA.idFromName(ime)), request);
   },
 };
