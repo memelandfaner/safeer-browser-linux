@@ -1171,7 +1171,7 @@ class SafeerLink:
         )
         povezava.ob_sporocilu = self._na_sporocilo_huba
         povezava.ob_stanju = self._na_stanje_povezave
-        if povezava.poveži():
+        if povezava.povezi():
             self.povezava = povezava
             return True
         if povezava.zavrnjena:
