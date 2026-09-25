@@ -130,6 +130,7 @@ class Hub:
         self._vstopnice: Dict[str, tuple] = {}     # vstopnica -> (device_id, cas)
         self._prijave: Dict[str, dict] = {}        # pair_id -> seznanitev s kodo
         self._pridruzitve: Dict[str, dict] = {}    # qr_id -> pridruzitev s QR kodo
+        self._qr_prijave: Dict[str, dict] = {}     # qr_id -> prijava s QR kodo na napravi
         #: "ip:vrata", kot ga naprava potrebuje v QR kodi (nastavi HubStreznik).
         self.naslov_za_qr = ""
         self._zetoni: Dict[str, tuple] = {}        # zeton -> (device_id, ime, cas)
@@ -399,6 +400,99 @@ class Hub:
             self._zetoni[zeton] = (device_id, (ime or device_id).strip()[:NAJVEC_IMENA], self.ura())
             self._shrani_zetone()
         return zeton, None
+
+    # ------------------------------------------------------------------ prijava s QR kodo (naprava pokaže QR)
+    def zacni_qr(self, device_id: str, ime: str, platform: str, secret_sha256: str, poll_secret: str) -> tuple:
+        import re
+        if not re.match(r"^[0-9a-f]{64}$", (secret_sha256 or "").lower()) or len(poll_secret or "") < 16:
+            return None, "neveljavno"
+        with self._zaklep:
+            self._pocisti_qr()
+            for k in [k for k, p in self._qr_prijave.items() if p["device_id"] == device_id]:
+                self._qr_prijave.pop(k, None)
+            if len(self._qr_prijave) >= NAJVEC_CAKAJOCIH:
+                return None, "prevec_prijav"
+            qr_id = link_ws.nakljucni(12)
+            self._qr_prijave[qr_id] = {
+                "device_id": device_id,
+                "name": (ime or device_id).strip()[:NAJVEC_IMENA],
+                "platform": (platform or "windows").strip()[:16],
+                "secret_sha256": secret_sha256.lower(),
+                "poll_secret": poll_secret,
+                "nastala": self.ura(),
+                "token": None,
+                "approved": False,
+                "poskusov": 0
+            }
+        return qr_id, None
+
+    def qr_podatki(self, qr_id: str, skrivnost: str) -> tuple:
+        import hashlib
+        import hmac
+        with self._zaklep:
+            self._pocisti_qr()
+            p = self._qr_prijave.get((qr_id or "").strip())
+            if not p:
+                return None, "qr_ne_obstaja"
+            if not hmac.compare_digest(hashlib.sha256((skrivnost or "").encode("utf-8")).hexdigest(), p["secret_sha256"]):
+                p["poskusov"] += 1
+                if p["poskusov"] >= NAJVEC_POSKUSOV:
+                    self._qr_prijave.pop(qr_id, None)
+                    return None, "prevec_poskusov"
+                return None, "qr_ne_obstaja"
+            return {"device_id": p["device_id"], "name": p["name"], "platform": p["platform"]}, None
+
+    def odobri_qr(self, qr_id: str, skrivnost: str, odobril_device_id: str) -> tuple:
+        import hashlib
+        import hmac
+        with self._zaklep:
+            self._pocisti_qr()
+            p = self._qr_prijave.get((qr_id or "").strip())
+            if not p:
+                return None, "qr_ne_obstaja"
+            if not hmac.compare_digest(hashlib.sha256((skrivnost or "").encode("utf-8")).hexdigest(), p["secret_sha256"]):
+                p["poskusov"] += 1
+                if p["poskusov"] >= NAJVEC_POSKUSOV:
+                    self._qr_prijave.pop(qr_id, None)
+                    return None, "prevec_poskusov"
+                return None, "qr_ne_obstaja"
+            if p["device_id"] == odobril_device_id:
+                return None, "ista_naprava"
+            if not p["token"]:
+                zeton = "saf_pc_" + link_ws.nakljucni(24)
+                self._zetoni[zeton] = (p["device_id"], p["name"], self.ura())
+                self._shrani_zetone()
+                p["token"] = zeton
+                p["approved"] = True
+                p["odobril"] = odobril_device_id
+            return {"device_id": p["device_id"], "name": p["name"], "platform": p["platform"]}, None
+
+    def prevzemi_qr(self, qr_id: str, device_id: str, poll_secret: str) -> tuple:
+        import hmac
+        with self._zaklep:
+            self._pocisti_qr()
+            p = self._qr_prijave.get((qr_id or "").strip())
+            if not p or p["device_id"] != device_id or not hmac.compare_digest(p["poll_secret"], poll_secret):
+                return "qr_ne_obstaja", None
+            if not p["token"]:
+                return "caka", None
+            zeton = p["token"]
+            self._qr_prijave.pop(qr_id, None)
+            return "odobreno", zeton
+
+    def preklici_qr(self, qr_id: str, device_id: str, poll_secret: str) -> bool:
+        import hmac
+        with self._zaklep:
+            p = self._qr_prijave.get((qr_id or "").strip())
+            if not p or p["device_id"] != device_id or not hmac.compare_digest(p["poll_secret"], poll_secret):
+                return False
+            self._qr_prijave.pop(qr_id, None)
+            return True
+
+    def _pocisti_qr(self) -> None:
+        meja = self.ura() - PIN_VELJA_S
+        for k in [k for k, p in self._qr_prijave.items() if p["nastala"] < meja]:
+            self._qr_prijave.pop(k, None)
 
     def naprava_zetona(self, zeton: str) -> Optional[tuple]:
         """(device_id, ime) za zeton iz seznanitve, ali None."""
@@ -782,7 +876,9 @@ class _Obravnava(http.server.BaseHTTPRequestHandler):
             self._napaka(401, "Naprava ni seznanjena.", "naprava_ni_seznanjena")
             return
         if pot in ("/cast/ticket", "/cast/pair/start", "/cast/pair/spake", "/cast/pair/finish",
-                   "/cast/pair/cancel", "/cast/trust/enroll", "/cast/pair/qr/join"):
+                   "/cast/pair/cancel", "/cast/trust/enroll", "/cast/pair/qr/join",
+                   "/cast/pair/qr/start", "/cast/pair/qr/info", "/cast/pair/qr/approve",
+                   "/cast/pair/qr/status", "/cast/pair/qr/cancel"):
             # Pot obstaja, a ne kot GET. Po tem naprava loci Safeer Hub od poljubnega streznika.
             self._napaka(405, "Ta način za to pot ni dovoljen.", "metoda_ni_dovoljena")
             return
@@ -851,6 +947,72 @@ class _Obravnava(http.server.BaseHTTPRequestHandler):
                 self._napaka(koda, "Koda ni veljavna." if koda != 400 else "Manjka device_id.", napaka or "qr_ne_obstaja")
                 return
             self._odgovori(200, {"approved": True, "token": zeton, "hub_id": IDENTITETA_HUBA, "fp": self._hub.odtis})
+            return
+        if pot == "/cast/pair/qr/start":
+            telo = self._telo()
+            device_id = str(telo.get("device_id") or "").strip()[:NAJVEC_IMENA]
+            if not device_id:
+                self._napaka(400, "Manjka device_id.", "manjka_device_id")
+                return
+            qr_id, napaka = self._hub.zacni_qr(device_id, str(telo.get("name") or ""),
+                                              str(telo.get("platform") or ""),
+                                              str(telo.get("secret_sha256") or ""),
+                                              str(telo.get("poll_secret") or ""))
+            if not qr_id:
+                koda = 429 if napaka == "prevec_prijav" else 400
+                self._napaka(koda, "Prijava ni mogoča.", napaka or "napaka")
+                return
+            self._odgovori(200, {
+                "qr_id": qr_id,
+                "hub_id": IDENTITETA_HUBA,
+                "fp": self._hub.odtis,
+                "expires_in_seconds": int(PIN_VELJA_S)
+            })
+            return
+        if pot in ("/cast/pair/qr/info", "/cast/pair/qr/approve"):
+            odobril = self._hub.naprava_zetona(self.headers.get("X-Safeer-Token") or "")
+            if not odobril:
+                self._napaka(401, "Naprava ni seznanjena.", "naprava_ni_seznanjena")
+                return
+            telo = self._telo()
+            qr_id = str(telo.get("qr_id") or "").strip()
+            skrivnost = str(telo.get("secret") or "").strip()
+            if not qr_id or not skrivnost:
+                self._napaka(400, "Koda ne obstaja.", "qr_ne_obstaja")
+                return
+            if pot.endswith("/info"):
+                podatki, napaka = self._hub.qr_podatki(qr_id, skrivnost)
+            else:
+                podatki, napaka = self._hub.odobri_qr(qr_id, skrivnost, odobril[0])
+            if not podatki:
+                koda = 429 if napaka == "prevec_poskusov" else 404
+                self._napaka(koda, "Koda ne velja več.", napaka or "qr_ne_obstaja")
+                return
+            if pot.endswith("/approve"):
+                podatki["approved"] = True
+            self._odgovori(200, podatki)
+            return
+        if pot == "/cast/pair/qr/status":
+            telo = self._telo()
+            stanje, zeton = self._hub.prevzemi_qr(str(telo.get("qr_id") or ""),
+                                                  str(telo.get("device_id") or ""),
+                                                  str(telo.get("poll_secret") or ""))
+            if stanje == "qr_ne_obstaja":
+                self._napaka(404, "Koda ne obstaja več.", "qr_ne_obstaja")
+                return
+            izid = {"approved": bool(zeton)}
+            if zeton:
+                izid["token"] = zeton
+                izid["hub_id"] = IDENTITETA_HUBA
+                izid["fp"] = self._hub.odtis
+            self._odgovori(200, izid)
+            return
+        if pot == "/cast/pair/qr/cancel":
+            telo = self._telo()
+            ok = self._hub.preklici_qr(str(telo.get("qr_id") or ""),
+                                       str(telo.get("device_id") or ""),
+                                       str(telo.get("poll_secret") or ""))
+            self._odgovori(200, {"cancelled": ok})
             return
         if pot in ("/cast/pair/start", "/cast/pair/spake", "/cast/pair/finish", "/cast/pair/cancel"):
             self._seznanitev(pot, self._telo())

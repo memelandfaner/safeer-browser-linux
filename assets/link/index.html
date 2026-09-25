@@ -78,21 +78,12 @@
       <h2 data-t="prijavaNaslov">Prijava</h2>
       <p class="prijavaPodnaslov" data-t="prijavaPodnaslov">Poveži ta računalnik s svojimi napravami.</p>
 
-      <div class="prijavaNacini">
-        <div class="prijavaNacin" id="prijavaQr">
-          <div class="qrOkvir" id="qrSlika" aria-live="polite"><span class="qrCakam" data-t="prijavaQrPripravljam">Pripravljam kodo …</span></div>
-          <h3 data-t="prijavaQrNaslov">Skeniraj s telefonom</h3>
-          <p data-t="prijavaQrOpis">Usmeri kamero telefona ali tablice, ki je že v Safeer Linku, v kodo in potrdi na telefonu.</p>
-          <p class="opomba" id="opombaQr"></p>
-          <button class="drobniGumb" id="gumbQrZnova" data-t="prijavaPoisci" hidden>Poišči znova</button>
-        </div>
-
-        <div class="prijavaLoci" data-t="prijavaAli">ali</div>
-
+      <div class="prijavaNacini prijavaNaciniEno">
         <div class="prijavaNacin" id="prijavaKoda">
           <div class="kodaIkona" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 5h18v11H3z M8 20h8 M12 16v4 M7 10.5h.01 M10.5 10.5h.01 M14 10.5h.01 M17.5 10.5h.01"/></svg></div>
           <h3 data-t="prijavaKodaNaslov">Vpiši 6-mestno kodo</h3>
           <p id="prijavaKodaOpis" data-t="prijavaKodaOpis">Klikni v polje – koda se pokaže na televizorju ali tablici, kjer teče Safeer Link.</p>
+          <p class="prijavaKodaCas" id="prijavaKodaCas" hidden></p>
           <input class="vnosStevilke" id="prijavaVnosKode" type="text" inputmode="numeric"
                  autocomplete="one-time-code" maxlength="6" placeholder="------" aria-label="Koda" />
           <button class="glavni" id="gumbPrijavaKoda" data-t="prijavaGumb">Prijava</button>
