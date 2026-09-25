@@ -2682,6 +2682,20 @@ class SafeerMintBrowser(Gtk.Window):
                         self.start_direct_download(uri)
                         decision.ignore()
                         return True
+                    try:
+                        parsed_u = urllib.parse.urlparse(uri)
+                        host_u = (parsed_u.netloc or "").lower().split(":")[0]
+                        path_u = (parsed_u.path or "").lower()
+                        is_google_auth = (
+                            host_u.startswith(("accounts.google.", "accounts.youtube.", "myaccount.google.", "mail.google.", "workspace.google."))
+                            or (host_u in ("google.com", "www.google.com", "google.si", "www.google.si")
+                                and any(tok in path_u for tok in ("/signin", "/servicelogin", "/accounts", "/interactive", "/embedded/setup")))
+                        )
+                        st = webview.get_settings() if hasattr(webview, "get_settings") else None
+                        if st and hasattr(st, "set_user_agent") and is_google_auth:
+                            st.set_user_agent("Mozilla/5.0 (X11; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0")
+                    except Exception:
+                        pass
                 decision.use()
                 return True
             except Exception as e:
@@ -2699,6 +2713,33 @@ class SafeerMintBrowser(Gtk.Window):
                         GLib.idle_add(self.open_external_app_link, uri, scheme, webview.get_uri() or "",
                                       self.navigation_is_user_gesture(nav_action))
                         return True
+
+                    # Google / YouTube authentication compatibility: provide standard Firefox identity
+                    # to prevent "This browser or app may not be secure" block during sign-in
+                    try:
+                        parsed_u = urllib.parse.urlparse(uri)
+                        host_u = (parsed_u.netloc or "").lower().split(":")[0]
+                        path_u = (parsed_u.path or "").lower()
+                        is_google_auth = (
+                            host_u.startswith(("accounts.google.", "accounts.youtube.", "myaccount.google.", "mail.google.", "workspace.google."))
+                            or (host_u in ("google.com", "www.google.com", "google.si", "www.google.si")
+                                and any(tok in path_u for tok in ("/signin", "/servicelogin", "/accounts", "/interactive", "/embedded/setup")))
+                        )
+                        st = webview.get_settings() if hasattr(webview, "get_settings") else None
+                        if st and hasattr(st, "set_user_agent"):
+                            if is_google_auth:
+                                auth_ua = "Mozilla/5.0 (X11; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0"
+                                if st.get_user_agent() != auth_ua:
+                                    st.set_user_agent(auth_ua)
+                            elif USER_AGENT is not None:
+                                if st.get_user_agent() != USER_AGENT:
+                                    st.set_user_agent(USER_AGENT)
+                            else:
+                                default_ua = WebKit2.Settings().get_user_agent()
+                                if st.get_user_agent() != default_ua:
+                                    st.set_user_agent(default_ua)
+                    except Exception:
+                        pass
                     if is_passthrough_host(uri):
                         # Popoln passthrough za Cloudflare Turnstile in xAI/Grok prijavo (brez motenj)
                         pass

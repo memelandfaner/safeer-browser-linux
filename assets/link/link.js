@@ -1063,6 +1063,7 @@
       prijavaKodaNaslov: "Vpiši 6-mestno kodo",
       prijavaKodaOpis: "Klikni v polje – koda se pokaže na televizorju ali tablici, kjer teče Safeer Link.",
       prijavaKodaNaSredisce: "Koda je zdaj na zaslonu naprave s Safeer Linkom. Prepiši jo sem.",
+      prijavaKodaVelja: "Koda velja še {cas}.",
       prijavaKodaSestMest: "Koda ima 6 številk.",
       prijavaGumb: "Prijava",
       prijavaPreverjam: "Preverjam …",
@@ -1093,6 +1094,7 @@
       prijavaKodaNaslov: "Enter the 6-digit code",
       prijavaKodaOpis: "Click the field – the code appears on the TV or tablet running Safeer Link.",
       prijavaKodaNaSredisce: "The code is now on the screen of the Safeer Link device. Type it here.",
+      prijavaKodaVelja: "The code is valid for another {cas}.",
       prijavaKodaSestMest: "The code has 6 digits.",
       prijavaGumb: "Sign in",
       prijavaPreverjam: "Checking …",
@@ -1123,6 +1125,7 @@
       prijavaKodaNaslov: "6-stelligen Code eingeben",
       prijavaKodaOpis: "Klicke ins Feld – der Code erscheint auf dem Fernseher oder Tablet mit Safeer Link.",
       prijavaKodaNaSredisce: "Der Code steht jetzt auf dem Bildschirm des Safeer-Link-Geräts. Gib ihn hier ein.",
+      prijavaKodaVelja: "Der Code ist noch {cas} gültig.",
       prijavaKodaSestMest: "Der Code hat 6 Ziffern.",
       prijavaGumb: "Anmelden",
       prijavaPreverjam: "Wird geprüft …",
@@ -1153,6 +1156,7 @@
       prijavaKodaNaslov: "Introduce el código de 6 cifras",
       prijavaKodaOpis: "Haz clic en el campo: el código aparece en el televisor o la tableta con Safeer Link.",
       prijavaKodaNaSredisce: "El código está ahora en la pantalla del dispositivo con Safeer Link. Escríbelo aquí.",
+      prijavaKodaVelja: "El código es válido durante {cas} más.",
       prijavaKodaSestMest: "El código tiene 6 cifras.",
       prijavaGumb: "Entrar",
       prijavaPreverjam: "Comprobando …",
@@ -1183,6 +1187,7 @@
       prijavaKodaNaslov: "Saisis le code à 6 chiffres",
       prijavaKodaOpis: "Clique dans le champ : le code s'affiche sur le téléviseur ou la tablette avec Safeer Link.",
       prijavaKodaNaSredisce: "Le code est maintenant à l'écran de l'appareil Safeer Link. Saisis-le ici.",
+      prijavaKodaVelja: "Le code est valable encore {cas}.",
       prijavaKodaSestMest: "Le code a 6 chiffres.",
       prijavaGumb: "Se connecter",
       prijavaPreverjam: "Vérification …",
@@ -1213,6 +1218,7 @@
       prijavaKodaNaslov: "Inserisci il codice di 6 cifre",
       prijavaKodaOpis: "Fai clic nel campo: il codice appare sul televisore o sul tablet con Safeer Link.",
       prijavaKodaNaSredisce: "Il codice è ora sullo schermo del dispositivo con Safeer Link. Scrivilo qui.",
+      prijavaKodaVelja: "Il codice è valido ancora per {cas}.",
       prijavaKodaSestMest: "Il codice ha 6 cifre.",
       prijavaGumb: "Accedi",
       prijavaPreverjam: "Verifica …",
@@ -2151,6 +2157,32 @@
 
   var prijava = { qr: false, koda: false, krogNeuspel: false, cakalnik: null, ponovno: null };
 
+  // Koliko casa je se veljavna koda, ki jo uporabnik ravno vpisuje (gostitelj jo je pokazal
+  // takrat, ko smo ga prosili za seznanitev) - da ne vpisuje kode, ki medtem ze potece.
+  var odstevanjeKode = { do: 0, ura: null };
+  function ustaviOdstevanjeKode() {
+    if (odstevanjeKode.ura) { clearInterval(odstevanjeKode.ura); odstevanjeKode.ura = null; }
+    odstevanjeKode.do = 0;
+    pokazi("prijavaKodaCas", false);
+  }
+  function zacniOdstevanjeKode(sekunde) {
+    ustaviOdstevanjeKode();
+    var trajanje = isFinite(sekunde) && sekunde > 0 ? sekunde : 300;
+    odstevanjeKode.do = Date.now() + trajanje * 1000;
+    var izpisi = function () {
+      var preostane = Math.round((odstevanjeKode.do - Date.now()) / 1000);
+      if (preostane <= 0) { ustaviOdstevanjeKode(); return; }
+      var el2 = el("prijavaKodaCas");
+      if (el2) {
+        el2.hidden = false;
+        el2.textContent = t("prijavaKodaVelja", { cas: cas(preostane) });
+        el2.classList.toggle("potece", preostane <= 30);
+      }
+    };
+    izpisi();
+    odstevanjeKode.ura = setInterval(izpisi, 1000);
+  }
+
   /**
    * Control, ki ni povezan (ne z zetonom ne s krogom zaupanja) in sredisce ne tece tu. Clan kroga
    * zaupanja se poveze sam s podpisom; prijavno okno dobi sele, ce to ne uspe.
@@ -2213,36 +2245,13 @@
     pokazi("prijavaZaupanje", !!(most && most.nastaviZaupanje));
     var kljukica = el("prijavaZaupaj");
     if (kljukica) kljukica.checked = !!stanje.zaupajOkno;
-    if (most && !most.zacniQr) {
-      // Stran je novejsa od programa, ki tece (posodobitev med tekom): povemo, kaj pomaga.
-      besedilo("opombaQr", t("prijavaZnovaZazeni"));
-      return;
-    }
-    if (prijava.qr || !most) return;
-    prijava.qr = true;
-    // Odgovor pride v nekaj sekundah; ce ga ni, uporabnik ne sme gledati »Pripravljam kodo« v nedogled.
-    if (prijava.cakalnik) clearTimeout(prijava.cakalnik);
-    prijava.cakalnik = setTimeout(function () {
-      prijava.cakalnik = null;
-      if (prijava.qr && !(el("qrSlika") && el("qrSlika").querySelector("svg"))) narisiQr({ napaka: "ni_huba" });
-    }, 20000);
-    var okvir = el("qrSlika");
-    if (okvir && !okvir.querySelector("svg")) {
-      okvir.classList.remove("prazno");
-      okvir.innerHTML = "";
-      var cakam = document.createElement("span");
-      cakam.className = "qrCakam";
-      cakam.textContent = t("prijavaQrPripravljam");
-      okvir.appendChild(cakam);
-    }
-    pokazi("gumbQrZnova", false);
-    besedilo("opombaQr", "");
-    most.zacniQr();
+    // QR prijava je bila tu nezanesljiva (ta naprava ni bila se v Linku, koda pa je za ze
+    // seznanjene naprave), zato je na tem zaslonu ni vec - samo 6-mestna koda.
   }
 
   function koncajPrijavo() {
     if (prijava.ponovno) { clearTimeout(prijava.ponovno); prijava.ponovno = null; }
-    if (prijava.qr && most && most.prekiniQr) most.prekiniQr();
+    ustaviOdstevanjeKode();
     prijava.qr = false;
     prijava.koda = false;
   }
@@ -2352,13 +2361,14 @@
         besedilo("opombaBrezPovezaveOs", sporociloOs);
       } else if (vrsta === "nacin" && jePrijavnoOkno()) {
         besedilo("opombaPrijavaKoda", t("prijavaKodaNaSredisce"));
+        zacniOdstevanjeKode(podatki && podatki.expires_in_seconds);
         var vp = el("prijavaVnosKode");
         if (vp) try { vp.focus(); } catch (e) {}
       } else if (vrsta === "kodaNiSprejeta" && jePrijavnoOkno()) {
         var rp = (podatki && podatki.razlog) || "napacna_koda";
         besedilo("opombaPrijavaKoda", t(rp === "prevec_poskusov" ? "napPrevecPoskusov"
           : (rp === "prijava_ne_obstaja" ? "napPrijavaPotekla" : "napNapacnaKoda")));
-        if (rp === "prevec_poskusov" || rp === "prijava_ne_obstaja") prijava.koda = false;
+        if (rp === "prevec_poskusov" || rp === "prijava_ne_obstaja") { prijava.koda = false; ustaviOdstevanjeKode(); }
         var vk = el("prijavaVnosKode");
         if (vk) { vk.value = ""; try { vk.focus(); } catch (e) {} }
       } else if (vrsta === "nacin") {
@@ -2396,6 +2406,7 @@
         }
       } else if (vrsta === "seznanitev") {
         if (podatki && jePrijavnoOkno()) besedilo("opombaPrijavaKoda", t("prijavaUspela"));
+        ustaviOdstevanjeKode();
         var gumb = el("gumbSeznani");
         if (gumb) gumb.disabled = false;
         if (podatki) {

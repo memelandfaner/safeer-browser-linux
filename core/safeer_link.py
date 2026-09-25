@@ -944,7 +944,8 @@ class SafeerLink:
                 return
             # Kodo pokaze gostitelj; stran ponudi vnos, ki pride v _potrdi_kodo.
             self._prijava = zacetek
-            self._odziv("nacin", {"nacin": "koda_na_gostitelju", "koda": ""})
+            self._odziv("nacin", {"nacin": "koda_na_gostitelju", "koda": "",
+                                  "expires_in_seconds": zacetek.get("expires_in_seconds")})
         finally:
             self._seznanjanje = False
 
