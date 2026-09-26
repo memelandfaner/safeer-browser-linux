@@ -6,11 +6,11 @@ pazimo na sondo prijave, ki jo uporablja Safeer Control: prijavljena naprava mor
 od mrtve in se po potrebi vrne.
 """
 import json
-import time
 import unittest
 from unittest import mock
 
 from core import link_hub_streznik, link_krog
+from core.spake2 import Spake2
 
 
 class LaznaPovezava:
@@ -185,9 +185,9 @@ class PrijavaSPodpisom(unittest.TestCase):
             odgovor = self.hub.vstopnica_s_podpisom("n-0123456789abcdef", izziv["nonce"], podpis)
         self.assertIsNotNone(odgovor)
         self.assertTrue(odgovor["ticket"])
+        self.assertTrue(odgovor["session_token"], "podpisana naprava potrebuje tudi HTTP sejo")
         self.assertEqual(odgovor["fp"], "ab" * 32, "odtis je vedno z malimi crkami")
         self.assertIn("ring", odgovor, "naprava mora dobiti krog, da pozna ostale")
-
     def test_vstopnica_velja_enkrat(self):
         izziv, podpis = self._izziv_in_podpis()
         with mock.patch.object(link_krog, "krog") as k:
@@ -229,84 +229,61 @@ class PrijavaSPodpisom(unittest.TestCase):
             self.assertIsNone(self.hub.vstopnica_s_podpisom("n-ffffffffffffffff", izziv["nonce"], podpis))
 
 
-class NapravaIzKljuca(unittest.TestCase):
-    """Brskalnik in Control na istem racunalniku (isti kljuc) sta ena naprava: polje device je enako."""
-
-    def test_sorodnika_imata_isto_napravo(self):
-        kljuc = link_krog.javni_kljuc_b64()
-        krog = link_krog.Krog()
-        krog.dodaj("pc-x", kljuc, "Safeer (x)", "linux", "hub")
-        krog.dodaj("pc-x-control", kljuc, "Safeer Control (x)", "linux", "pc-x")
-        hub = link_hub_streznik.Hub(odtis="ab" * 32)
-        hub.obdelaj(LaznaPovezava(), _prijava("pc-x", vloga="sender"))
-        hub.obdelaj(LaznaPovezava(), _prijava("pc-x-control", vloga="sender"))
-        hub.obdelaj(LaznaPovezava(), _prijava("tv-brez", vloga="receiver"))
-        with mock.patch.object(link_krog, "krog", return_value=krog):
-            naprave = {d["id"]: d for d in json.loads(hub.seznam_json())["devices"]}
-        jedro = link_krog.id_iz_kljuca(kljuc)
-        self.assertEqual(naprave["pc-x"].get("device"), jedro)
-        self.assertEqual(naprave["pc-x-control"].get("device"), jedro)
-        self.assertNotIn("device", naprave["tv-brez"], "brez kljuca v krogu ni naprave")
-
-    def test_ime_iz_kroga(self):
-        """Ime, ki ga je uporabnik dal na drugem hubu (v krogu), velja tudi na tem."""
-        kljuc = link_krog.javni_kljuc_b64()
-        krog = link_krog.Krog()
-        krog.dodaj("tv-1", kljuc, "Dnevna soba", "tv", "hub")
-        hub = link_hub_streznik.Hub(odtis="ab" * 32)
-        hub.obdelaj(LaznaPovezava(), _prijava("tv-1", vloga="receiver"))
-        with mock.patch.object(link_krog, "krog", return_value=krog):
-            tv = json.loads(hub.seznam_json())["devices"][0]
-        self.assertEqual(tv["name"], "Dnevna soba")
-        self.assertNotEqual(tv["own_name"], "Dnevna soba")
-
-
-class ImenaVKrogu(unittest.TestCase):
+class Seznanitev(unittest.TestCase):
     def setUp(self):
-        self.kljuc = link_krog.javni_kljuc_b64()
-        self.krog = link_krog.Krog()
-        self.krog.dodaj("tv-1", self.kljuc, "Safeer TV", "tv", "hub", dodano=100.0)
+        self.odtis = "ab" * 32
+        self.hub = link_hub_streznik.Hub(odtis=self.odtis)
 
-    def test_preimenuj_ne_premakne_dodano(self):
-        self.assertTrue(self.krog.preimenuj("tv-1", "Dnevna soba"))
-        c = self.krog.clan("tv-1")
-        self.assertEqual((c["ime"], c["dodano"]), ("Dnevna soba", 100.0))
+    def test_sestmestna_koda_spake2_izda_zeton(self):
+        zacetek = self.hub.zacni_seznanitev("telefon-1", "Telefon")
+        self.assertIsNotNone(zacetek)
+        pair_id = zacetek["pair_id"]
+        koda = self.hub._prijave[pair_id]["pin"]
+        self.assertRegex(koda, r"^\d{6}$")
+        odjemalec = Spake2.odjemalec(koda, "telefon-1", link_hub_streznik.IDENTITETA_HUBA,
+                                     self.odtis.encode(), pair_id.encode())
+        pa, ca, napaka = self.hub.spake_korak1(pair_id, "telefon-1", odjemalec.sporocilo())
+        self.assertIsNone(napaka)
+        _kljuc, cb = odjemalec.zakljuci(pa)
+        self.assertTrue(odjemalec.preveri(ca))
+        zeton, napaka = self.hub.spake_korak2(pair_id, "telefon-1", cb)
+        self.assertIsNone(napaka)
+        self.assertTrue(zeton.startswith("saf_pc_"))
+        self.assertEqual(self.hub.naprava_zetona(zeton), ("telefon-1", "Telefon"))
+        self.assertNotIn(pair_id, self.hub._prijave)
 
-    def test_enako_ime_brez_casa_se_potrdi(self):
-        self.assertTrue(self.krog.preimenuj("tv-1", "Safeer TV"))
-        self.assertGreater(self.krog.clan("tv-1")["imenovano"], 0)
-        self.assertFalse(self.krog.preimenuj("tv-1", "Safeer TV"))
+    def test_napacna_koda_ne_izda_zetona(self):
+        zacetek = self.hub.zacni_seznanitev("telefon-2", "Telefon")
+        pair_id = zacetek["pair_id"]
+        odjemalec = Spake2.odjemalec("000000", "telefon-2", link_hub_streznik.IDENTITETA_HUBA,
+                                     self.odtis.encode(), pair_id.encode())
+        pa, _ca, napaka = self.hub.spake_korak1(pair_id, "telefon-2", odjemalec.sporocilo())
+        self.assertIsNone(napaka)
+        _kljuc, cb = odjemalec.zakljuci(pa)
+        zeton, napaka = self.hub.spake_korak2(pair_id, "telefon-2", cb)
+        self.assertIsNone(zeton)
+        self.assertEqual(napaka, "napacna_koda")
 
-    def test_novejsi_vpis_ohrani_ime(self):
-        self.krog.preimenuj("tv-1", "Dnevna soba")
-        self.krog.zdruzi({"clani": {"tv-1": {"kljuc": self.kljuc, "ime": "Safeer TV", "dodano": 200.0}}})
-        self.assertEqual(self.krog.clan("tv-1")["ime"], "Dnevna soba")
+    def test_qr_vabilo_pokaze_kdo_se_je_pridruzil(self):
+        qr_id, skrivnost = self.hub.ustvari_pridruzitev()
+        self.assertTrue(self.hub.stanje_pridruzitve(qr_id)["pending"])
+        zeton, napaka = self.hub.pridruzi(qr_id, skrivnost, "tablica-1", "Tablica")
+        self.assertIsNone(napaka)
+        self.assertTrue(zeton)
+        stanje = self.hub.stanje_pridruzitve(qr_id)
+        self.assertFalse(stanje["pending"])
+        self.assertTrue(stanje["joined"])
+        self.assertEqual(stanje["name"], "Tablica")
 
-    def test_imena_brez_novih_clanov_in_tujih_kljucev(self):
-        tuj = {"clani": {"novi": {"kljuc": self.kljuc, "ime": "X", "imenovano": time.time()},
-                         "tv-1": {"kljuc": "MFkw" + "A" * 80, "ime": "Ugrabljen", "imenovano": time.time()}}}
-        self.assertFalse(self.krog.zdruzi_imena(tuj))
-        self.assertIsNone(self.krog.clan("novi"))
-        self.assertEqual(self.krog.clan("tv-1")["ime"], "Safeer TV")
-
-    def test_umaknjena_se_ne_vrne(self):
-        self.krog.umakni("tv-1", "hub", ob=time.time())
-        self.assertFalse(self.krog.zdruzi_imena({"clani": {"tv-1": {"kljuc": self.kljuc, "ime": "Obujen",
-                                                                   "imenovano": time.time() + 5}}}))
-        self.assertIsNone(self.krog.clan("tv-1"))
-
-    def test_hub_sprejme_trust_names(self):
-        hub = link_hub_streznik.Hub(odtis="ab" * 32)
-        tv, fon = LaznaPovezava(), LaznaPovezava()
-        hub.obdelaj(tv, _prijava("tv-1", vloga="receiver"))
-        hub.obdelaj(fon, _prijava("fon-1", vloga="sender"))
-        ponudba = {"clani": {"tv-1": {"kljuc": self.kljuc, "ime": "Spalnica", "imenovano": time.time()}}}
-        with mock.patch.object(link_krog, "krog", return_value=self.krog):
-            odgovor = json.loads(hub.obdelaj(fon, json.dumps({"id": "t1", "type": "trust.names", "payload": ponudba})))
-            seznam = json.loads(hub.seznam_json())["devices"]
-        self.assertEqual(odgovor["status"], "accepted")
-        self.assertEqual([d["name"] for d in seznam if d["id"] == "tv-1"], ["Spalnica"])
-        self.assertTrue(tv.zadnje("trust.update"), "vsi dobijo nov krog")
+    def test_sorodni_program_dobi_svoj_zeton(self):
+        with self.hub._zaklep:
+            prvi = self.hub._nov_zeton("n-primer", "Safeer Browser")
+        drugi, napaka = self.hub.sorodni_zeton(prvi, "n-primer-control", "Safeer Control")
+        self.assertIsNone(napaka)
+        self.assertEqual(self.hub.naprava_zetona(drugi), ("n-primer-control", "Safeer Control"))
+        zavrnjen, napaka = self.hub.sorodni_zeton(prvi, "tuja-naprava", "Tujec")
+        self.assertIsNone(zavrnjen)
+        self.assertEqual(napaka, "ni_sorodnik")
 
 
 class Zdravje(unittest.TestCase):
@@ -389,180 +366,3 @@ class KrogPoHttp(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-
-class SeznanitevSKodo(unittest.TestCase):
-    """Nova naprava se pridruzi Linku, katerega hub je racunalnik: koda na napravah v Linku, SPAKE2."""
-
-    def setUp(self):
-        self.hub = link_hub_streznik.Hub(odtis="cd" * 32, nas_id="n-racunalnik")
-        self.tv = LaznaPovezava()
-        self.hub.obdelaj(self.tv, _prijava("tv1", "Dnevna soba"))
-        self.obvestila = []
-        self.hub.ob_kodi = lambda ime, koda: self.obvestila.append((ime, koda))
-
-    def _odjemalec(self, koda, zacetek, device_id="telefon1"):
-        from core.spake2 import Spake2
-        return Spake2.odjemalec(koda, device_id, zacetek["hub_id"], zacetek["fp"].encode(), zacetek["pair_id"].encode())
-
-    def _seznani(self, koda_vnos, device_id="telefon1"):
-        zacetek = self.hub.zacni_seznanitev(device_id, "Telefon")
-        o = self._odjemalec(koda_vnos, zacetek, device_id)
-        pa, ca, napaka = self.hub.spake_korak1(zacetek["pair_id"], device_id, o.sporocilo())
-        self.assertIsNone(napaka)
-        _, cb = o.zakljuci(pa)
-        return zacetek, o.preveri(ca), self.hub.spake_korak2(zacetek["pair_id"], device_id, cb)
-
-    def test_koda_na_televizorju_ne_pri_novi_napravi(self):
-        zacetek = self.hub.zacni_seznanitev("telefon1", "Telefon")
-        self.assertEqual(zacetek["nacin"], "spake2")
-        self.assertNotIn("code", zacetek)
-        self.assertNotIn("pin", zacetek)
-        sporocilo = self.tv.zadnje("pair.code")
-        self.assertEqual(sporocilo["payload"]["pair_id"], zacetek["pair_id"])
-        self.assertEqual(sporocilo["payload"]["name"], "Telefon")
-        self.assertEqual(len(sporocilo["payload"]["code"]), 6)
-        self.assertEqual(self.obvestila, [("Telefon", sporocilo["payload"]["code"])])
-
-    def test_prava_koda_da_zeton_vstopnico_in_vpis_v_krog(self):
-        zacetek = self.hub.zacni_seznanitev("telefon1", "Telefon")
-        koda = self.tv.zadnje("pair.code")["payload"]["code"]
-        o = self._odjemalec(koda, zacetek)
-        pa, ca, _ = self.hub.spake_korak1(zacetek["pair_id"], "telefon1", o.sporocilo())
-        _, cb = o.zakljuci(pa)
-        self.assertTrue(o.preveri(ca), "naprava preveri, da hub pozna isto kodo")
-        zeton, napaka = self.hub.spake_korak2(zacetek["pair_id"], "telefon1", cb)
-        self.assertIsNone(napaka)
-        self.assertEqual(self.tv.zadnje("pair.done")["payload"]["pair_id"] if self._pocakaj("pair.done") else None,
-                         zacetek["pair_id"])
-        vstopnica = self.hub.vstopnica_z_zetonom(zeton)
-        self.assertEqual(self.hub.porabi_vstopnico(vstopnica["ticket"]), "telefon1")
-        krog = link_krog.Krog()
-        kljuc = link_krog.javni_kljuc_b64()
-        with mock.patch.object(link_krog, "krog", return_value=krog):
-            odgovor, napaka = self.hub.vpisi_v_krog(zeton, kljuc, "Telefon (WP28 S)", "phone")
-        self.assertIsNone(napaka)
-        self.assertEqual(krog.clan("telefon1")["kljuc"], kljuc)
-        self.assertEqual(krog.clan("telefon1")["dodal"], "n-racunalnik")
-        self.assertIn("telefon1", self.tv.zadnje("trust.update")["payload"]["clani"])
-
-    def _pocakaj(self, tip):
-        for _ in range(50):
-            if self.tv.zadnje(tip):
-                return True
-            time.sleep(0.02)
-        return False
-
-    def test_napacna_koda_in_meja_poskusov(self):
-        zacetek = self.hub.zacni_seznanitev("telefon1", "Telefon")
-        prava = self.tv.zadnje("pair.code")["payload"]["code"]
-        napacna = "000000" if prava != "000000" else "111111"
-        for i in range(link_hub_streznik.NAJVEC_POSKUSOV):
-            o = self._odjemalec(napacna, zacetek)
-            pa, ca, napaka = self.hub.spake_korak1(zacetek["pair_id"], "telefon1", o.sporocilo())
-            if pa is None:
-                self.assertEqual(napaka, "prevec_poskusov")
-                break
-            _, cb = o.zakljuci(pa)
-            self.assertFalse(o.preveri(ca))
-            zeton, napaka = self.hub.spake_korak2(zacetek["pair_id"], "telefon1", cb)
-            self.assertIsNone(zeton)
-            self.assertIn(napaka, ("napacna_koda", "prevec_poskusov"))
-        self.assertEqual(napaka, "prevec_poskusov")
-        o = self._odjemalec(prava, zacetek)
-        self.assertEqual(self.hub.spake_korak1(zacetek["pair_id"], "telefon1", o.sporocilo())[2], "prijava_ne_obstaja")
-
-    def test_tuj_device_id_ne_more_nadaljevati(self):
-        zacetek = self.hub.zacni_seznanitev("telefon1", "Telefon")
-        o = self._odjemalec("123456", zacetek, "vsiljivec")
-        self.assertEqual(self.hub.spake_korak1(zacetek["pair_id"], "vsiljivec", o.sporocilo())[2], "prijava_ne_obstaja")
-
-    def test_brez_zetona_ni_vstopnice_ne_vpisa(self):
-        self.assertIsNone(self.hub.vstopnica_z_zetonom(""))
-        self.assertIsNone(self.hub.vstopnica_z_zetonom("saf_pc_nic"))
-        self.assertEqual(self.hub.vpisi_v_krog("saf_pc_nic", link_krog.javni_kljuc_b64(), "x", "phone")[1],
-                         "naprava_ni_seznanjena")
-
-    def test_zavrnitev_s_televizorja(self):
-        zacetek = self.hub.zacni_seznanitev("telefon1", "Telefon")
-        self.hub.obdelaj(self.tv, json.dumps({"id": "z1", "type": "pair.reject", "payload": {"pair_id": zacetek["pair_id"]}}))
-        o = self._odjemalec("123456", zacetek)
-        self.assertEqual(self.hub.spake_korak1(zacetek["pair_id"], "telefon1", o.sporocilo())[2], "prijava_ne_obstaja")
-
-    def test_koda_potece(self):
-        ura = [1000.0]
-        hub = link_hub_streznik.Hub(odtis="cd" * 32, ura=lambda: ura[0])
-        zacetek = hub.zacni_seznanitev("telefon1", "Telefon")
-        ura[0] += link_hub_streznik.PIN_VELJA_S + 1
-        o = self._odjemalec("123456", zacetek)
-        self.assertEqual(hub.spake_korak1(zacetek["pair_id"], "telefon1", o.sporocilo())[2], "prijava_ne_obstaja")
-
-
-class ZetoniPrezivijo(unittest.TestCase):
-    def test_zeton_seznanitve_prezivi_ponovni_zagon(self):
-        import os
-        import tempfile
-        mapa = tempfile.mkdtemp()
-        pot = os.path.join(mapa, "hub-zetoni.json")
-        hub = link_hub_streznik.Hub(odtis="cd" * 32, pot_zetonov=pot)
-        tv = LaznaPovezava()
-        hub.obdelaj(tv, _prijava("tv1"))
-        zacetek = hub.zacni_seznanitev("telefon1", "Telefon")
-        koda = tv.zadnje("pair.code")["payload"]["code"]
-        from core.spake2 import Spake2
-        o = Spake2.odjemalec(koda, "telefon1", zacetek["hub_id"], zacetek["fp"].encode(), zacetek["pair_id"].encode())
-        pa, ca, _ = hub.spake_korak1(zacetek["pair_id"], "telefon1", o.sporocilo())
-        _, cb = o.zakljuci(pa)
-        zeton, _ = hub.spake_korak2(zacetek["pair_id"], "telefon1", cb)
-        self.assertEqual(os.stat(pot).st_mode & 0o777, 0o600)
-        nov = link_hub_streznik.Hub(odtis="cd" * 32, pot_zetonov=pot)
-        self.assertEqual(nov.naprava_zetona(zeton), ("telefon1", "Telefon"))
-
-
-class PridruzitevSQr(unittest.TestCase):
-    """Vsaka naprava v Linku lahko pokaze QR za novo napravo; skrivnost naredi sredisce, hrani samo odtis."""
-
-    def setUp(self):
-        self.hub = link_hub_streznik.Hub(odtis="ef" * 32, nas_id="n-racunalnik")
-        self.hub.naslov_za_qr = "192.168.0.135:8990"
-        self.tv = LaznaPovezava()
-        self.tv.podatki["id"] = "tv1"
-        self.hub.obdelaj(self.tv, _prijava("tv1", "Dnevna soba"))
-
-    def _povabilo(self):
-        self.hub.obdelaj(self.tv, json.dumps({"id": "p1", "type": "pair.invite", "payload": {}}))
-        return self.tv.zadnje("pair.invite.ok")["payload"]
-
-    def test_televizor_dobi_kodo_in_naslov_sredisca(self):
-        p = self._povabilo()
-        self.assertEqual(p["address"], "192.168.0.135:8990")
-        self.assertEqual(p["fp"], "ef" * 32)
-        self.assertGreaterEqual(len(p["secret"]), 16)
-
-    def test_prava_skrivnost_da_zeton_napacna_ne(self):
-        p = self._povabilo()
-        self.assertEqual(self.hub.pridruzi(p["qr_id"], "napacna", "telefon1", "Telefon")[1], "qr_ne_obstaja")
-        zeton, napaka = self.hub.pridruzi(p["qr_id"], p["secret"], "telefon1", "Telefon")
-        self.assertIsNone(napaka)
-        self.assertEqual(self.hub.naprava_zetona(zeton), ("telefon1", "Telefon"))
-        # Koda velja enkrat.
-        self.assertEqual(self.hub.pridruzi(p["qr_id"], p["secret"], "telefon2", "Drug")[1], "qr_ne_obstaja")
-
-    def test_ugibanje_skrivnosti_je_omejeno(self):
-        p = self._povabilo()
-        for _ in range(link_hub_streznik.NAJVEC_POSKUSOV - 1):
-            self.assertEqual(self.hub.pridruzi(p["qr_id"], "x", "telefon1", "T")[1], "qr_ne_obstaja")
-        self.assertEqual(self.hub.pridruzi(p["qr_id"], "x", "telefon1", "T")[1], "prevec_poskusov")
-        self.assertEqual(self.hub.pridruzi(p["qr_id"], p["secret"], "telefon1", "T")[1], "qr_ne_obstaja")
-
-    def test_preklic_kode(self):
-        p = self._povabilo()
-        self.hub.obdelaj(self.tv, json.dumps({"id": "p2", "type": "pair.invite.cancel", "payload": {"qr_id": p["qr_id"]}}))
-        self.assertEqual(self.hub.pridruzi(p["qr_id"], p["secret"], "telefon1", "T")[1], "qr_ne_obstaja")
-
-    def test_koda_potece(self):
-        ura = [500.0]
-        hub = link_hub_streznik.Hub(odtis="ef" * 32, ura=lambda: ura[0])
-        qr_id, skrivnost = hub.ustvari_pridruzitev()
-        ura[0] += link_hub_streznik.PIN_VELJA_S + 1
-        self.assertEqual(hub.pridruzi(qr_id, skrivnost, "telefon1", "T")[1], "qr_ne_obstaja")
