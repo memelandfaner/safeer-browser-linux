@@ -58,6 +58,9 @@ NAJVEC_CAKAJOCIH = 8
 ZETON_VELJA_S = 86400.0
 NAJVEC_ZETONOV = 32
 NACIN_SPAKE2 = "spake2"
+#: Naprava iz kroga dobi po prijavi s podpisom kratkoziv HTTP zeton (enako kot TV Hub).
+SEJA_VELJA_S = 12 * 60 * 60.0
+NAJVEC_SEJ = 64
 
 
 def _zdaj() -> float:
@@ -130,10 +133,12 @@ class Hub:
         self._vstopnice: Dict[str, tuple] = {}     # vstopnica -> (device_id, cas)
         self._prijave: Dict[str, dict] = {}        # pair_id -> seznanitev s kodo
         self._pridruzitve: Dict[str, dict] = {}    # qr_id -> pridruzitev s QR kodo
+        self._pridruzeni: Dict[str, str] = {}      # porabljeni qr_id -> ime nove naprave
         self._qr_prijave: Dict[str, dict] = {}     # qr_id -> prijava s QR kodo na napravi
         #: "ip:vrata", kot ga naprava potrebuje v QR kodi (nastavi HubStreznik).
         self.naslov_za_qr = ""
         self._zetoni: Dict[str, tuple] = {}        # zeton -> (device_id, ime, cas)
+        self._seje: Dict[str, tuple] = {}           # sejni zeton -> (device_id, potece)
         #: Zetoni seznanitve prezivijo ponovni zagon (naprava, ki kljuca se ni vpisala, ne ostane zunaj).
         self._pot_zetonov = pot_zetonov
         self._nalozi_zetone()
@@ -184,7 +189,9 @@ class Hub:
         podatki = link_krog.podatki_za_podpis(self.odtis, nonce, device_id)
         if not link_krog.preveri_podpis(str(clan["kljuc"]), podatki, podpis or ""):
             return None
-        odgovor = {"ticket": self._nova_vstopnica(device_id), "hub_id": IDENTITETA_HUBA, "fp": self.odtis}
+        odgovor = {"ticket": self._nova_vstopnica(device_id), "session_token": self._nova_seja(device_id),
+                   "hub_id": IDENTITETA_HUBA, "fp": self.odtis,
+                   "expires_in_seconds": int(VSTOPNICA_VELJA_S)}
         try:
             odgovor["ring"] = link_krog.krog().json()
         except Exception:
@@ -245,8 +252,34 @@ class Hub:
         for k in [k for k, p in self._prijave.items() if p["nastala"] < meja]:
             self._prijave.pop(k, None)
         meja = self.ura() - ZETON_VELJA_S
-        for z in [z for z, (_, _i, ko) in self._zetoni.items() if ko < meja]:
+        potekli = [z for z, (_, _i, ko) in self._zetoni.items() if ko < meja]
+        for z in potekli:
             self._zetoni.pop(z, None)
+        if potekli:
+            self._shrani_zetone()
+
+    def _nov_zeton(self, device_id: str, ime: str) -> str:
+        """Doda trajni zeton seznanitve z enotno omejitvijo in varnim zapisom."""
+        self._pocisti_prijave()
+        while len(self._zetoni) >= NAJVEC_ZETONOV:
+            najstarejsi = min(self._zetoni, key=lambda k: self._zetoni[k][2])
+            self._zetoni.pop(najstarejsi, None)
+        zeton = "saf_pc_" + link_ws.nakljucni(24)
+        self._zetoni[zeton] = (device_id, ime, self.ura())
+        self._shrani_zetone()
+        return zeton
+
+    def _nova_seja(self, device_id: str) -> str:
+        with self._zaklep:
+            zdaj = self.ura()
+            for z in [z for z, (_i, potece) in self._seje.items() if potece < zdaj]:
+                self._seje.pop(z, None)
+            while len(self._seje) >= NAJVEC_SEJ:
+                najstarejsa = min(self._seje, key=lambda k: self._seje[k][1])
+                self._seje.pop(najstarejsa, None)
+            zeton = "saf_seja_" + link_ws.nakljucni(24)
+            self._seje[zeton] = (device_id, zdaj + SEJA_VELJA_S)
+            return zeton
 
     def _objavi_kodo(self, tip: str, tovor: dict) -> None:
         """Kodo pokazejo naprave v Linku (televizor, tablica, racunalnik), ne nova naprava."""
@@ -344,12 +377,7 @@ class Hub:
                     self._koncaj_prijavo(pair_id)
                     return None, "prevec_poskusov"
                 return None, "napacna_koda"
-            if len(self._zetoni) >= NAJVEC_ZETONOV:
-                najstarejsi = min(self._zetoni, key=lambda k: self._zetoni[k][2])
-                self._zetoni.pop(najstarejsi, None)
-            zeton = "saf_pc_" + link_ws.nakljucni(24)
-            self._zetoni[zeton] = (device_id, p["ime"], self.ura())
-            self._shrani_zetone()
+            zeton = self._nov_zeton(device_id, p["ime"])
             self._koncaj_prijavo(pair_id)
             return zeton, None
 
@@ -396,9 +424,11 @@ class Hub:
                     return None, "prevec_poskusov"
                 return None, "qr_ne_obstaja"
             self._pridruzitve.pop(qr_id, None)
-            zeton = "saf_pc_" + link_ws.nakljucni(24)
-            self._zetoni[zeton] = (device_id, (ime or device_id).strip()[:NAJVEC_IMENA], self.ura())
-            self._shrani_zetone()
+            pravo_ime = (ime or device_id).strip()[:NAJVEC_IMENA]
+            zeton = self._nov_zeton(device_id, pravo_ime)
+            while len(self._pridruzeni) >= NAJVEC_CAKAJOCIH:
+                self._pridruzeni.pop(next(iter(self._pridruzeni)), None)
+            self._pridruzeni[qr_id] = pravo_ime
         return zeton, None
 
     # ------------------------------------------------------------------ prijava s QR kodo (naprava pokaže QR)
@@ -459,9 +489,7 @@ class Hub:
             if p["device_id"] == odobril_device_id:
                 return None, "ista_naprava"
             if not p["token"]:
-                zeton = "saf_pc_" + link_ws.nakljucni(24)
-                self._zetoni[zeton] = (p["device_id"], p["name"], self.ura())
-                self._shrani_zetone()
+                zeton = self._nov_zeton(p["device_id"], p["name"])
                 p["token"] = zeton
                 p["approved"] = True
                 p["odobril"] = odobril_device_id
@@ -505,7 +533,86 @@ class Hub:
             for z, (device_id, ime, _) in self._zetoni.items():
                 if hmac.compare_digest(z, zeton):
                     return device_id, ime
+            zdaj = self.ura()
+            for z in [z for z, (_i, potece) in self._seje.items() if potece < zdaj]:
+                self._seje.pop(z, None)
+            for z, (device_id, _potece) in self._seje.items():
+                if hmac.compare_digest(z, zeton):
+                    try:
+                        clan = link_krog.krog().clan_za_id(device_id)
+                    except Exception:
+                        clan = None
+                    if clan:
+                        return device_id, str(clan.get("ime") or device_id)
         return None
+
+    def sorodni_zeton(self, zeton: str, device_id: str, ime: str) -> tuple:
+        """Zeton za drugi Safeerjev program iste fizicne naprave (npr. Browser -> Control)."""
+        lastnik = self.naprava_zetona(zeton)
+        device_id = (device_id or "").strip()[:NAJVEC_IMENA]
+        if lastnik is None:
+            return None, "naprava_ni_seznanjena"
+        if not device_id:
+            return None, "manjka_device_id"
+        if device_id == lastnik[0] or not device_id.startswith(lastnik[0] + "-"):
+            return None, "ni_sorodnik"
+        with self._zaklep:
+            return self._nov_zeton(device_id, (ime or device_id).strip()[:NAJVEC_IMENA]), None
+
+    def stanje_pridruzitve(self, qr_id: str) -> dict:
+        with self._zaklep:
+            self._pocisti_pridruzitve()
+            ime = self._pridruzeni.get((qr_id or "").strip(), "")
+            return {"pending": (qr_id or "").strip() in self._pridruzitve,
+                    "joined": bool(ime), "name": ime}
+
+    def odidi(self, zeton: str) -> Optional[List[str]]:
+        """Naprava sama zapusti Link; odstranijo se tudi njeni aliasi z istim javnim kljucem."""
+        lastnik = self.naprava_zetona(zeton)
+        if lastnik is None:
+            return None
+        device_id = lastnik[0]
+        krog = link_krog.krog()
+        clan = krog.clan_za_id(device_id)
+        kljuc = str((clan or {}).get("kljuc") or "")
+        idji = {device_id}
+        if kljuc:
+            for i, c in (krog.json().get("clani") or {}).items():
+                if c.get("kljuc") == kljuc and i != self.nas_id:
+                    idji.add(i)
+        povezave = []
+        with self._zaklep:
+            for z in [z for z, (i, _ime, _ko) in self._zetoni.items() if i in idji]:
+                self._zetoni.pop(z, None)
+            for z in [z for z, (i, _potece) in self._seje.items() if i in idji]:
+                self._seje.pop(z, None)
+            self._shrani_zetone()
+            for i in idji:
+                n = self._naprave.get(i)
+                if n is not None and n.povezava is not None:
+                    povezave.append(n.povezava)
+                    n.povezava = None
+        for i in idji:
+            if i == self.nas_id:
+                continue
+            trenutni = krog.clan(i)
+            dodano = float((trenutni or {}).get("dodano") or 0.0)
+            krog.umakni(i, device_id, max(self.ura(), dodano + 0.001))
+        for p in povezave:
+            try:
+                p.zapri(1000, "naprava je zapustila Safeer Link")
+            except Exception:
+                pass
+        krog_json = krog.json()
+        obvestilo = json.dumps({"type": "trust.update", "payload": krog_json}, ensure_ascii=False)
+        for n in self.povezane():
+            if n.povezava is not None:
+                try:
+                    n.povezava.poslji(obvestilo)
+                except Exception:
+                    pass
+        self.objavi_naprave()
+        return sorted(idji)
 
     def vstopnica_z_zetonom(self, zeton: str) -> Optional[dict]:
         n = self.naprava_zetona(zeton)
@@ -876,7 +983,9 @@ class _Obravnava(http.server.BaseHTTPRequestHandler):
             self._napaka(401, "Naprava ni seznanjena.", "naprava_ni_seznanjena")
             return
         if pot in ("/cast/ticket", "/cast/pair/start", "/cast/pair/spake", "/cast/pair/finish",
-                   "/cast/pair/cancel", "/cast/trust/enroll", "/cast/pair/qr/join",
+                   "/cast/pair/cancel", "/cast/pair/sibling", "/cast/trust/enroll", "/cast/devices/leave",
+                   "/cast/pair/qr/join", "/cast/pair/qr/invite", "/cast/pair/qr/invite/status",
+                   "/cast/pair/qr/invite/cancel",
                    "/cast/pair/qr/start", "/cast/pair/qr/info", "/cast/pair/qr/approve",
                    "/cast/pair/qr/status", "/cast/pair/qr/cancel"):
             # Pot obstaja, a ne kot GET. Po tem naprava loci Safeer Hub od poljubnega streznika.
@@ -926,6 +1035,24 @@ class _Obravnava(http.server.BaseHTTPRequestHandler):
                 return
             self._odgovori(200, odgovor)
             return
+        if pot == "/cast/pair/sibling":
+            telo = self._telo()
+            zeton, napaka = self._hub.sorodni_zeton(
+                self.headers.get("X-Safeer-Token") or "", str(telo.get("device_id") or ""),
+                str(telo.get("name") or ""))
+            if zeton is None:
+                kodi = {"naprava_ni_seznanjena": 401, "manjka_device_id": 400, "ni_sorodnik": 403}
+                self._napaka(kodi.get(napaka or "", 400), "Sorodne naprave ni mogoče povezati.", napaka or "napaka")
+                return
+            self._odgovori(200, {"token": zeton, "hub_id": IDENTITETA_HUBA, "fp": self._hub.odtis})
+            return
+        if pot == "/cast/devices/leave":
+            idji = self._hub.odidi(self.headers.get("X-Safeer-Token") or "")
+            if idji is None:
+                self._napaka(401, "Naprava ni seznanjena.", "naprava_ni_seznanjena")
+                return
+            self._odgovori(200, {"left": True, "count": len(idji)})
+            return
         if pot == "/cast/trust/enroll":
             telo = self._telo()
             odgovor, napaka = self._hub.vpisi_v_krog(self.headers.get("X-Safeer-Token") or "", str(telo.get("pubkey") or ""),
@@ -947,6 +1074,25 @@ class _Obravnava(http.server.BaseHTTPRequestHandler):
                 self._napaka(koda, "Koda ni veljavna." if koda != 400 else "Manjka device_id.", napaka or "qr_ne_obstaja")
                 return
             self._odgovori(200, {"approved": True, "token": zeton, "hub_id": IDENTITETA_HUBA, "fp": self._hub.odtis})
+            return
+        if pot in ("/cast/pair/qr/invite", "/cast/pair/qr/invite/status", "/cast/pair/qr/invite/cancel"):
+            if not self._hub.naprava_zetona(self.headers.get("X-Safeer-Token") or ""):
+                self._napaka(401, "Naprava ni seznanjena.", "naprava_ni_seznanjena")
+                return
+            telo = self._telo()
+            qr_id = str(telo.get("qr_id") or "").strip()
+            if pot == "/cast/pair/qr/invite":
+                if qr_id:
+                    self._hub.preklici_pridruzitev(qr_id)
+                nov_id, skrivnost = self._hub.ustvari_pridruzitev()
+                self._odgovori(200, {"qr_id": nov_id, "secret": skrivnost, "fp": self._hub.odtis,
+                                     "expires_in_seconds": int(PIN_VELJA_S), "web_port": 0})
+                return
+            if pot.endswith("/status"):
+                self._odgovori(200, self._hub.stanje_pridruzitve(qr_id))
+                return
+            self._hub.preklici_pridruzitev(qr_id)
+            self._odgovori(200, {"cancelled": True})
             return
         if pot == "/cast/pair/qr/start":
             telo = self._telo()
